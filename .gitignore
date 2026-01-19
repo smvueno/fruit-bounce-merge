@@ -116,5 +116,3 @@ web_modules/
 *.sw?
 
 # Vite build output
-dist
-dist-ssr
