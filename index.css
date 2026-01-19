@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body, html {
+    @apply m-0 p-0 h-full overflow-hidden touch-none select-none bg-[#FFF8E1];
+    font-family: 'Fredoka', 'Segoe UI', sans-serif;
+    -webkit-user-select: none;
+  }
+  #root {
+    @apply w-full h-full flex justify-center items-center;
+  }
+  canvas {
+    @apply touch-none;
+  }
+}
+
+@layer utilities {
+  @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+  .animate-float { animation: float 3s ease-in-out infinite; }
+  
+  @keyframes pulse-danger { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+  .animate-pulse-danger { animation: pulse-danger 1s infinite; }
+  
+  @keyframes wave-scroll { 0% { background-position-x: 0px; } 100% { background-position-x: 100px; } }
+  .animate-wave { animation: wave-scroll 2s linear infinite; }
+
+  @keyframes bg-scroll { 0% { background-position: 0 0; } 100% { background-position: -500px 0; } }
+  .animate-bg-scroll { animation: bg-scroll 60s linear infinite; }
+
+  @keyframes mask-scroll { 0% { mask-position: 0 0; -webkit-mask-position: 0 0; } 100% { mask-position: -200px 0; -webkit-mask-position: -200px 0; } }
+  .animate-mask-scroll { animation: mask-scroll 20s linear infinite; }
+}
