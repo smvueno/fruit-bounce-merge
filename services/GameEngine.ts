@@ -85,10 +85,10 @@ class EffectParticle {
     constructor(x: number, y: number, color: string | number, type: 'circle' | 'star' | 'suck' = 'circle') {
         this.x = x;
         this.y = y;
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * 8 + 2;
-        this.vx = Math.cos(angle) * speed;
-        this.vy = Math.sin(angle) * speed;
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
         this.color = color;
         this.type = type;
         this.size = type === 'star' ? 10 + Math.random() * 10 : 3 + Math.random() * 5;
@@ -135,7 +135,7 @@ export class GameEngine {
     onScore: (amount: number, total: number) => void = () => { };
     onGameOver: (stats: GameStats) => void = () => { };
     onCombo: (count: number) => void = () => { };
-    onFeverStart: () => void = () => { };
+    onFeverStart: (mult: number) => void = () => { };
     onFeverEnd: () => void = () => { };
     onDanger: (active: boolean, remainingMs: number) => void = () => { };
     onJuiceUpdate: (current: number, max: number) => void = () => { };
@@ -162,6 +162,8 @@ export class GameEngine {
     textures: Map<FruitTier, PIXI.Texture> = new Map();
     dangerLine: PIXI.Graphics;
     pointerHistory: { x: number, y: number, time: number }[] = [];
+    lastFruitX: number = 0;
+    lastFruitY: number = 0;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -735,12 +737,31 @@ export class GameEngine {
             const sy = y + Math.sin(angle) * r;
 
             const part = new EffectParticle(sx, sy, 0xFF6347, 'circle');
-            // Slow drift away
-            part.vx = Math.cos(angle) * 0.3;
-            part.vy = Math.sin(angle) * 0.3 - 0.2; // Slight updrift
-            part.life = 1.2;
-            part.size = 2 + Math.random() * 2;
+            // MUCH slower drift (buggy fast issue fix)
+            part.vx = Math.cos(angle) * 0.1;
+            part.vy = Math.sin(angle) * 0.1 - 0.1;
+            part.life = 1.0;
+            part.size = 1 + Math.random() * 2; // Start smaller, expand later
             part.alpha = 0.5;
+            this.visualParticles.push(part);
+        }
+    }
+
+    spawnTrailParticles(x: number, y: number, radius: number, parentVx: number, parentVy: number) {
+        // "Poppy" trail logic
+        for (let i = 0; i < 2; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * radius * 0.5;
+            const px = x + Math.cos(angle) * r;
+            const py = y + Math.sin(angle) * r;
+
+            const part = new EffectParticle(px, py, 0xFF6347, 'circle');
+            // Inherit 20% of parent velocity for "follow along" + small random drift
+            part.vx = (parentVx * 0.2) + (Math.random() - 0.5) * 0.5;
+            part.vy = (parentVy * 0.2) + (Math.random() - 0.5) * 0.5;
+            part.life = 0.6; // Short life
+            part.size = 3 + Math.random() * 3;
+            part.alpha = 0.8;
             this.visualParticles.push(part);
         }
     }
@@ -801,6 +822,19 @@ export class GameEngine {
 
             const virtual = this.getVirtualPos(globalX, globalY);
             this.spawnPassiveTomatoParticle(virtual.x, virtual.y, 45);
+        }
+
+        // 4. Trail Logic Check
+        if (this.currentFruit && this.currentFruit.tier === FruitTier.TOMATO) {
+            const dx = this.currentFruit.x - this.lastFruitX;
+            const dy = this.currentFruit.y - this.lastFruitY;
+            const distSq = dx * dx + dy * dy;
+            // If moved more than 2px
+            if (distSq > 4) {
+                this.spawnTrailParticles(this.currentFruit.x, this.currentFruit.y, this.currentFruit.radius, this.currentFruit.vx, this.currentFruit.vy);
+            }
+            this.lastFruitX = this.currentFruit.x;
+            this.lastFruitY = this.currentFruit.y;
         }
 
         // C. Fever Particles (Stars)
@@ -870,6 +904,8 @@ export class GameEngine {
                     p.alpha = Math.min(0.6, p.life);
                     p.vx *= 0.96; // Friction
                     p.vy *= 0.96;
+                    // Expansion logic for passive & trail
+                    if (p.life > 0.5) p.size += 0.05;
                 } else {
                     p.alpha = Math.min(1, p.life);
                 }
@@ -943,7 +979,12 @@ export class GameEngine {
                 this.audio.setFrenzy(true); // Music frenzy
                 this.feverTimer = FEVER_DURATION_MS;
                 this.stats.feverCount++;
-                this.onFeverStart();
+                // Multiplier is Count + 1 (1st time = x2, 2nd = x3) IF we count from 0-based index logically, 
+                // but stats.feverCount is purely how many times it happened. 
+                // User requirement: "Increase by 1 every time".
+                // First fever (count=1) -> x2. Second (count=2) -> x3.
+                const mult = this.stats.feverCount + 1;
+                this.onFeverStart(mult);
             }
         }
         const dangerY = this.height * DANGER_Y_PERCENT;
@@ -1270,7 +1311,7 @@ export class GameEngine {
         this.didMergeThisTurn = true;
 
         const comboMult = 1 + Math.min(this.comboChain, 10); // Cap multiplier reasonable
-        const feverMult = this.feverActive ? 2 : 1;
+        const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1; // +1 because we already incremented on start, or logic based on count
 
         const totalPoints = basePoints * comboMult * feverMult;
 
@@ -1396,9 +1437,9 @@ export class GameEngine {
         this.dangerLine.moveTo(0, y);
         this.dangerLine.lineTo(width, y);
         if (this.dangerActive) {
-            this.dangerLine.stroke({ width: 6, color: 0xFF0000, alpha: 0.8 + Math.sin(Date.now() * 0.01) * 0.2 });
+            this.dangerLine.stroke({ width: 4, color: 0xFF4444, alpha: 0.8 }); // Solid line for now to fix type error
         } else {
-            this.dangerLine.stroke({ width: 3, color: 0x000000, alpha: 0.2 });
+            this.dangerLine.stroke({ width: 4, color: 0x000000, alpha: 0.2 });
         }
     }
 

@@ -21,8 +21,6 @@ const BACKGROUND_PATTERNS = [
     `data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='black'%3E%3Ccircle cx='50' cy='50' r='40' /%3E%3C/g%3E%3C/svg%3E`,
     `data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill='black' /%3E%3C/svg%3E`,
     // Removed Waves (Too small)
-    // Added Heart
-    `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 88.9L16.7 55.6C7.2 46.1 7.2 30.9 16.7 21.4s24.7-9.5 33.3 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4z' fill='black' /%3E%3Cpath d='M50 30L50 30L20 0 A20 20 0 0 0 0 30 L50 90 L100 30 A20 20 0 0 0 80 0 L50 30 Z' fill='black' /%3E%3Cpath d='M10,30 A20,20 0,0,1 50,30 A20,20 0,0,1 90,30 Q90,60 50,90 Q10,60 10,30 z' fill='black' /%3E%3C/svg%3E`,
     // Replaced with cleaner Heart Path:
     `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='black' /%3E%3C/svg%3E`,
     `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10 L70 70 L10 70 Z' fill='black' /%3E%3C/svg%3E`
@@ -255,6 +253,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     // Background State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
     const [bgColor, setBgColor] = useState(FRUIT_DEFS[FruitTier.CHERRY].color);
+    const [currentFeverMult, setCurrentFeverMult] = useState(1);
 
     useEffect(() => {
         // Cycle patterns randomly every 20-30 seconds
@@ -271,7 +270,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             onScore: (amt: number, total: number) => setScore(total),
             onGameOver: onGameOver,
             onCombo: (c: number) => setCombo(c),
-            onFeverStart: () => setFever(true),
+            onFeverStart: (mult: number) => {
+                setFever(true);
+                setCurrentFeverMult(mult);
+            },
             onFeverEnd: () => setFever(false),
             onDanger: (active: boolean, ms: number) => setDangerTime(active ? ms : 0),
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
@@ -370,7 +372,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                             WebkitMaskSize: '50px',
                             backgroundColor: bgColor, // The pattern takes this color
                             opacity: bgPatternIndex === idx ? 0.18 : 0, // Slightly increased transparency (Was 0.12)
-                            animationDuration: fever ? '10s' : '20s' // Double speed (half duration) during fever
+                            animationDuration: fever ? '2.5s' : '20s' // 8x speed (DOUBLE previous frenzy) during fever
                         }}
                     />
                 ))}
@@ -396,23 +398,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             </div>
 
             {/* Graffiti Combo / Fever Text (Centered & Moved Down) */}
-            <div className="absolute top-[35%] left-0 right-0 flex justify-center items-center pointer-events-none z-0">
+            <div className="absolute top-[35%] left-[15%] right-[15%] w-[70%] flex justify-center items-center pointer-events-none z-30 opacity-80">
                 {(fever || combo > 1) && (
                     <div className="transform -rotate-6 transition-all duration-200 select-none flex flex-col items-center animate-pop">
                         <h1
-                            className="text-5xl font-black text-yellow-400 tracking-wide text-center leading-tight"
+                            className="text-7xl font-black text-yellow-400 tracking-wide text-center leading-tight"
                             style={{
-                                textShadow: '4px 4px 0px #F97316, 8px 8px 0px rgba(0,0,0,0.2)',
-                                WebkitTextStroke: '2px #fff',
-                                filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))'
+                                filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))',
+                                textShadow: '3px 3px 0 #F97316'
                             }}
                         >
                             {fever ? (
                                 <>
-                                    <span className="text-6xl block text-purple-400" style={{ textShadow: '4px 4px 0px #6B21A8' }}>FRENZY!! x2</span>
+                                    <span className="text-8xl block text-gray-900 drop-shadow-sm leading-tight">FRENZY!! x{currentFeverMult}</span>
                                 </>
                             ) : (
-                                `${combo} CHAIN!`
+                                <span className="text-7xl block text-gray-900 drop-shadow-sm leading-tight">{combo} CHAIN!</span>
                             )}
                         </h1>
                     </div>
@@ -422,30 +423,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             {/* HUD Layers */}
 
             {/* Time Display & Level Display - Top Left under Score */}
-            <div className="absolute top-24 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka'] gap-1">
+            <div className="absolute top-28 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka'] gap-1">
                 {/* TIME */}
-                <div
-                    className="text-2xl font-black text-white drop-shadow-md tracking-wide flex items-center gap-2"
-                    style={{
-                        WebkitTextStroke: '1.5px #4B5563', // Gray-700 outline
-                        textShadow: '2px 2px 0px rgba(0,0,0,0.2)'
-                    }}
-                >
-                    {/* Added drop-shadow filter for heavy outlining effect on the SVG */}
-                    <Clock size={20} strokeWidth={3} style={{ filter: 'drop-shadow(1px 1px 0 #4B5563) drop-shadow(-1px -1px 0 #4B5563)' }} />
+                <div className="text-2xl font-black text-gray-900 drop-shadow-sm tracking-wide flex items-center gap-2 opacity-90">
+                    <Clock size={20} className="text-gray-900" strokeWidth={3} />
                     {formatTime(playTime)}
                 </div>
 
                 {/* MAX LEVEL */}
-                <div
-                    className="text-2xl font-black text-white drop-shadow-md tracking-wide flex items-center gap-2"
-                    style={{
-                        WebkitTextStroke: '1.5px #4B5563', // Gray-700 outline
-                        textShadow: '2px 2px 0px rgba(0,0,0,0.2)'
-                    }}
-                >
-                    {/* Changed border from white to gray-600 to match text outline (#4B5563) */}
-                    <div className="w-5 h-5 rounded-full border-2 border-[#4B5563] shadow-sm" style={{ backgroundColor: FRUIT_DEFS[maxTier]?.color }}></div>
+                <div className="text-2xl font-black text-gray-900 drop-shadow-sm tracking-wide flex items-center gap-2 opacity-90">
+                    <div className="w-5 h-5 rounded-full border-2 border-gray-900 shadow-sm" style={{ backgroundColor: FRUIT_DEFS[maxTier]?.color }}></div>
                     LVL {maxTier + 1}
                 </div>
             </div>
@@ -453,7 +440,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             {/* Next Fruit Preview - Top Right */}
             <div className="absolute top-6 right-6 pointer-events-auto z-20 flex flex-col items-end gap-3 animate-fade-in">
                 <div className="flex flex-col items-center pointer-events-none drop-shadow-md">
-                    <div className="text-sm text-gray-400 font-bold mb-1 tracking-widest drop-shadow-sm" style={{ WebkitTextStroke: '0.5px white' }}>NEXT</div>
+                    <div className="text-sm text-gray-900 font-bold mb-1 tracking-widest drop-shadow-sm opacity-80">NEXT</div>
                     <FruitSVG tier={nextFruit} size={60} />
                 </div>
             </div>

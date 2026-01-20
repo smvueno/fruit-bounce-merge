@@ -150,14 +150,8 @@ const App: React.FC = () => {
           <>
             {/* Score Display - Top Left */}
             <div className="absolute top-6 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka']">
-              <div className="text-sm text-gray-400 font-bold mb-1 tracking-widest drop-shadow-sm" style={{ WebkitTextStroke: '0.5px white' }}>SCORE</div>
-              <div
-                className="text-5xl font-black text-white drop-shadow-md tracking-wide"
-                style={{
-                  WebkitTextStroke: '2px #4B5563', // Gray-700 outline
-                  textShadow: '3px 3px 0px rgba(0,0,0,0.2)'
-                }}
-              >
+              <div className="text-gray-900 font-black tracking-widest text-lg drop-shadow-sm mb-0 opacity-80">SCORE</div>
+              <div className="text-6xl font-black text-gray-900 drop-shadow-sm leading-none" style={{ textShadow: '3px 3px 0 #F97316' }}>
                 {currentScore.toLocaleString()}
               </div>
             </div>

@@ -48,7 +48,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         <RankingTable
           entries={leaderboard}
           title={leaderboardTitle}
-          maxHeight="max-h-48 mb-8"
+          maxHeight="flex-1 min-h-0 mb-4 overflow-hidden"
         />
 
         {/* Main Action - Solid Green Button */}
