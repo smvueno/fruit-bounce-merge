@@ -32,8 +32,8 @@ export const submitScore = async (entry: LeaderboardEntry): Promise<boolean> => 
     const { error } = await supabase.from('leaderboard').insert([
       {
         name: entry.name,
-        score: entry.score,
-        time_played: entry.timePlayed,
+        score: Math.floor(entry.score), // Ensure integer
+        time_played: Math.floor(entry.timePlayed), // Ensure integer (it's often a float from dt)
         max_tier: entry.maxTier,
         created_at: entry.date, // Use the original creation date
       },
