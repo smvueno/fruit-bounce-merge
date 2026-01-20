@@ -17,26 +17,43 @@ const App: React.FC = () => {
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   const syncScores = async () => {
+    // 1. Check connectivity
     if (!offlineManager.isOnline()) {
       console.log('Offline - skipping sync');
+      return;
+    }
+
+    // 2. Prevent overlapping syncs
+    if (offlineManager.isSyncing()) {
+      console.log('Sync already in progress - skipping');
       return;
     }
 
     offlineManager.setSyncInProgress(true);
 
     try {
-      // 1. Upload Pending
-      if (data.pendingScores && data.pendingScores.length > 0) {
-        const remaining = await uploadPendingScores(data.pendingScores);
-        // If we managed to upload some, update local storage
-        if (remaining.length !== data.pendingScores.length) {
+      // 3. Load FRESH data from storage to avoid stale closures
+      // We do not rely on 'data.pendingScores' from component state
+      const currentSaved = loadData();
+      const pending = currentSaved.pendingScores || [];
+
+      if (pending.length > 0) {
+        console.log(`Syncing ${pending.length} pending scores...`);
+        const remaining = await uploadPendingScores(pending);
+
+        // If we managed to upload some, update local storage and state
+        if (remaining.length !== pending.length) {
+          console.log(`Successfully synced ${pending.length - remaining.length} scores.`);
           saveData({ pendingScores: remaining });
           setData(prev => ({ ...prev, pendingScores: remaining }));
         }
       }
-      // 2. Fetch Global (force refresh)
+
+      // 4. Fetch Global (force refresh)
       const global = await getGlobalLeaderboard(50, true);
       setGlobalLeaderboard(global);
+    } catch (e) {
+      console.error('Error during sync:', e);
     } finally {
       offlineManager.setSyncInProgress(false);
     }
