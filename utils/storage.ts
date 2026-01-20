@@ -1,6 +1,7 @@
 
 import { SavedData, Difficulty, GameSettings } from "../types";
 import { STORAGE_KEY } from "../constants";
+import { offlineManager } from "../services/offlineManager";
 
 const DEFAULT_DATA: SavedData = {
   highScores: {
@@ -23,14 +24,14 @@ const DEFAULT_DATA: SavedData = {
 
 export const loadData = (): SavedData => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = offlineManager.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       // Migration for old "soundEnabled"
       if (typeof parsed.settings?.soundEnabled !== 'undefined') {
-          parsed.settings.musicEnabled = parsed.settings.soundEnabled;
-          parsed.settings.sfxEnabled = parsed.settings.soundEnabled;
-          delete parsed.settings.soundEnabled;
+        parsed.settings.musicEnabled = parsed.settings.soundEnabled;
+        parsed.settings.sfxEnabled = parsed.settings.soundEnabled;
+        delete parsed.settings.soundEnabled;
       }
       return { ...DEFAULT_DATA, ...parsed, settings: { ...DEFAULT_DATA.settings, ...parsed.settings } };
     }
@@ -44,7 +45,7 @@ export const saveData = (data: Partial<SavedData>) => {
   try {
     const current = loadData();
     const newData = { ...current, ...data };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+    offlineManager.setItem(STORAGE_KEY, JSON.stringify(newData));
   } catch (e) {
     console.error("Failed to save data", e);
   }

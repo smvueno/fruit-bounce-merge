@@ -6,6 +6,7 @@ import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';
 import { loadData, saveData } from './utils/storage';
 import { getGlobalLeaderboard, submitScore, uploadPendingScores } from './services/leaderboardService';
+import { offlineManager } from './services/offlineManager';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
@@ -15,34 +16,111 @@ const App: React.FC = () => {
   const [isNewHigh, setIsNewHigh] = useState(false);
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
 
+  // Service Worker Update State
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+
   const syncScores = async () => {
-    // 1. Upload Pending
-    if (data.pendingScores && data.pendingScores.length > 0) {
-      const remaining = await uploadPendingScores(data.pendingScores);
-      // If we managed to upload some, update local storage
-      if (remaining.length !== data.pendingScores.length) {
-        saveData({ pendingScores: remaining });
-        setData(prev => ({ ...prev, pendingScores: remaining }));
-      }
+    // 1. Check connectivity
+    if (!offlineManager.isOnline()) {
+      console.log('Offline - skipping sync');
+      return;
     }
-    // 2. Fetch Global
-    const global = await getGlobalLeaderboard();
-    setGlobalLeaderboard(global);
+
+    // 2. Prevent overlapping syncs
+    if (offlineManager.isSyncing()) {
+      console.log('Sync already in progress - skipping');
+      return;
+    }
+
+    offlineManager.setSyncInProgress(true);
+
+    try {
+      // 3. Load FRESH data from storage to avoid stale closures
+      // We do not rely on 'data.pendingScores' from component state
+      const currentSaved = loadData();
+      const pending = currentSaved.pendingScores || [];
+
+      if (pending.length > 0) {
+        console.log(`Syncing ${pending.length} pending scores...`);
+        const remaining = await uploadPendingScores(pending);
+
+        // If we managed to upload some, update local storage and state
+        if (remaining.length !== pending.length) {
+          console.log(`Successfully synced ${pending.length - remaining.length} scores.`);
+          saveData({ pendingScores: remaining });
+          setData(prev => ({ ...prev, pendingScores: remaining }));
+        }
+      }
+
+      // 4. Fetch Global (force refresh)
+      const global = await getGlobalLeaderboard(50, true);
+      setGlobalLeaderboard(global);
+    } catch (e) {
+      console.error('Error during sync:', e);
+    } finally {
+      offlineManager.setSyncInProgress(false);
+    }
   };
 
   useEffect(() => {
     // Load initial data
     setData(loadData());
 
+    // Register service worker for offline support
+    if ('serviceWorker' in navigator) {
+      const swPath = import.meta.env.BASE_URL + 'sw.js';
+      navigator.serviceWorker.register(swPath).then(reg => {
+        console.log('Service Worker registered:', swPath);
+
+        // Check if there's already a waiting worker
+        if (reg.waiting) {
+          setWaitingWorker(reg.waiting);
+        }
+
+        // Listen for new workers
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New update available and installed
+                setWaitingWorker(newWorker);
+              }
+            });
+          }
+        });
+      }).catch(err => console.error('Service Worker registration failed:', err));
+
+      // Reload when the new worker takes control
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
+    }
+
     // Initial Sync
     syncScores();
 
-    // Online listener
-    window.addEventListener('online', syncScores);
-    return () => window.removeEventListener('online', syncScores);
+    // Listen for connection changes
+    const unsubscribe = offlineManager.onConnectionChange((isOnline) => {
+      if (isOnline) {
+        console.log('Back online - syncing...');
+        syncScores();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const handleStart = (diff: Difficulty) => {
+    if (waitingWorker) {
+      if (confirm("A new version of the game is available! The game will reload to update.")) {
+        waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+        return;
+      }
+    }
+
     saveData({ lastDifficulty: diff });
     setData(prev => ({ ...prev, lastDifficulty: diff }));
     setCurrentScore(0);
