@@ -1,11 +1,19 @@
 name: Deploy to Pages
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "test"] # Automatically runs build on push for both
+  workflow_dispatch:          # Enables the manual "Run workflow" button
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
+# Prevent overlapping runs; only one deployment can happen at a time
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   deploy:
     environment:
@@ -15,24 +23,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
+
       - name: Install
         run: npm ci
+
       - name: Build
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs
+
+      # LOGIC: 
+      # 1. Always deploy if pushed to 'main'.
+      # 2. Only deploy from 'test' if you manually click the button.
       - name: Deploy
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         id: deployment
         uses: actions/deploy-pages@v4
