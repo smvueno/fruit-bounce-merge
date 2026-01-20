@@ -58,8 +58,37 @@ export const getGlobalLeaderboard = async (limit = 50, force = false): Promise<L
   }
 };
 
+const checkIfScoreExists = async (entry: LeaderboardEntry): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+      .from('leaderboard')
+      .select('id')
+      .eq('name', entry.name)
+      .eq('score', Math.floor(entry.score))
+      .eq('created_at', entry.date)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
+      console.warn('Error checking for duplicate score:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (e) {
+    console.warn('Error checking duplicate:', e);
+    return false;
+  }
+};
+
 export const submitScore = async (entry: LeaderboardEntry): Promise<boolean> => {
   try {
+    // Check for duplicates first to avoid double submission on sync race conditions
+    const exists = await checkIfScoreExists(entry);
+    if (exists) {
+      console.log('Score already exists in DB, skipping upload but marking as success.');
+      return true;
+    }
+
     const { error } = await supabase.from('leaderboard').insert([
       {
         name: entry.name,

@@ -66,6 +66,13 @@ class OfflineManager {
     }
 
     /**
+     * Check if sync is in progress
+     */
+    isSyncing(): boolean {
+        return this.syncInProgress;
+    }
+
+    /**
      * Mark sync as started/completed
      */
     setSyncInProgress(inProgress: boolean) {
