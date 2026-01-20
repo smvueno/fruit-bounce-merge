@@ -6,6 +6,7 @@ import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';
 import { loadData, saveData } from './utils/storage';
 import { getGlobalLeaderboard, submitScore, uploadPendingScores } from './services/leaderboardService';
+import { offlineManager } from './services/offlineManager';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
@@ -16,30 +17,57 @@ const App: React.FC = () => {
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   const syncScores = async () => {
-    // 1. Upload Pending
-    if (data.pendingScores && data.pendingScores.length > 0) {
-      const remaining = await uploadPendingScores(data.pendingScores);
-      // If we managed to upload some, update local storage
-      if (remaining.length !== data.pendingScores.length) {
-        saveData({ pendingScores: remaining });
-        setData(prev => ({ ...prev, pendingScores: remaining }));
-      }
+    if (!offlineManager.isOnline()) {
+      console.log('Offline - skipping sync');
+      return;
     }
-    // 2. Fetch Global
-    const global = await getGlobalLeaderboard();
-    setGlobalLeaderboard(global);
+
+    offlineManager.setSyncInProgress(true);
+
+    try {
+      // 1. Upload Pending
+      if (data.pendingScores && data.pendingScores.length > 0) {
+        const remaining = await uploadPendingScores(data.pendingScores);
+        // If we managed to upload some, update local storage
+        if (remaining.length !== data.pendingScores.length) {
+          saveData({ pendingScores: remaining });
+          setData(prev => ({ ...prev, pendingScores: remaining }));
+        }
+      }
+      // 2. Fetch Global (force refresh)
+      const global = await getGlobalLeaderboard(50, true);
+      setGlobalLeaderboard(global);
+    } finally {
+      offlineManager.setSyncInProgress(false);
+    }
   };
 
   useEffect(() => {
     // Load initial data
     setData(loadData());
 
+    // Register service worker for offline support
+    if ('serviceWorker' in navigator) {
+      const swPath = import.meta.env.BASE_URL + 'sw.js';
+      navigator.serviceWorker.register(swPath)
+        .then(reg => console.log('Service Worker registered:', swPath))
+        .catch(err => console.error('Service Worker registration failed:', err));
+    }
+
     // Initial Sync
     syncScores();
 
-    // Online listener
-    window.addEventListener('online', syncScores);
-    return () => window.removeEventListener('online', syncScores);
+    // Listen for connection changes
+    const unsubscribe = offlineManager.onConnectionChange((isOnline) => {
+      if (isOnline) {
+        console.log('Back online - syncing...');
+        syncScores();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const handleStart = (diff: Difficulty) => {
