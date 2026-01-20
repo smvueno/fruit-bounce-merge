@@ -31,10 +31,10 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
       </div>
 
       {/* High-Opacity Glass Card */}
-      <div className="relative bg-white/95 backdrop-blur-2xl border border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[3rem] p-8 w-full max-w-lg flex flex-col items-center">
+      <div className="relative bg-white/95 backdrop-blur-2xl border border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[3rem] p-8 w-full max-w-lg max-h-[85vh] flex flex-col items-center min-h-0">
 
         {/* Header */}
-        <div className="mb-6 relative">
+        <div className="mb-6 relative shrink-0">
           <h1 className="text-6xl font-black text-gray-900 drop-shadow-sm tracking-tight leading-none">
             FRUIT<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">BOUNCE</span>
@@ -48,13 +48,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         <RankingTable
           entries={leaderboard}
           title={leaderboardTitle}
-          maxHeight="flex-1 min-h-0 mb-4 overflow-hidden"
+          maxHeight="max-h-[30vh] mb-4 overflow-hidden"
         />
 
         {/* Main Action - Solid Green Button */}
         <button
           onClick={() => onStart(Difficulty.HARD)}
-          className="group relative w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-black text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden mb-6"
+          className="group relative w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-black text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden mb-6 shrink-0"
         >
           <span className="relative z-10 flex items-center justify-center gap-3 drop-shadow-md">
             <Play size={32} fill="currentColor" /> PLAY
@@ -64,7 +64,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         </button>
 
         {/* Settings Toggles - Solid Backgrounds */}
-        <div className="flex gap-3 w-full justify-center">
+        <div className="flex gap-3 w-full justify-center shrink-0">
           <button
             onClick={toggleMusic}
             className={`p-3 rounded-2xl shadow-md transition-all active:scale-95 flex justify-center items-center ${settings.musicEnabled

@@ -43,13 +43,13 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-6 z-30 text-white animate-fade-in font-['Fredoka']">
 
       {/* High-Opacity Glass Card - Widened to max-w-lg (32rem) to fit columns without scroll if possible */}
-      <div className="bg-white/95 backdrop-blur-2xl border border-white/50 text-gray-800 rounded-[2.5rem] p-6 w-full max-w-lg text-center shadow-[0_20px_60px_rgba(0,0,0,0.3)] transform scale-100 animate-pop flex flex-col items-center max-h-[90vh] overflow-hidden">
+      <div className="bg-white/95 backdrop-blur-2xl border border-white/50 text-gray-800 rounded-[2.5rem] p-6 w-full max-w-lg text-center shadow-[0_20px_60px_rgba(0,0,0,0.3)] transform scale-100 animate-pop flex flex-col items-center max-h-[85vh] overflow-y-auto min-h-0">
 
-        <h2 className="text-4xl font-black mb-2 text-red-500 drop-shadow-sm tracking-wide">GAME OVER</h2>
+        <h2 className="text-4xl font-black mb-2 text-red-500 drop-shadow-sm tracking-wide shrink-0">GAME OVER</h2>
 
         {/* Only show badge if qualifies for leaderboard AND hasn't saved yet */}
         {isNewHigh && !hasSaved && (
-          <div className="mb-2 w-full animate-bounce">
+          <div className="mb-2 w-full animate-bounce shrink-0">
             <div className={`font-bold px-4 py-2 rounded-xl shadow-lg inline-flex items-center gap-2 ${isNumberOne ? 'bg-gradient-to-r from-yellow-300 to-yellow-500 text-yellow-900' : 'bg-blue-100 text-blue-700'}`}>
               <Trophy size={18} fill="currentColor" />
               {isNumberOne ? "NEW RECORD!" : "HIGH SCORE!"}
@@ -57,7 +57,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
           </div>
         )}
 
-        <div className="text-5xl font-black text-gray-900 mb-4 font-mono tracking-tighter drop-shadow-sm">
+        <div className="text-5xl font-black text-gray-900 mb-4 font-mono tracking-tighter drop-shadow-sm shrink-0">
           {stats.score.toLocaleString()}
         </div>
 
@@ -83,7 +83,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
           entries={leaderboard}
           highlightEntry={hasSaved ? { score: stats.score, name: name } : undefined}
           title={isLocalOnly ? "Local History" : "Global Leaderboard"}
-          maxHeight="flex-1 mb-4"
+          maxHeight="max-h-[25vh] mb-4"
         />
 
         {/* High Score Name Input - Only if new high score AND not saved */}

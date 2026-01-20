@@ -29,7 +29,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({
 
     return (
         <div className={`w-full bg-slate-50 border border-slate-200 rounded-2xl shadow-inner flex flex-col overflow-hidden min-h-0 ${maxHeight}`}>
-            <div className="flex items-center justify-center gap-2 text-slate-400 uppercase tracking-widest text-xs font-bold py-4 shrink-0 bg-slate-50/80 backdrop-blur z-20 sticky top-0 border-b border-slate-100">
+            <div className="flex items-center justify-center gap-2 text-slate-400 uppercase tracking-widest text-xs font-bold py-3 shrink-0 bg-slate-50/80 backdrop-blur z-20 sticky top-0 border-b border-slate-100">
                 <Trophy size={14} /> {title}
             </div>
 
@@ -70,7 +70,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({
 
                                         {/* Sticky Cell: Rank + Name */}
                                         <td className={`sticky left-0 z-10 p-0 border-r border-slate-100 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.05)] ${stickyBg}`}>
-                                            <div className="flex items-center gap-2 px-2 py-3">
+                                            <div className="flex items-center gap-2 px-2 py-2">
                                                 <div className={`w-8 text-center shrink-0 ${idx < 3 ? 'text-yellow-500' : 'text-slate-400'}`}>
                                                     #{idx + 1}
                                                 </div>
@@ -81,18 +81,18 @@ export const RankingTable: React.FC<RankingTableProps> = ({
                                         </td>
 
                                         {/* Dynamic Stat Cells: Score | Lvl | Time */}
-                                        <td className="px-3 py-3 text-right font-mono text-slate-800 whitespace-nowrap">
+                                        <td className="px-3 py-2 text-right font-mono text-slate-800 whitespace-nowrap">
                                             {entry.score.toLocaleString()}
                                         </td>
 
-                                        <td className="px-3 py-3 text-center whitespace-nowrap">
+                                        <td className="px-3 py-2 text-center whitespace-nowrap">
                                             <div className="flex justify-center items-center">
                                                 <div className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: FRUIT_DEFS[entry.maxTier ?? 0]?.color || '#999' }}></div>
                                                 <span className="text-slate-500">{(entry.maxTier ?? 0) + 1}</span>
                                             </div>
                                         </td>
 
-                                        <td className="px-3 py-3 text-center text-xs font-normal text-slate-500 font-mono whitespace-nowrap pr-3">
+                                        <td className="px-3 py-2 text-center text-xs font-normal text-slate-500 font-mono whitespace-nowrap pr-3">
                                             {formatTime(entry.timePlayed || 0)}
                                         </td>
                                     </tr>
