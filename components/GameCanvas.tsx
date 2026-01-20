@@ -3,12 +3,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Difficulty, GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { FRUIT_DEFS } from '../constants';
-import { Pause, Play, RotateCcw, Volume2, VolumeX, Vibrate, VibrateOff, Home, Trophy, Music, Music4, Clock } from 'lucide-react';
+import { Pause, Play, RotateCcw, Volume2, VolumeX, Vibrate, VibrateOff, Home, Trophy, Music, Music4, Clock, Globe, User } from 'lucide-react';
 import { saveData } from '../utils/storage';
 
 interface GameCanvasProps {
   difficulty: Difficulty;
   settings: GameSettings;
+  onUpdateSettings: (s: GameSettings) => void;
   leaderboard: LeaderboardEntry[];
   onGameOver: (stats: GameStats) => void;
   setScore: (s: number) => void;
@@ -232,7 +233,7 @@ const FruitSVG: React.FC<{ tier: FruitTier, size: number }> = ({ tier, size }) =
     );
 };
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: initialSettings, leaderboard, onGameOver, setScore }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const [combo, setCombo] = useState(0);
@@ -243,7 +244,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
   const [playTime, setPlayTime] = useState(0);
   const [maxTier, setMaxTier] = useState<FruitTier>(FruitTier.CHERRY);
   const [isPaused, setIsPaused] = useState(false);
-  const [currentSettings, setCurrentSettings] = useState(initialSettings);
   const [debugMode, setDebugMode] = useState(false);
   const [pauseTapCount, setPauseTapCount] = useState(0);
   
@@ -262,7 +262,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const engine = new GameEngine(canvasRef.current, difficulty, currentSettings, {
+    const engine = new GameEngine(canvasRef.current, difficulty, settings, {
       onScore: (amt: number, total: number) => setScore(total),
       onGameOver: onGameOver,
       onCombo: (c: number) => setCombo(c),
@@ -289,13 +289,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update engine settings when local state changes
+  // Update engine settings when props change
   useEffect(() => {
       if (engineRef.current) {
-          engineRef.current.updateSettings(currentSettings);
+          engineRef.current.updateSettings(settings);
       }
-      saveData({ settings: currentSettings });
-  }, [currentSettings]);
+  }, [settings]);
 
   const handlePauseToggle = () => {
       const newState = !isPaused;
@@ -324,9 +323,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
       }
   };
 
-  const toggleMusic = () => setCurrentSettings(prev => ({ ...prev, musicEnabled: !prev.musicEnabled }));
-  const toggleSfx = () => setCurrentSettings(prev => ({ ...prev, sfxEnabled: !prev.sfxEnabled }));
-  const toggleHaptics = () => setCurrentSettings(prev => ({ ...prev, hapticsEnabled: !prev.hapticsEnabled }));
+  const toggleMusic = () => onUpdateSettings({ ...settings, musicEnabled: !settings.musicEnabled });
+  const toggleSfx = () => onUpdateSettings({ ...settings, sfxEnabled: !settings.sfxEnabled });
+  const toggleHaptics = () => onUpdateSettings({ ...settings, hapticsEnabled: !settings.hapticsEnabled });
+  const toggleLeaderboardMode = () => onUpdateSettings({ ...settings, showLocalOnly: !settings.showLocalOnly });
 
   const sortedLeaderboard = [...leaderboard].sort((a,b) => b.score - a.score).slice(0, 10);
 
@@ -488,7 +488,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
       {isPaused && (
          <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in">
              {/* High opacity white bg for readability */}
-             <div className="bg-white/95 backdrop-blur-xl border border-white/50 shadow-[0_20px_60px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 w-full max-w-sm flex flex-col items-center max-h-[85vh] overflow-hidden">
+             <div className="bg-white/95 backdrop-blur-xl border border-white/50 shadow-[0_20px_60px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 w-full max-w-lg flex flex-col items-center max-h-[85vh] overflow-hidden">
                  
                  <h2
                     className="text-4xl font-black text-gray-800 mb-6 tracking-wide drop-shadow-sm select-none cursor-pointer active:scale-95 transition-transform"
@@ -508,7 +508,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
                  {/* High Score Table (Scrollable) */}
                  <div className="w-full mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-inner flex flex-col overflow-hidden max-h-40">
                      <div className="flex items-center justify-center gap-2 text-slate-400 uppercase tracking-widest text-xs font-bold mb-2">
-                         <Trophy size={14} /> Leaderboard
+                         <Trophy size={14} /> {settings.showLocalOnly ? "Local History" : "Global Ranking"}
                      </div>
                      <div className="overflow-y-auto pr-2 custom-scrollbar">
                          {sortedLeaderboard.length === 0 ? (
@@ -558,35 +558,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
                     <button 
                         onClick={toggleMusic} 
                         className={`flex-1 py-3 rounded-xl shadow-md transition-all active:scale-95 flex justify-center items-center ${
-                        currentSettings.musicEnabled 
+                        settings.musicEnabled
                         ? 'bg-blue-500 text-white hover:bg-blue-400' 
                         : 'bg-gray-200 text-gray-400'
                         }`}
                         aria-label="Toggle Music"
                     >
-                        {currentSettings.musicEnabled ? <Music size={24} /> : <Music4 size={24} />}
+                        {settings.musicEnabled ? <Music size={24} /> : <Music4 size={24} />}
                     </button>
                     <button 
                         onClick={toggleSfx} 
                         className={`flex-1 py-3 rounded-xl shadow-md transition-all active:scale-95 flex justify-center items-center ${
-                        currentSettings.sfxEnabled 
+                        settings.sfxEnabled
                         ? 'bg-orange-500 text-white hover:bg-orange-400' 
                         : 'bg-gray-200 text-gray-400'
                         }`}
                         aria-label="Toggle SFX"
                     >
-                        {currentSettings.sfxEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
+                        {settings.sfxEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
                     </button>
                     <button 
                         onClick={toggleHaptics} 
                         className={`flex-1 py-3 rounded-xl shadow-md transition-all active:scale-95 flex justify-center items-center ${
-                        currentSettings.hapticsEnabled 
+                        settings.hapticsEnabled
                         ? 'bg-purple-500 text-white hover:bg-purple-400' 
                         : 'bg-gray-200 text-gray-400'
                         }`}
                         aria-label="Toggle Haptics"
                     >
-                        {currentSettings.hapticsEnabled ? <Vibrate size={24} /> : <VibrateOff size={24} />}
+                        {settings.hapticsEnabled ? <Vibrate size={24} /> : <VibrateOff size={24} />}
+                    </button>
+                    <button
+                        onClick={toggleLeaderboardMode}
+                        className={`flex-1 py-3 rounded-xl shadow-md transition-all active:scale-95 flex justify-center items-center ${
+                        !settings.showLocalOnly
+                        ? 'bg-teal-500 text-white hover:bg-teal-400'
+                        : 'bg-gray-200 text-gray-400'
+                        }`}
+                        aria-label="Toggle Leaderboard Mode"
+                    >
+                        {!settings.showLocalOnly ? <Globe size={24} /> : <User size={24} />}
                     </button>
                  </div>
              </div>

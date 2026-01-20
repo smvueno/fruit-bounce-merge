@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Difficulty, GameSettings, LeaderboardEntry } from '../types';
-import { Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Play, Trophy } from 'lucide-react';
+import { Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Play, Trophy, Globe, User } from 'lucide-react';
 
 interface StartScreenProps {
   onStart: (diff: Difficulty) => void;
@@ -14,9 +14,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
   const toggleMusic = () => onUpdateSettings({ ...settings, musicEnabled: !settings.musicEnabled });
   const toggleSfx = () => onUpdateSettings({ ...settings, sfxEnabled: !settings.sfxEnabled });
   const toggleHaptics = () => onUpdateSettings({ ...settings, hapticsEnabled: !settings.hapticsEnabled });
+  const toggleLeaderboardMode = () => onUpdateSettings({ ...settings, showLocalOnly: !settings.showLocalOnly });
   
   // Sort leaderboard just in case
   const topScores = [...leaderboard].sort((a, b) => b.score - a.score).slice(0, 3);
+  const leaderboardTitle = settings.showLocalOnly ? "Local Best" : "Global Ranking";
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center p-6 z-20 text-center font-['Fredoka'] overflow-hidden">
@@ -29,7 +31,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
       </div>
 
       {/* High-Opacity Glass Card */}
-      <div className="relative bg-white/95 backdrop-blur-2xl border border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[3rem] p-8 w-full max-w-sm flex flex-col items-center">
+      <div className="relative bg-white/95 backdrop-blur-2xl border border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[3rem] p-8 w-full max-w-lg flex flex-col items-center">
         
         {/* Header */}
         <div className="mb-6 relative">
@@ -45,7 +47,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         {/* Mini Leaderboard */}
         <div className="mb-8 bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-inner w-full flex flex-col gap-2">
              <div className="flex items-center justify-center gap-2 text-slate-400 uppercase tracking-widest text-xs font-bold mb-1">
-                <Trophy size={14} /> Top Ranking
+                <Trophy size={14} /> {leaderboardTitle}
              </div>
              {topScores.length === 0 ? (
                  <div className="text-slate-400 italic text-sm py-2">No scores yet!</div>
@@ -108,6 +110,17 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
              aria-label="Toggle Haptics"
           >
             {settings.hapticsEnabled ? <Vibrate size={24} /> : <VibrateOff size={24} />}
+          </button>
+          <button
+            onClick={toggleLeaderboardMode}
+            className={`p-3 rounded-2xl shadow-md transition-all active:scale-95 flex justify-center items-center ${
+              !settings.showLocalOnly
+              ? 'bg-teal-500 text-white hover:bg-teal-400'
+              : 'bg-gray-200 text-gray-400 hover:bg-gray-300'
+            }`}
+             aria-label="Toggle Leaderboard Mode"
+          >
+            {!settings.showLocalOnly ? <Globe size={24} /> : <User size={24} />}
           </button>
         </div>
       </div>
