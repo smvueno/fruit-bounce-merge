@@ -244,6 +244,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
   const [maxTier, setMaxTier] = useState<FruitTier>(FruitTier.CHERRY);
   const [isPaused, setIsPaused] = useState(false);
   const [currentSettings, setCurrentSettings] = useState(initialSettings);
+  const [debugMode, setDebugMode] = useState(false);
+  const [pauseTapCount, setPauseTapCount] = useState(0);
   
   // Background State
   const [bgPatternIndex, setBgPatternIndex] = useState(0);
@@ -454,6 +456,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
          </button>
       </div>
 
+      {/* Debug/Cheat Menu */}
+      {debugMode && (
+          <div className="absolute bottom-6 left-6 z-30 animate-fade-in pointer-events-auto">
+              <button
+                  onClick={() => {
+                      if (engineRef.current) {
+                          engineRef.current.forceCurrentFruit(FruitTier.TOMATO);
+                      }
+                  }}
+                  className="w-14 h-14 bg-white/80 backdrop-blur-sm hover:bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 active:scale-95 transition-all"
+                  title="Spawn Tomato"
+              >
+                  <FruitSVG tier={FruitTier.TOMATO} size={40} />
+              </button>
+          </div>
+      )}
+
       {/* Danger Overlay */}
       {dangerTime > 0 && (
         <div className="absolute inset-0 pointer-events-none z-0 flex flex-col items-center pt-32 animate-pulse-danger">
@@ -471,7 +490,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings: in
              {/* High opacity white bg for readability */}
              <div className="bg-white/95 backdrop-blur-xl border border-white/50 shadow-[0_20px_60px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 w-full max-w-sm flex flex-col items-center max-h-[85vh] overflow-hidden">
                  
-                 <h2 className="text-4xl font-black text-gray-800 mb-6 tracking-wide drop-shadow-sm">PAUSED</h2>
+                 <h2
+                    className="text-4xl font-black text-gray-800 mb-6 tracking-wide drop-shadow-sm select-none cursor-pointer active:scale-95 transition-transform"
+                    onClick={() => {
+                        setPauseTapCount(prev => {
+                            const newCount = prev + 1;
+                            if (newCount >= 10) {
+                                setDebugMode(true);
+                            }
+                            return newCount;
+                        });
+                    }}
+                 >
+                    PAUSED
+                 </h2>
                  
                  {/* High Score Table (Scrollable) */}
                  <div className="w-full mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-inner flex flex-col overflow-hidden max-h-40">
