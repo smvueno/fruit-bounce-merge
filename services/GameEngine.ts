@@ -357,78 +357,9 @@ export class GameEngine {
         if (!this.app?.renderer) return;
         Object.values(FRUIT_DEFS).forEach(def => {
             const container = new PIXI.Container();
-            const r = def.radius;
-            const visual = new PIXI.Graphics();
-            const pColor = def.patternColor;
+            // Use the centralized rendering logic
+            def.renderPixiBody(container, def.radius);
 
-            visual.circle(0, 0, r);
-            visual.fill({ color: def.color });
-            if (def.tier === FruitTier.TOMATO) {
-                visual.stroke({ width: 3, color: 0x333333, alignment: 0 });
-            } else {
-                visual.stroke({ width: 4, color: pColor, alignment: 0 });
-            }
-
-            switch (def.tier) {
-                case FruitTier.CHERRY:
-                    visual.circle(r * 0.3, -r * 0.3, r * 0.2);
-                    visual.fill({ color: 0xFFFFFF, alpha: 0.3 });
-                    break;
-                case FruitTier.STRAWBERRY:
-                    for (let i = 0; i < 6; i++) {
-                        visual.circle((Math.random() - 0.5) * r * 1.2, (Math.random() - 0.5) * r * 1.2, 2);
-                        visual.fill({ color: pColor });
-                    }
-                    break;
-                case FruitTier.CLEMENTINE:
-                    visual.ellipse(0, 0, r * 0.9, r * 0.8);
-                    visual.fill({ color: 0xFFFFFF, alpha: 0.1 });
-                    break;
-                case FruitTier.ORANGE:
-                    visual.stroke({ width: 4, color: pColor, alpha: 0.5, alignment: 1 });
-                    break;
-                case FruitTier.APPLE:
-                    visual.ellipse(-r * 0.3, -r * 0.3, r * 0.2, r * 0.3);
-                    visual.fill({ color: 0xFFFFFF, alpha: 0.2 });
-                    break;
-                case FruitTier.PINEAPPLE:
-                    visual.moveTo(-r * 0.7, -r * 0.7);
-                    visual.lineTo(r * 0.7, r * 0.7);
-                    visual.stroke({ width: 2, color: pColor, alpha: 0.5 });
-                    visual.moveTo(r * 0.7, -r * 0.7);
-                    visual.lineTo(-r * 0.7, r * 0.7);
-                    visual.stroke({ width: 2, color: pColor, alpha: 0.5 });
-                    break;
-                case FruitTier.COCONUT:
-                    visual.stroke({ width: 4, color: pColor, alignment: 1 });
-                    break;
-                case FruitTier.PUMPKIN:
-                    visual.ellipse(0, 0, r * 0.5, r);
-                    visual.stroke({ width: 2, color: pColor, alpha: 0.3 });
-                    break;
-                case FruitTier.WATERMELON:
-                    visual.arc(0, 0, r * 0.9, 0, Math.PI * 2);
-                    visual.stroke({ width: 6, color: pColor });
-                    break;
-                case FruitTier.TOMATO:
-                    visual.circle(r * 0.3, -r * 0.3, r * 0.35);
-                    visual.fill({ color: 0xFFFFFF, alpha: 0.4 });
-                    break;
-            }
-            const deco = new PIXI.Graphics();
-            if (def.tier === FruitTier.APPLE) {
-                deco.moveTo(0, -r * 0.8);
-                deco.quadraticCurveTo(r * 0.2, -r * 1.1, r * 0.4, -r * 0.9);
-                deco.stroke({ width: 3, color: 0x33691E });
-            } else if (def.tier === FruitTier.PINEAPPLE) {
-                deco.poly([-10, -r * 0.9, 0, -r * 1.2, 10, -r * 0.9]);
-                deco.fill({ color: 0x4CAF50 });
-            } else if (def.tier === FruitTier.TOMATO) {
-                deco.star(0, -r * 0.85, 5, r * 0.35, r * 0.15, 0);
-                deco.fill({ color: 0x2E7D32 });
-            }
-            container.addChild(visual);
-            container.addChild(deco);
             const texture = this.app!.renderer.generateTexture({ target: container });
             this.textures.set(def.tier, texture);
             container.destroy({ children: true });
@@ -436,129 +367,11 @@ export class GameEngine {
     }
 
     createFace(tier: FruitTier, radius: number): PIXI.Container {
-        const face = new PIXI.Container();
-        const eyes = new PIXI.Graphics();
-        const mouth = new PIXI.Graphics();
-        eyes.label = "eyes";
-        mouth.label = "mouth";
-        const eyeColor = 0x221111;
-        const mouthColor = 0x221111;
-
-        const drawEye = (g: PIXI.Graphics, x: number, y: number, r: number, style: 'dot' | 'happy' | 'wink' | 'star' | 'derp' | 'line' = 'dot') => {
-            if (style === 'dot') {
-                g.circle(x, y, r);
-                g.fill({ color: eyeColor });
-                g.circle(x - r * 0.3, y - r * 0.3, r * 0.3); // shine
-                g.fill({ color: 0xFFFFFF });
-            } else if (style === 'happy') {
-                g.arc(x, y, r, Math.PI, 0); // Arch
-                g.stroke({ width: r / 2, color: eyeColor, cap: 'round' });
-            } else if (style === 'wink') {
-                g.moveTo(x - r, y);
-                g.lineTo(x + r, y);
-                g.stroke({ width: r / 2, color: eyeColor, cap: 'round' });
-            } else if (style === 'line') {
-                g.moveTo(x - r, y);
-                g.lineTo(x + r, y);
-                g.stroke({ width: r / 2, color: eyeColor, cap: 'round' });
-            } else if (style === 'star') {
-                g.poly([x, y - r, x + r * 0.3, y - r * 0.3, x + r, y, x + r * 0.3, y + r * 0.3, x, y + r, x - r * 0.3, y + r * 0.3, x - r, y, x - r * 0.3, y - r * 0.3]);
-                g.fill({ color: 0xFFD700 });
-                g.stroke({ width: 1, color: eyeColor });
-            } else if (style === 'derp') {
-                g.circle(x, y, r);
-                g.fill({ color: 0xFFFFFF });
-                g.circle(x, y, r * 0.4);
-                g.fill({ color: eyeColor });
-            }
-        };
-
-        const yEye = -radius * 0.1;
-        const xEye = radius * 0.35;
-        const rEye = Math.max(3, radius * 0.18);
-
-        switch (tier) {
-            case FruitTier.CHERRY:
-                drawEye(eyes, -xEye, yEye, rEye, 'dot');
-                drawEye(eyes, xEye, yEye, rEye, 'dot');
-                mouth.arc(0, yEye + rEye, rEye, 0.2, Math.PI - 0.2);
-                mouth.stroke({ width: 2, color: mouthColor, cap: 'round' });
-                break;
-            case FruitTier.STRAWBERRY:
-                drawEye(eyes, -xEye, yEye, rEye * 1.2, 'happy');
-                drawEye(eyes, xEye, yEye, rEye * 1.2, 'happy');
-                mouth.moveTo(-rEye, yEye + rEye * 2);
-                mouth.quadraticCurveTo(0, yEye + rEye * 3, rEye, yEye + rEye * 2);
-                mouth.stroke({ width: 2, color: mouthColor, cap: 'round' });
-                break;
-            case FruitTier.GRAPE:
-                drawEye(eyes, -xEye, yEye, rEye, 'dot');
-                drawEye(eyes, xEye, yEye, rEye, 'dot');
-                mouth.circle(0, yEye + rEye * 2, rEye * 0.5); // 'o'
-                mouth.stroke({ width: 2, color: mouthColor });
-                break;
-            case FruitTier.CLEMENTINE:
-                drawEye(eyes, -xEye, yEye, rEye, 'wink');
-                drawEye(eyes, xEye, yEye, rEye, 'dot');
-                mouth.arc(0, yEye + rEye * 1.5, rEye, 0, Math.PI);
-                mouth.fill({ color: mouthColor });
-                break;
-            case FruitTier.ORANGE:
-                drawEye(eyes, -xEye, yEye, rEye, 'line');
-                drawEye(eyes, xEye, yEye, rEye, 'line');
-                mouth.moveTo(-rEye, yEye + rEye * 2.5);
-                mouth.lineTo(rEye, yEye + rEye * 2.5);
-                mouth.stroke({ width: 3, color: mouthColor, cap: 'round' });
-                break;
-            case FruitTier.APPLE:
-                drawEye(eyes, -xEye, yEye, rEye, 'happy');
-                drawEye(eyes, xEye, yEye, rEye, 'happy');
-                mouth.arc(0, yEye + rEye * 1.5, rEye * 0.8, 0.2, Math.PI - 0.2);
-                mouth.stroke({ width: 3, color: mouthColor, cap: 'round' });
-                break;
-            case FruitTier.PINEAPPLE:
-                eyes.rect(-xEye - rEye * 1.5, yEye - rEye * 0.5, rEye * 3, rEye * 1.5);
-                eyes.rect(xEye - rEye * 1.5, yEye - rEye * 0.5, rEye * 3, rEye * 1.5);
-                eyes.moveTo(-xEye, yEye);
-                eyes.lineTo(xEye, yEye);
-                eyes.fill({ color: 0x111111 });
-                mouth.arc(0, yEye + rEye * 2, rEye, 0.2, Math.PI - 0.2);
-                mouth.stroke({ width: 3, color: mouthColor, cap: 'round' });
-                break;
-            case FruitTier.COCONUT:
-                drawEye(eyes, -xEye, yEye, rEye, 'wink');
-                drawEye(eyes, xEye, yEye, rEye, 'wink');
-                mouth.circle(0, yEye + rEye * 2.5, rEye * 0.5);
-                mouth.stroke({ width: 2, color: mouthColor });
-                break;
-            case FruitTier.PUMPKIN:
-                eyes.poly([-xEye, yEye - rEye, -xEye - rEye, yEye + rEye, -xEye + rEye, yEye + rEye]);
-                eyes.poly([xEye, yEye - rEye, xEye - rEye, yEye + rEye, xEye + rEye, yEye + rEye]);
-                eyes.fill({ color: mouthColor });
-                mouth.poly([-rEye * 2, yEye + rEye * 2, -rEye, yEye + rEye * 3, 0, yEye + rEye * 2, rEye, yEye + rEye * 3, rEye * 2, yEye + rEye * 2]);
-                mouth.stroke({ width: 3, color: mouthColor, join: 'round' });
-                break;
-            case FruitTier.WATERMELON:
-                drawEye(eyes, -xEye, yEye, rEye * 1.8, 'star');
-                drawEye(eyes, xEye, yEye, rEye * 1.8, 'star');
-                mouth.moveTo(-rEye * 1.5, yEye + rEye * 2);
-                mouth.quadraticCurveTo(0, yEye + rEye * 5, rEye * 1.5, yEye + rEye * 2);
-                mouth.lineTo(-rEye * 1.5, yEye + rEye * 2);
-                mouth.fill({ color: 0x660000 });
-                mouth.arc(0, yEye + rEye * 3.5, rEye * 0.8, 0, Math.PI);
-                mouth.fill({ color: 0xFF6666 });
-                break;
-            case FruitTier.TOMATO:
-                drawEye(eyes, -xEye, yEye, rEye * 1.5, 'wink');
-                drawEye(eyes, xEye, yEye, rEye * 1.5, 'wink');
-                mouth.moveTo(-rEye, yEye + rEye * 2);
-                mouth.quadraticCurveTo(0, yEye + rEye * 3, rEye, yEye + rEye * 2);
-                mouth.stroke({ width: 2, color: mouthColor });
-                break;
+        const def = FRUIT_DEFS[tier];
+        if (def && def.renderPixiFace) {
+            return def.renderPixiFace(radius);
         }
-        face.addChild(eyes);
-        face.addChild(mouth);
-        return face;
+        return new PIXI.Container();
     }
 
     spawnNextFruit() {

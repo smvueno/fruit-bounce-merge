@@ -1,4 +1,6 @@
 
+import { FruitTier, FruitDef } from './services/fruitConfig';
+
 export enum GameState {
   START,
   PLAYING,
@@ -11,19 +13,7 @@ export enum Difficulty {
   HARD = 'HARD'
 }
 
-export enum FruitTier {
-  CHERRY = 0,
-  STRAWBERRY = 1,
-  GRAPE = 2,
-  CLEMENTINE = 3,
-  ORANGE = 4,
-  APPLE = 5,
-  PINEAPPLE = 6,
-  COCONUT = 7,
-  PUMPKIN = 8,
-  WATERMELON = 9,
-  TOMATO = 99 // Special
-}
+export { FruitTier, type FruitDef };
 
 export interface GameSettings {
   musicEnabled: boolean;
@@ -48,17 +38,6 @@ export interface SavedData {
   settings: GameSettings;
   lastDifficulty: Difficulty;
   tutorialSeen: boolean;
-}
-
-export interface FruitDef {
-  tier: FruitTier;
-  name: string;
-  radius: number;
-  mass: number;
-  color: string;
-  patternColor: string;
-  emoji: string[]; // Idle, Worried, Happy, Hyped
-  bounciness: number; // 0-1
 }
 
 export interface GameStats {
