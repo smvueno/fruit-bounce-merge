@@ -553,7 +553,7 @@ export const FRUIT_DEFS: Record<FruitTier, FruitDef> = {
         }
     },
     [FruitTier.RAINBOW]: {
-        tier: FruitTier.RAINBOW, name: "Rainbow Star", radius: 25, mass: 1.0, color: "#FFFFFF", patternColor: "#EEEEEE", bounciness: 0.5,
+        tier: FruitTier.RAINBOW, name: "Rainbow Star", radius: 42, mass: 1.0, color: "#FFFFFF", patternColor: "#EEEEEE", bounciness: 0.5,
         renderSvg: (size) => {
             const r = size / 2, cx = r, cy = r;
             // Generate 5-point star

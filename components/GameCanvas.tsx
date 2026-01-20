@@ -194,7 +194,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             </div>
 
             {/* Graffiti Combo / Fever Text (Centered & Moved Down) */}
-            <div className="absolute top-[35%] left-[15%] right-[15%] w-[70%] flex justify-center items-center pointer-events-none z-30 opacity-80">
+            <div className="absolute top-[35%] left-[15%] right-[15%] w-[70%] flex justify-center items-center pointer-events-none z-30 opacity-60">
                 {(fever || combo > 1) && (
                     <div className="transform -rotate-6 transition-all duration-200 select-none flex flex-col items-center animate-pop">
                         <h1

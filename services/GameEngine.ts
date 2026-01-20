@@ -120,6 +120,7 @@ export class GameEngine {
 
     currentFruit: Particle | null = null;
     nextFruitTier: FruitTier = FruitTier.CHERRY;
+    nextFruitQueue: FruitTier[] = []; // Lookahead queue
     isAiming: boolean = false;
     canDrop: boolean = true;
     aimX: number = 0;
@@ -311,6 +312,8 @@ export class GameEngine {
 
         // 5. Restart Gameplay
         this.setPaused(false);
+        // Seed Queue
+        this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
 
         if (this.settings.musicEnabled || this.settings.sfxEnabled) {
@@ -375,6 +378,8 @@ export class GameEngine {
 
     spawnNextFruit() {
         if (!this.canDrop) return;
+
+        // Calculate max tier for difficulty scaling
         let maxTier = FruitTier.CHERRY;
         for (const p of this.fruits) {
             if (!p.isStatic && p.tier !== FruitTier.TOMATO && p.tier !== FruitTier.BOMB && p.tier !== FruitTier.RAINBOW) {
@@ -386,27 +391,19 @@ export class GameEngine {
             this.stats.maxTier = maxTier;
         }
 
-        const limit = Math.min(FruitTier.COCONUT, Math.max(FruitTier.CHERRY, maxTier - 2));
-        const possibleTiers: FruitTier[] = [];
-        for (let i = 0; i <= limit; i++) {
-            possibleTiers.push(i);
-        }
+        // 1. Get tier from Queue (or generate if empty - fallback)
+        let tier = this.nextFruitQueue.shift();
+        if (tier === undefined) tier = this.pickRandomFruit(maxTier);
 
-        // Weighted Random for Special Items
-        const rand = Math.random();
-        let tier: FruitTier;
+        // 2. Replenish Queue (Next Lookahead)
+        const nextLookahead = this.pickRandomFruit(maxTier);
+        this.nextFruitQueue.push(nextLookahead);
 
-        // Bomb disabled for now as per user request
-        // Rainbow Star: 1.5% Chance (same as Tomato)
-        if (rand < 0.015) {
-            tier = FruitTier.RAINBOW;
-        } else if (rand < 0.030) { // 1.5% Chance (0.015 to 0.030)
-            tier = FruitTier.TOMATO;
-        } else {
-            tier = possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
-        }
+        // 3. Update UI to show the *newly queued* fruit
+        this.onNextFruit(nextLookahead);
+
+        // 4. Spawn the *current* fruit (dequeued)
         this.nextFruitTier = tier;
-        this.onNextFruit(tier);
         this.currentFruit = new Particle(
             this.width / 2,
             this.height * SPAWN_Y_PERCENT,
@@ -431,7 +428,7 @@ export class GameEngine {
         }
 
         this.nextFruitTier = tier;
-        this.onNextFruit(tier);
+        // Don't update "Next" preview when forcing current fruit (debug cheat)
 
         // Create new particle at same position
         this.currentFruit = new Particle(
@@ -1242,6 +1239,7 @@ export class GameEngine {
         // ... (Scoring and rest is same)
         this.comboChain++;
         this.didMergeThisTurn = true;
+        this.onCombo(this.comboChain);
 
         const comboMult = 1 + Math.min(this.comboChain, 10);
         const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
@@ -1332,6 +1330,26 @@ export class GameEngine {
                 p.vx += (dx / d) * force * factor;
                 p.vy += (dy / d) * force * factor;
             }
+        }
+    }
+
+    pickRandomFruit(maxTier: FruitTier): FruitTier {
+        const limit = Math.min(FruitTier.COCONUT, Math.max(FruitTier.CHERRY, maxTier - 2));
+        const possibleTiers: FruitTier[] = [];
+        for (let i = 0; i <= limit; i++) {
+            possibleTiers.push(i);
+        }
+
+        const rand = Math.random();
+
+        // Bomb disabled logic handled here if re-enabled
+        // Rainbow Star: 1.5% Chance
+        if (rand < 0.015) {
+            return FruitTier.RAINBOW;
+        } else if (rand < 0.030) {
+            return FruitTier.TOMATO;
+        } else {
+            return possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
         }
     }
 
