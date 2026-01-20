@@ -20,7 +20,7 @@ self.addEventListener('install', (event) => {
             })
     );
     // Force the waiting service worker to become the active service worker
-    self.skipWaiting();
+    // self.skipWaiting(); // REMOVED: Wait for user command
 });
 
 // Activate event - clean up old caches

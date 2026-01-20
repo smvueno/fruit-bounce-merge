@@ -16,6 +16,9 @@ const App: React.FC = () => {
   const [isNewHigh, setIsNewHigh] = useState(false);
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
 
+  // Service Worker Update State
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+
   const syncScores = async () => {
     // 1. Check connectivity
     if (!offlineManager.isOnline()) {
@@ -66,9 +69,32 @@ const App: React.FC = () => {
     // Register service worker for offline support
     if ('serviceWorker' in navigator) {
       const swPath = import.meta.env.BASE_URL + 'sw.js';
-      navigator.serviceWorker.register(swPath)
-        .then(reg => console.log('Service Worker registered:', swPath))
-        .catch(err => console.error('Service Worker registration failed:', err));
+      navigator.serviceWorker.register(swPath).then(reg => {
+        console.log('Service Worker registered:', swPath);
+
+        // Check if there's already a waiting worker
+        if (reg.waiting) {
+          setWaitingWorker(reg.waiting);
+        }
+
+        // Listen for new workers
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New update available and installed
+                setWaitingWorker(newWorker);
+              }
+            });
+          }
+        });
+      }).catch(err => console.error('Service Worker registration failed:', err));
+
+      // Reload when the new worker takes control
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
     }
 
     // Initial Sync
@@ -88,6 +114,13 @@ const App: React.FC = () => {
   }, []);
 
   const handleStart = (diff: Difficulty) => {
+    if (waitingWorker) {
+      if (confirm("A new version of the game is available! The game will reload to update.")) {
+        waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+        return;
+      }
+    }
+
     saveData({ lastDifficulty: diff });
     setData(prev => ({ ...prev, lastDifficulty: diff }));
     setCurrentScore(0);
