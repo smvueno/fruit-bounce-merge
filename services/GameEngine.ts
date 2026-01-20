@@ -87,6 +87,20 @@ class BombEffect {
     }
 }
 
+class CelebrationState {
+    timer: number = 0;
+    phase: 'suck' | 'hold' | 'explode' = 'suck';
+    capturedIds: number[] = [];
+    startX: number;
+    startY: number;
+
+    constructor(x: number, y: number, ids: number[]) {
+        this.startX = x;
+        this.startY = y;
+        this.capturedIds = ids;
+    }
+}
+
 
 class EffectParticle {
     x: number;
@@ -147,6 +161,7 @@ export class GameEngine {
 
     activeTomatoes: TomatoEffect[] = [];
     activeBombs: BombEffect[] = [];
+    celebrationEffect: CelebrationState | null = null;
     visualParticles: EffectParticle[] = [];
 
 
@@ -162,6 +177,8 @@ export class GameEngine {
     onNextFruit: (tier: FruitTier) => void = () => { };
     onMaxFruit: (tier: FruitTier) => void = () => { };
     onTimeUpdate: (ms: number) => void = () => { };
+    onSaveUpdate: (tier: FruitTier | null) => void = () => { };
+    onCelebration: () => void = () => { };
 
     score: number = 0;
     stats: GameStats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
@@ -172,6 +189,9 @@ export class GameEngine {
     feverActive: boolean = false;
     feverTimer: number = 0;
     juice: number = 0;
+
+    savedFruitTier: FruitTier | null = null;
+    canSwap: boolean = true;
 
     dangerTimer: number = 0;
     dangerActive: boolean = false;
@@ -297,6 +317,7 @@ export class GameEngine {
         this.fruits = [];
         this.activeTomatoes = [];
         this.activeBombs = [];
+        this.celebrationEffect = null;
         this.visualParticles = [];
 
 
@@ -334,6 +355,11 @@ export class GameEngine {
 
         // 5. Restart Gameplay
         this.setPaused(false);
+        // Reset Save State
+        this.savedFruitTier = null;
+        this.canSwap = true;
+        this.onSaveUpdate(null);
+
         // Seed Queue
         this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
@@ -426,6 +452,7 @@ export class GameEngine {
 
         // 4. Spawn the *current* fruit (dequeued)
         this.nextFruitTier = tier;
+        this.canSwap = true; // Reset swap ability on new spawn
         this.currentFruit = new Particle(
             this.width / 2,
             this.height * SPAWN_Y_PERCENT,
@@ -854,6 +881,10 @@ export class GameEngine {
             }
         }
 
+        // Celebration Logic
+        if (this.celebrationEffect) {
+            this.updateCelebrationLogic(dtMs);
+        }
 
         for (const p of this.fruits) {
             if (p.cooldownTimer > 0) p.cooldownTimer -= dtMs / 1000;
@@ -966,6 +997,9 @@ export class GameEngine {
 
         // 3b. Bomb Logic (Capture)
         this.updateBombPhysics();
+
+        // 3c. Celebration Logic (Suction)
+        this.updateCelebrationPhysics();
 
         // 4. Solver Loop (Substeps)
         for (let s = 0; s < SUBSTEPS; s++) {
@@ -1165,9 +1199,22 @@ export class GameEngine {
                     let canMerge = false;
 
                     // Case 1: Normal Same Tier
-                    if (p1.tier === p2.tier && p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
-                        canMerge = true;
+                    if (p1.tier === p2.tier) {
+                        // Check Watermelon Celebration
+                        if (p1.tier === FruitTier.WATERMELON) {
+                            if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                                this.triggerCelebration(p1, p2);
+                                i--;
+                                break;
+                            }
+                        }
+
+                        // Normal Merge
+                        if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
+                            canMerge = true;
+                        }
                     }
+
                     // Case 2: Rainbow + Anything (except specials)
                     else if ((p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW)) {
                         const validP1 = p1.tier < 90; // Not a special fruit
@@ -1269,6 +1316,135 @@ export class GameEngine {
         // Small visual feedback
         this.audio.playMergeSound(FruitTier.CHERRY); // Small 'tick' sound
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(30);
+    }
+
+    triggerCelebration(p1: Particle, p2: Particle) {
+        if (this.celebrationEffect) return;
+
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        this.removeParticle(p1);
+        this.removeParticle(p2);
+
+        // Visuals
+        this.createMergeEffect(midX, midY, "#4CAF50");
+        this.applyShockwave(midX, midY, 600, 50);
+        this.audio.playMergeSound(FruitTier.WATERMELON);
+
+        // Identify Tiers 0, 1, 2
+        const capturedIds: number[] = [];
+        for (const p of this.fruits) {
+            if (p.isStatic || p.tier > FruitTier.GRAPE) continue; // Only 0, 1, 2
+
+            p.isCaught = true;
+            p.ignoreCollisions = true;
+            capturedIds.push(p.id);
+        }
+
+        this.celebrationEffect = new CelebrationState(midX, midY, capturedIds);
+        this.celebrationEffect.phase = 'suck';
+        this.celebrationEffect.timer = 0;
+
+        // Trigger UI
+        this.onCelebration();
+
+        // Set Level 11 (Max Tier 10)
+        if (this.stats.maxTier < 10) {
+            this.stats.maxTier = 10 as FruitTier; // Cast as it's outside normal enum
+            this.onMaxFruit(this.stats.maxTier);
+        }
+
+        this.addScore(5000); // Big bonus
+    }
+
+    updateCelebrationLogic(dtMs: number) {
+        if (!this.celebrationEffect) return;
+
+        const state = this.celebrationEffect;
+        state.timer += dtMs;
+
+        if (state.phase === 'suck') {
+            // Check if all particles have reached the top
+            let allArrived = true;
+            const targetY = this.height * SPAWN_Y_PERCENT;
+
+            for (const id of state.capturedIds) {
+                const p = this.fruits.find(f => f.id === id);
+                if (!p) continue;
+                if (Math.abs(p.y - targetY) > 50) {
+                    allArrived = false;
+                }
+            }
+
+            if (allArrived || state.timer > 3000) { // Max 3s suck
+                state.phase = 'hold';
+                state.timer = 0;
+            }
+        } else if (state.phase === 'hold') {
+            if (state.timer > 500) {
+                state.phase = 'explode';
+
+                // Explode them out
+                const targetX = this.width / 2;
+                const targetY = this.height * SPAWN_Y_PERCENT;
+
+                this.createMergeEffect(targetX, targetY, "#FFD700");
+                this.audio.playMergeSound(FruitTier.RAINBOW);
+
+                for (const id of state.capturedIds) {
+                    const p = this.fruits.find(f => f.id === id);
+                    if (!p) continue;
+
+                    p.isCaught = false;
+                    p.ignoreCollisions = false;
+
+                    const angle = Math.random() * Math.PI * 2;
+                    const force = 10 + Math.random() * 15;
+                    p.vx = Math.cos(angle) * force;
+                    p.vy = Math.sin(angle) * force + 5; // Downward bias
+                    p.cooldownTimer = 1.0;
+                }
+
+                this.celebrationEffect = null; // End effect
+            }
+        }
+    }
+
+    updateCelebrationPhysics() {
+        if (!this.celebrationEffect) return;
+        const state = this.celebrationEffect;
+
+        if (state.phase === 'suck') {
+            const targetX = this.width / 2;
+            const targetY = this.height * SPAWN_Y_PERCENT;
+
+            for (const id of state.capturedIds) {
+                const p = this.fruits.find(f => f.id === id);
+                if (!p) continue;
+
+                const dx = targetX - p.x;
+                const dy = targetY - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+
+                const speed = 20 + (dist * 0.05); // Faster as they are further, slow on arrive
+
+                p.vx = p.vx * 0.8 + Math.cos(angle) * speed * 0.2;
+                p.vy = p.vy * 0.8 + Math.sin(angle) * speed * 0.2;
+
+                // Rotation effect
+                p.rotation += 0.2;
+                p.angularVelocity = 0.2;
+            }
+        } else if (state.phase === 'hold') {
+             for (const id of state.capturedIds) {
+                const p = this.fruits.find(f => f.id === id);
+                if (!p) continue;
+                p.vx *= 0.8;
+                p.vy *= 0.8;
+             }
+        }
     }
 
 
@@ -1488,15 +1664,51 @@ export class GameEngine {
 
         const rand = Math.random();
 
-        // Bomb disabled logic handled here if re-enabled
-        // Rainbow Star: 1.5% Chance
+        // Adjusted Probabilities:
+        // Rainbow: 1.5%
+        // Tomato: 1.5%
+        // Bomb: 1.5%
+
         if (rand < 0.015) {
             return FruitTier.RAINBOW;
         } else if (rand < 0.030) {
             return FruitTier.TOMATO;
+        } else if (rand < 0.045) {
+            return FruitTier.BOMB;
         } else {
             return possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
         }
+    }
+
+    swapSavedFruit() {
+        if (!this.canSwap || !this.currentFruit) return;
+
+        const currentTier = this.currentFruit.tier;
+
+        if (this.savedFruitTier === null) {
+            // First time save: Store current, spawn next from queue
+            this.savedFruitTier = currentTier;
+
+            // Remove current sprite
+            this.removeParticle(this.currentFruit);
+            this.currentFruit = null;
+
+            // Spawn next immediate (force logic from spawnNextFruit without the full check)
+            // But properly, we should just shift queue.
+            // spawnNextFruit handles shifting.
+            this.spawnNextFruit();
+        } else {
+            // Swap logic
+            const oldSaved = this.savedFruitTier;
+            this.savedFruitTier = currentTier;
+
+            // Force the current fruit to be the old saved one
+            this.forceCurrentFruit(oldSaved);
+        }
+
+        this.canSwap = false;
+        this.onSaveUpdate(this.savedFruitTier);
+        this.audio.playMergeSound(FruitTier.CHERRY); // Simple feedback sound
     }
 
     removeParticle(p: Particle) {

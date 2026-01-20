@@ -40,11 +40,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     const [dangerTime, setDangerTime] = useState(0);
     const [juice, setJuice] = useState(0);
     const [nextFruit, setNextFruit] = useState<FruitTier>(FruitTier.CHERRY);
+    const [savedFruit, setSavedFruit] = useState<FruitTier | null>(null);
     const [playTime, setPlayTime] = useState(0);
     const [maxTier, setMaxTier] = useState<FruitTier>(FruitTier.CHERRY);
     const [isPaused, setIsPaused] = useState(false);
     const [debugMode, setDebugMode] = useState(false);
     const [pauseTapCount, setPauseTapCount] = useState(0);
+    const [showCelebration, setShowCelebration] = useState(false);
 
     // Background State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
@@ -75,10 +77,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
             onMaxFruit: (t: FruitTier) => {
-                setBgColor(FRUIT_DEFS[t].patternColor);
+                if (FRUIT_DEFS[t]) { // Safety check
+                    setBgColor(FRUIT_DEFS[t].patternColor);
+                }
                 setMaxTier(prev => Math.max(prev, t));
             },
             onTimeUpdate: (ms: number) => setPlayTime(ms),
+            onSaveUpdate: (t: FruitTier | null) => setSavedFruit(t),
+            onCelebration: () => {
+                setShowCelebration(true);
+                setTimeout(() => setShowCelebration(false), 4000);
+            }
         });
 
         engine.initialize().catch(e => console.error("Game init failed", e));
@@ -117,7 +126,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
         setFever(false);
         setJuice(0);
         setPlayTime(0);
+        setSavedFruit(null);
         setMaxTier(FruitTier.CHERRY);
+        setShowCelebration(false);
     };
 
     const handleEndGame = () => {
@@ -228,17 +239,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
 
                 {/* MAX LEVEL */}
                 <div className="text-2xl font-black text-gray-900 drop-shadow-sm tracking-wide flex items-center gap-2 opacity-90">
-                    <div className="w-5 h-5 rounded-full border-2 border-gray-900 shadow-sm" style={{ backgroundColor: FRUIT_DEFS[maxTier]?.color }}></div>
-                    LVL {maxTier + 1}
+                    <div className="w-5 h-5 rounded-full border-2 border-gray-900 shadow-sm" style={{ backgroundColor: (FRUIT_DEFS[maxTier] || FRUIT_DEFS[FruitTier.WATERMELON])?.color }}></div>
+                    LVL {maxTier >= 10 ? 11 : maxTier + 1}
                 </div>
             </div>
 
-            {/* Next Fruit Preview - Top Right */}
-            <div className="absolute top-6 right-6 pointer-events-auto z-20 flex flex-col items-end gap-3 animate-fade-in">
+            {/* Top Right Container: Next Fruit & Save Box */}
+            <div className="absolute top-6 right-6 pointer-events-auto z-20 flex flex-col items-center gap-6 animate-fade-in">
+
+                {/* Next Fruit */}
                 <div className="flex flex-col items-center pointer-events-none drop-shadow-md">
                     <div className="text-sm text-gray-900 font-bold mb-1 tracking-widest drop-shadow-sm opacity-80">NEXT</div>
                     <FruitSVG tier={nextFruit} size={60} />
                 </div>
+
+                {/* Save Box */}
+                <div
+                    className="flex flex-col items-center cursor-pointer active:scale-95 transition-transform group"
+                    onClick={() => engineRef.current?.swapSavedFruit()}
+                    title="Tap to Save/Swap Fruit"
+                >
+                    <div className="text-sm text-gray-900 font-bold mb-1 tracking-widest drop-shadow-sm opacity-80">SAVE</div>
+                    <div className="w-[70px] h-[70px] rounded-2xl border-4 border-gray-900 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg relative overflow-hidden">
+                        {savedFruit !== null ? (
+                            <div className="animate-pop">
+                                <FruitSVG tier={savedFruit} size={60} />
+                                {/* Shine Effect */}
+                                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                            </div>
+                        ) : (
+                            <div className="text-gray-500 text-xs font-bold opacity-40">EMPTY</div>
+                        )}
+                    </div>
+                </div>
+
             </div>
 
             {/* Pause Button - Bottom Center (On the Floor) */}
@@ -302,6 +336,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                 </div>
             )}
 
+
+            {/* Watermelon Celebration Overlay (Level 11) */}
+            {showCelebration && (
+                <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center animate-pop-in">
+                    <div className="flex flex-col items-center transform -rotate-3">
+                        <h1 className="text-6xl font-black text-green-500 drop-shadow-[0_4px_0_rgba(0,0,0,0.5)] tracking-tighter text-center leading-none"
+                            style={{ WebkitTextStroke: '3px #1B5E20' }}>
+                            WATERMELON<br/>CRUSH!
+                        </h1>
+                        <div className="text-4xl font-black text-white mt-4 drop-shadow-lg stroke-black"
+                            style={{ WebkitTextStroke: '2px black' }}>
+                            LEVEL 11 REACHED!
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Danger Overlay */}
             {dangerTime > 0 && (
