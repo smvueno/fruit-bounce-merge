@@ -582,6 +582,32 @@ export class GameEngine {
     this.dragAnchorY = this.height * SPAWN_Y_PERCENT;
     this.createSprite(this.currentFruit);
   }
+
+  forceCurrentFruit(tier: FruitTier) {
+    if (!this.currentFruit) return;
+
+    // Cleanup existing sprite
+    const oldSprite = this.fruitSprites.get(this.currentFruit.id);
+    if (oldSprite) {
+        this.container.removeChild(oldSprite);
+        oldSprite.destroy({ children: true });
+        this.fruitSprites.delete(this.currentFruit.id);
+    }
+
+    this.nextFruitTier = tier;
+    this.onNextFruit(tier);
+
+    // Create new particle at same position
+    this.currentFruit = new Particle(
+        this.currentFruit.x,
+        this.currentFruit.y,
+        FRUIT_DEFS[tier],
+        this.nextId++
+    );
+    this.currentFruit.isStatic = true;
+
+    this.createSprite(this.currentFruit);
+  }
   
   createSprite(p: Particle) {
     if (!this.textures.has(p.tier)) return;
@@ -1089,7 +1115,7 @@ export class GameEngine {
   resolveWalls() {
     const width = this.width;
     for (const p of this.fruits) {
-        if (p.isStatic) continue;
+        if (p.isStatic || p.isCaught) continue;
         
         const groundY = this.getFloorY(p.x);
         
