@@ -16,18 +16,18 @@ const App: React.FC = () => {
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   const syncScores = async () => {
-      // 1. Upload Pending
-      if (data.pendingScores && data.pendingScores.length > 0) {
-          const remaining = await uploadPendingScores(data.pendingScores);
-          // If we managed to upload some, update local storage
-          if (remaining.length !== data.pendingScores.length) {
-              saveData({ pendingScores: remaining });
-              setData(prev => ({ ...prev, pendingScores: remaining }));
-          }
+    // 1. Upload Pending
+    if (data.pendingScores && data.pendingScores.length > 0) {
+      const remaining = await uploadPendingScores(data.pendingScores);
+      // If we managed to upload some, update local storage
+      if (remaining.length !== data.pendingScores.length) {
+        saveData({ pendingScores: remaining });
+        setData(prev => ({ ...prev, pendingScores: remaining }));
       }
-      // 2. Fetch Global
-      const global = await getGlobalLeaderboard();
-      setGlobalLeaderboard(global);
+    }
+    // 2. Fetch Global
+    const global = await getGlobalLeaderboard();
+    setGlobalLeaderboard(global);
   };
 
   useEffect(() => {
@@ -60,66 +60,66 @@ const App: React.FC = () => {
     const activeList = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
     const sortedLeaderboard = [...activeList].sort((a, b) => b.score - a.score);
     const LIMIT = 10; // Badge usually relevant for top 10
-    
+
     let qualifies = false;
     if (stats.score > 0) {
-        if (sortedLeaderboard.length < LIMIT) {
-            qualifies = true;
-        } else {
-            const lowestScore = sortedLeaderboard[LIMIT - 1].score;
-            if (stats.score > lowestScore) {
-                qualifies = true;
-            }
+      if (sortedLeaderboard.length < LIMIT) {
+        qualifies = true;
+      } else {
+        const lowestScore = sortedLeaderboard[LIMIT - 1].score;
+        if (stats.score > lowestScore) {
+          qualifies = true;
         }
+      }
     }
-    
+
     // Also track legacy per-difficulty high score (internal use)
     const diff = data.lastDifficulty;
     const oldHigh = data.highScores[diff] || 0;
     if (stats.score > oldHigh) {
-         const newHighScores = { ...data.highScores, [diff]: stats.score };
-         saveData({ highScores: newHighScores });
-         setData(prev => ({ ...prev, highScores: newHighScores }));
+      const newHighScores = { ...data.highScores, [diff]: stats.score };
+      saveData({ highScores: newHighScores });
+      setData(prev => ({ ...prev, highScores: newHighScores }));
     }
 
-    setIsNewHigh(qualifies); 
+    setIsNewHigh(qualifies);
     setFinalStats(stats);
     setGameState(GameState.GAME_OVER);
   };
 
   const saveScoreToLeaderboard = async (name: string) => {
-      if (!finalStats) return;
+    if (!finalStats) return;
 
-      const newEntry: LeaderboardEntry = {
-          name,
-          score: finalStats.score,
-          timePlayed: finalStats.timePlayed,
-          maxTier: finalStats.maxTier,
-          date: new Date().toISOString()
-      };
+    const newEntry: LeaderboardEntry = {
+      name,
+      score: finalStats.score,
+      timePlayed: finalStats.timePlayed,
+      maxTier: finalStats.maxTier,
+      date: new Date().toISOString()
+    };
 
-      // 1. Update Local History
-      const currentLeaderboard = data.leaderboard || [];
-      const updatedLeaderboard = [...currentLeaderboard, newEntry]
-          .sort((a, b) => b.score - a.score);
-          // We can keep more history locally if we want, but sticking to logic
+    // 1. Update Local History
+    const currentLeaderboard = data.leaderboard || [];
+    const updatedLeaderboard = [...currentLeaderboard, newEntry]
+      .sort((a, b) => b.score - a.score);
+    // We can keep more history locally if we want, but sticking to logic
 
-      const newPending = [...(data.pendingScores || [])];
+    const newPending = [...(data.pendingScores || [])];
 
-      // 2. Try Global Submit
-      const uploaded = await submitScore(newEntry);
-      if (!uploaded) {
-          newPending.push(newEntry);
-      } else {
-          // Refresh global if successful
-          const global = await getGlobalLeaderboard();
-          setGlobalLeaderboard(global);
-      }
+    // 2. Try Global Submit
+    const uploaded = await submitScore(newEntry);
+    if (!uploaded) {
+      newPending.push(newEntry);
+    } else {
+      // Refresh global if successful
+      const global = await getGlobalLeaderboard();
+      setGlobalLeaderboard(global);
+    }
 
-      saveData({ leaderboard: updatedLeaderboard, pendingScores: newPending });
-      setData(prev => ({ ...prev, leaderboard: updatedLeaderboard, pendingScores: newPending }));
+    saveData({ leaderboard: updatedLeaderboard, pendingScores: newPending });
+    setData(prev => ({ ...prev, leaderboard: updatedLeaderboard, pendingScores: newPending }));
   };
-  
+
   const updateSettings = (s: any) => {
     saveData({ settings: s });
     setData(prev => ({ ...prev, settings: s }));
@@ -131,56 +131,57 @@ const App: React.FC = () => {
     <div className="relative w-full h-full bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-yellow-100 opacity-5">
-        <div className="w-full h-full" style={{backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
+        <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       </div>
 
       {/* Responsive Game Container - Fixed Aspect Ratio 2:3 (Portrait) */}
       <div className="relative w-full max-w-[600px] h-full max-h-[95vh] aspect-[2/3] bg-white shadow-2xl rounded-xl overflow-hidden ring-8 ring-black/10 flex flex-col">
-        
+
         {gameState === GameState.START && (
-          <StartScreen 
-              onStart={handleStart} 
-              leaderboard={activeLeaderboard}
-              settings={data.settings}
-              onUpdateSettings={updateSettings}
+          <StartScreen
+            onStart={handleStart}
+            leaderboard={activeLeaderboard}
+            settings={data.settings}
+            onUpdateSettings={updateSettings}
           />
         )}
 
         {gameState === GameState.PLAYING && (
           <>
-              {/* Score Display - Top Left */}
-              <div className="absolute top-6 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka']">
-                  <div className="text-sm text-gray-400 font-bold mb-1 tracking-widest drop-shadow-sm" style={{ WebkitTextStroke: '0.5px white' }}>SCORE</div>
-                  <div 
-                      className="text-5xl font-black text-white drop-shadow-md tracking-wide"
-                      style={{ 
-                          WebkitTextStroke: '2px #4B5563', // Gray-700 outline
-                          textShadow: '3px 3px 0px rgba(0,0,0,0.2)'
-                      }}
-                  >
-                      {currentScore.toLocaleString()}
-                  </div>
+            {/* Score Display - Top Left */}
+            <div className="absolute top-6 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka']">
+              <div className="text-sm text-gray-400 font-bold mb-1 tracking-widest drop-shadow-sm" style={{ WebkitTextStroke: '0.5px white' }}>SCORE</div>
+              <div
+                className="text-5xl font-black text-white drop-shadow-md tracking-wide"
+                style={{
+                  WebkitTextStroke: '2px #4B5563', // Gray-700 outline
+                  textShadow: '3px 3px 0px rgba(0,0,0,0.2)'
+                }}
+              >
+                {currentScore.toLocaleString()}
               </div>
-              
-              <GameCanvas 
-                  difficulty={data.lastDifficulty} 
-                  settings={data.settings}
-                  onUpdateSettings={updateSettings}
-                  leaderboard={activeLeaderboard}
-                  onGameOver={handleGameOver}
-                  setScore={setCurrentScore}
-              />
+            </div>
+
+            <GameCanvas
+              difficulty={data.lastDifficulty}
+              settings={data.settings}
+              onUpdateSettings={updateSettings}
+              leaderboard={activeLeaderboard}
+              onGameOver={handleGameOver}
+              setScore={setCurrentScore}
+            />
           </>
         )}
 
         {gameState === GameState.GAME_OVER && finalStats && (
-          <GameOverScreen 
-              stats={finalStats}
-              isNewHigh={isNewHigh}
-              leaderboard={activeLeaderboard}
-              onRestart={() => handleStart(data.lastDifficulty)}
-              onMenu={() => setGameState(GameState.START)}
-              onSaveScore={saveScoreToLeaderboard}
+          <GameOverScreen
+            stats={finalStats}
+            isNewHigh={isNewHigh}
+            leaderboard={activeLeaderboard}
+            isLocalOnly={data.settings.showLocalOnly}
+            onRestart={() => handleStart(data.lastDifficulty)}
+            onMenu={() => setGameState(GameState.START)}
+            onSaveScore={saveScoreToLeaderboard}
           />
         )}
       </div>
