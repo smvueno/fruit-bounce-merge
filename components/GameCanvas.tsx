@@ -254,7 +254,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
 
             {/* Debug/Cheat Menu */}
             {debugMode && (
-                <div className="absolute bottom-6 left-6 z-30 animate-fade-in pointer-events-auto">
+                <div className="absolute bottom-6 left-6 z-30 animate-fade-in pointer-events-auto flex gap-3">
+                    <button
+                        onClick={() => {
+                            if (engineRef.current) {
+                                engineRef.current.forceCurrentFruit(FruitTier.BOMB);
+                            }
+                        }}
+                        className="w-14 h-14 bg-gray-900/80 backdrop-blur-sm hover:bg-gray-800 rounded-full flex items-center justify-center shadow-lg border-2 border-gray-600 active:scale-95 transition-all group"
+                        title="Spawn Bomb"
+                    >
+                        <FruitSVG tier={FruitTier.BOMB} size={40} />
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (engineRef.current) {
+                                engineRef.current.forceCurrentFruit(FruitTier.RAINBOW);
+                            }
+                        }}
+                        className="w-14 h-14 bg-white/80 backdrop-blur-sm hover:bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-pink-300 active:scale-95 transition-all group"
+                        title="Spawn Rainbow"
+                    >
+                        <FruitSVG tier={FruitTier.RAINBOW} size={40} />
+                    </button>
                     <button
                         onClick={() => {
                             if (engineRef.current) {

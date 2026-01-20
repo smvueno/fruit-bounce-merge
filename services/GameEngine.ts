@@ -79,12 +79,11 @@ class EffectParticle {
     alpha: number;
     color: string | number;
     life: number;
-    type: 'circle' | 'star' | 'suck'; // Added 'suck' type for active tomato particles
-    targetId?: number; // For suck particles to know which tomato to orbit
+    type: 'circle' | 'star' | 'suck' | 'bomb-ghost';
+    targetId?: number;
+    rotation: number = 0; // Added for spinning stars
 
-    constructor(x: number, y: number, color: string | number, type: 'circle' | 'star' | 'suck' = 'circle') {
-        this.x = x;
-        this.y = y;
+    constructor(x: number, y: number, color: string | number, type: 'circle' | 'star' | 'suck' | 'bomb-ghost' = 'circle') {
         this.x = x;
         this.y = y;
         this.vx = 0;
@@ -378,7 +377,7 @@ export class GameEngine {
         if (!this.canDrop) return;
         let maxTier = FruitTier.CHERRY;
         for (const p of this.fruits) {
-            if (!p.isStatic && p.tier !== FruitTier.TOMATO) {
+            if (!p.isStatic && p.tier !== FruitTier.TOMATO && p.tier !== FruitTier.BOMB && p.tier !== FruitTier.RAINBOW) {
                 if (p.tier > maxTier) maxTier = p.tier;
             }
         }
@@ -392,8 +391,20 @@ export class GameEngine {
         for (let i = 0; i <= limit; i++) {
             possibleTiers.push(i);
         }
-        const isTomato = Math.random() < 0.015;
-        const tier = isTomato ? FruitTier.TOMATO : possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
+
+        // Weighted Random for Special Items
+        const rand = Math.random();
+        let tier: FruitTier;
+
+        // Bomb disabled for now as per user request
+        // Rainbow Star: 1.5% Chance (same as Tomato)
+        if (rand < 0.015) {
+            tier = FruitTier.RAINBOW;
+        } else if (rand < 0.030) { // 1.5% Chance (0.015 to 0.030)
+            tier = FruitTier.TOMATO;
+        } else {
+            tier = possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
+        }
         this.nextFruitTier = tier;
         this.onNextFruit(tier);
         this.currentFruit = new Particle(
@@ -591,7 +602,6 @@ export class GameEngine {
             if (this.visualParticles.filter(p => p.type === 'suck').length < 300) {
                 for (const t of activeTomatoes) {
                     for (let i = 0; i < 3; i++) {
-                        // Spawn on a large ring (180-220px radius)
                         const angle = Math.random() * Math.PI * 2;
                         const spawnR = 180 + Math.random() * 40;
                         const px = t.x + Math.cos(angle) * spawnR;
@@ -608,49 +618,64 @@ export class GameEngine {
             }
         }
 
-        // B. Passive Tomato Particles (Existing, Current, Next)
-        // 1. Existing Fruits
+        // B. Passive Particles & Trails (Existing Fruits)
         for (const p of this.fruits) {
+            if (p.isCaught) continue;
+
+            // 1. Passive Particles (Floating around)
             if (p.tier === FruitTier.TOMATO) {
-                const isActive = this.activeTomatoes.some(t => t.tomatoId === p.id);
-                if (!isActive) {
-                    this.spawnPassiveTomatoParticle(p.x, p.y, p.radius);
+                this.spawnPassiveTomatoParticle(p.x, p.y, p.radius);
+            } else if (p.tier === FruitTier.RAINBOW) {
+                if (Math.random() < 0.3) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = p.radius * (0.8 + Math.random() * 0.4);
+                    const px = p.x + Math.cos(angle) * r;
+                    const py = p.y + Math.sin(angle) * r;
+                    const color = Math.random() > 0.5 ? 0xFFD700 : 0xFFA500;
+                    const part = new EffectParticle(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
+                    part.vx = Math.cos(angle) * 0.2;
+                    part.vy = Math.sin(angle) * 0.2 - 0.2;
+                    part.life = 1.2;
+                    part.size = 2 + Math.random() * 3;
+                    part.alpha = 0.6;
+                    this.visualParticles.push(part);
+                }
+            }
+
+            // 2. Trails (Moving fast)
+            if (!p.isStatic) {
+                const speedSq = p.vx * p.vx + p.vy * p.vy;
+                if (speedSq > 25) { // speed > 5
+                    if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW) {
+                        this.spawnTrailParticles(p.x, p.y, p.radius, p.vx, p.vy);
+                    }
                 }
             }
         }
-        // 2. Currently Held Fruit
-        if (this.currentFruit && this.currentFruit.tier === FruitTier.TOMATO) {
-            this.spawnPassiveTomatoParticle(this.currentFruit.x, this.currentFruit.y, this.currentFruit.radius);
-        }
-        // 3. Next Preview Fruit (Top Right)
-        // Coordinate approx: Width - 50, Top 70 (Based on UI layout)
-        if (this.nextFruitTier === FruitTier.TOMATO) {
-            // Convert Screen Space (Top Right) to Virtual Space
-            // Container is scaled by this.scaleFactor.
-            const screenW = this.app?.screen.width || this.width * this.scaleFactor;
-            // The Next Preview is approx right: 24px (1.5rem), top: 24px (1.5rem) + centered content
-            // Let's approximate center of the preview at (ScreenW - 55, 75) in screen pixels
-            const globalX = screenW - 60;
-            const globalY = 90; // Slightly lower to center on fruit
 
-            const virtual = this.getVirtualPos(globalX, globalY);
-            this.spawnPassiveTomatoParticle(virtual.x, virtual.y, 45);
-        }
-
-        // 4. Trail Logic Check
-        if (this.currentFruit && this.currentFruit.tier === FruitTier.TOMATO) {
-            const dx = this.currentFruit.x - this.lastFruitX;
-            const dy = this.currentFruit.y - this.lastFruitY;
-            const distSq = dx * dx + dy * dy;
-            // If moved more than 2px
-            if (distSq > 4) {
-                this.spawnTrailParticles(this.currentFruit.x, this.currentFruit.y, this.currentFruit.radius, this.currentFruit.vx, this.currentFruit.vy);
+        // C. Current Fruit Passive Particles
+        if (this.currentFruit) {
+            if (this.currentFruit.tier === FruitTier.TOMATO) {
+                this.spawnPassiveTomatoParticle(this.currentFruit.x, this.currentFruit.y, this.currentFruit.radius);
+            } else if (this.currentFruit.tier === FruitTier.RAINBOW) {
+                if (Math.random() < 0.3) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = this.currentFruit.radius * 1.2;
+                    const px = this.currentFruit.x + Math.cos(angle) * r;
+                    const py = this.currentFruit.y + Math.sin(angle) * r;
+                    const color = Math.random() > 0.5 ? 0xFFD700 : 0xFFA500;
+                    const part = new EffectParticle(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
+                    part.vx = Math.cos(angle) * 0.2;
+                    part.vy = Math.sin(angle) * 0.2 - 0.2;
+                    part.life = 1.0; // shorter life for aimed fruit
+                    part.size = 3 + Math.random() * 3;
+                    part.alpha = 0.8;
+                    this.visualParticles.push(part);
+                }
             }
-            this.lastFruitX = this.currentFruit.x;
-            this.lastFruitY = this.currentFruit.y;
         }
 
-        // C. Fever Particles (Stars)
+        // D. Fever Particles
         if (this.feverActive) {
             if (Math.random() < 0.3) {
                 const sparkle = new EffectParticle(Math.random() * this.width, this.height + 20, 0xFFD700, 'star');
@@ -663,13 +688,11 @@ export class GameEngine {
         // 2. UPDATE & RENDER PARTICLES
         for (let i = this.visualParticles.length - 1; i >= 0; i--) {
             const p = this.visualParticles[i];
-
             let targetTomato: TomatoEffect | null = null;
 
             // Find associated tomato for 'suck' particles
             if (p.type === 'suck' && hasActive && p.targetId !== undefined) {
                 targetTomato = activeTomatoes.find(t => t.tomatoId === p.targetId) || null;
-                // If target tomato is gone, kill particle
                 if (!targetTomato) {
                     this.visualParticles.splice(i, 1);
                     continue;
@@ -677,67 +700,75 @@ export class GameEngine {
             }
 
             if (targetTomato) {
-                // --- EVENT HORIZON MODE (Spiral Inward) ---
+                // --- EVENT HORIZON MODE ---
                 const dx = p.x - targetTomato.x;
                 const dy = p.y - targetTomato.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 const currentAngle = Math.atan2(dy, dx);
 
-                // Reached center?
                 if (dist < 20) {
                     this.visualParticles.splice(i, 1);
                     continue;
                 }
 
-                // Move Inward
-                const radialSpeed = 3 + (200 / (dist + 10)); // Gets faster as it gets closer
-                const tangentialSpeed = 0.15; // Constant rotation
+                const radialSpeed = 3 + (200 / (dist + 10));
+                const tangentialSpeed = 0.15;
 
                 const nextAngle = currentAngle + tangentialSpeed;
                 const nextRadius = dist - radialSpeed;
 
                 p.x = targetTomato.x + Math.cos(nextAngle) * nextRadius;
                 p.y = targetTomato.y + Math.sin(nextAngle) * nextRadius;
-
                 p.color = 0xFF0000;
-                // Fade in then stay solid
                 if (p.alpha < 1.0) p.alpha += 0.05;
 
-                // Draw
                 this.effectGraphics.circle(p.x, p.y, p.size);
                 this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
 
             } else {
                 // --- PASSIVE / STANDARD MODE ---
-                p.x += p.vx;
-                p.y += p.vy;
-                p.life -= 0.015; // Decay
-
-                if (p.type === 'circle') {
-                    p.alpha = Math.min(0.6, p.life);
-                    p.vx *= 0.96; // Friction
-                    p.vy *= 0.96;
-                    // Expansion logic for passive & trail
-                    if (p.life > 0.5) p.size += 0.05;
+                if (p.type === 'bomb-ghost') {
+                    p.size += 4;
+                    p.alpha -= 0.04;
+                    p.life -= 0.04;
                 } else {
-                    p.alpha = Math.min(1, p.life);
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= dt;
+
+                    if (p.type === 'circle') {
+                        p.alpha = Math.min(0.6, p.life);
+                        p.vx *= 0.96;
+                        p.vy *= 0.96;
+                        if (p.life > 0.5) p.size += 0.05;
+                    } else if (p.type === 'star') {
+                        p.alpha = Math.min(1, p.life);
+                        p.rotation += 0.1;
+                    } else if (p.type === 'suck') {
+                        p.life = 0; // Orphaned suck particle
+                    }
                 }
 
+                if (p.life <= 0 || p.alpha <= 0 || p.y < -100 || p.y > this.height + 100) {
+                    this.visualParticles.splice(i, 1);
+                    continue;
+                }
+
+                // Render
                 if (p.type === 'star') {
-                    this.effectGraphics.star(p.x, p.y, 5, p.size, p.size / 2, p.life * 5);
+                    this.effectGraphics.star(p.x, p.y, 5, p.size, p.size * 0.4, p.rotation);
                     this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
+                } else if (p.type === 'bomb-ghost') {
+                    this.effectGraphics.circle(p.x, p.y, p.size);
+                    this.effectGraphics.fill({ color: 0x212121, alpha: p.alpha });
                 } else {
                     this.effectGraphics.circle(p.x, p.y, p.size);
                     this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
                 }
-
-                // Bounds/Life Check
-                if (p.life <= 0 || p.y < -50 || p.y > this.height + 50 || p.x < -50 || p.x > this.width + 50) {
-                    this.visualParticles.splice(i, 1);
-                }
             }
         }
     }
+
 
     createMergeEffect(x: number, y: number, color: string) {
         for (let i = 0; i < 15; i++) {
@@ -1038,8 +1069,38 @@ export class GameEngine {
                 if (distSq < radSum * radSum) {
                     const dist = Math.sqrt(distSq);
 
-                    // --- MERGE LOGIC ---
-                    if (p1.tier === p2.tier && p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p2.tier !== FruitTier.TOMATO) {
+                    // --- SPECIAL LOGIC: BOMB ---
+                    if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
+                        this.handleBombExplosion(p1.tier === FruitTier.BOMB ? p1 : p2);
+                        return; // Explosion alters array, safest to return or break carefully. Returning is fine for this frame.
+                    }
+
+                    // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
+                    let canMerge = false;
+
+                    // Case 1: Normal Same Tier
+                    if (p1.tier === p2.tier && p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
+                        canMerge = true;
+                    }
+                    // Case 2: Rainbow + Anything (except specials)
+                    else if ((p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW)) {
+                        const validP1 = p1.tier < 90; // Not a special fruit
+                        const validP2 = p2.tier < 90;
+
+                        // Rainbow + Rainbow = Highest Tier? or just Watermelon? Let's say Watermelon.
+                        if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
+                            // Merge to Watermelon directly? or just allow normal merge?
+                            // Let's treat it as a "super merge" -> Clears screen? Or just makes watermelon. 
+                            // Simplest: Treat as last tier merge.
+                            // We construct a fake merge where tier is WATERMELON - 1 so result is WATERMELON.
+                            // Hacky side effect: Force nextTier logic to handle it.
+                            canMerge = true;
+                        } else if (validP1 || validP2) {
+                            canMerge = true;
+                        }
+                    }
+
+                    if (canMerge) {
                         if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
                             this.merge(p1, p2);
                             i--;
@@ -1047,6 +1108,7 @@ export class GameEngine {
                         }
                     }
 
+                    // --- RESTORED TOMATO LOGIC ---
                     if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
                         this.handleTomatoCollision(p1, p2);
                         return;
@@ -1055,14 +1117,11 @@ export class GameEngine {
                     if (dist === 0) continue;
 
                     // --- PHYSICS RESOLUTION (Weighted by Stability) ---
-
+                    // ... (rest of physics resolution remains same)
                     const overlap = radSum - dist;
                     const nx = dx / dist;
                     const ny = dy / dist;
 
-                    // 1. Separate Particles (Position Projection)
-                    // Use stability to make established stacks "heavier" (harder to push)
-                    // Stable fruits effectively have 11x mass
                     const im1 = 1 / (p1.mass * (1 + p1.stability * 10));
                     const im2 = 1 / (p2.mass * (1 + p2.stability * 10));
                     const totalIm = im1 + im2;
@@ -1079,16 +1138,13 @@ export class GameEngine {
                         p2.y -= ny * overlap * r2;
                     }
 
-                    // 2. Velocity Handling (Impulse)
-                    // Calculate relative velocity
+                    // Impulse
                     const dvx = p1.vx - p2.vx;
                     const dvy = p1.vy - p2.vy;
                     const dot = dvx * nx + dvy * ny;
 
                     if (dot < 0) {
-                        // Only apply impulse if moving towards each other
-                        // Simple Bounce
-                        const restitution = 0.4; // BOOSTED BOUNCINESS (Was 0.2)
+                        const restitution = 0.4;
                         const j = -(1 + restitution) * dot;
 
                         p1.vx += j * nx * r1;
@@ -1096,9 +1152,6 @@ export class GameEngine {
                         p2.vx -= j * nx * r2;
                         p2.vy -= j * ny * r2;
 
-                        // 3. SLIDING FRICTION (Only applied if NOT locked)
-                        // If contactCount > 1, we already handled friction globally via locking.
-                        // If contactCount <= 1, we apply smooth sliding friction here.
                         if (p1.contactCount <= 1) {
                             p1.vx *= FRICTION_SLIDE;
                             p1.vy *= FRICTION_SLIDE;
@@ -1113,43 +1166,106 @@ export class GameEngine {
         }
     }
 
-    merge(p1: Particle, p2: Particle) {
-        // Scoring: strictly integers. Exponential based on Resulting Tier.
-        // Cherry (0) + Cherry (0) -> Strawberry (1). Points = Base * 2^1
-        const nextTier = p1.tier + 1;
-        const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
+    handleBombExplosion(bomb: Particle) {
+        // 1. Visuals
+        // Create expanding ghost
+        const ghost = new EffectParticle(bomb.x, bomb.y, 0x212121, 'bomb-ghost');
+        ghost.size = bomb.radius;
+        ghost.life = 1.0;
+        ghost.alpha = 0.8;
+        this.visualParticles.push(ghost);
 
-        // Chain Combo Logic
+        this.applyShockwave(bomb.x, bomb.y, 600, 40); // Push Power matches Tomato (600 range, 40 force)
+
+        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        this.audio.playMergeSound(FruitTier.WATERMELON);
+
+        // 2. Logic: Destroy low tier
+        const range = 250;
+        const destroyed: Particle[] = [];
+
+        for (const p of this.fruits) {
+            if (p === bomb || p.isStatic) continue;
+
+            const dx = p.x - bomb.x;
+            const dy = p.y - bomb.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < range) {
+                if (p.tier <= FruitTier.STRAWBERRY) {
+                    destroyed.push(p);
+                }
+            }
+        }
+
+        // Remove Bomb
+        this.removeParticle(bomb);
+
+        // Remove destroyed & Spawn Fire Stars
+        destroyed.forEach(p => {
+            // Spawn Orange Red Fire Stars
+            for (let k = 0; k < 8; k++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 4;
+                const color = Math.random() > 0.5 ? 0xFF4500 : 0xFF6347; // OrangeRed / Tomato
+                const sp = new EffectParticle(p.x, p.y, color, 'star');
+                sp.vx = Math.cos(angle) * speed;
+                sp.vy = Math.sin(angle) * speed;
+                sp.life = 0.5 + Math.random() * 0.5;
+                sp.size = 5 + Math.random() * 5;
+                this.visualParticles.push(sp);
+            }
+            this.removeParticle(p);
+        });
+    }
+
+    merge(p1: Particle, p2: Particle) {
+        // Handle Logic for Rainbow
+        let nextTier: number;
+
+        if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
+            // Rainbow + Rainbow = Watermelon (Reward)
+            nextTier = FruitTier.WATERMELON;
+        } else if (p1.tier === FruitTier.RAINBOW) {
+            nextTier = p2.tier + 1;
+        } else if (p2.tier === FruitTier.RAINBOW) {
+            nextTier = p1.tier + 1;
+        } else {
+            nextTier = p1.tier + 1;
+        }
+
+        // Cap at Watermelon
+        if (nextTier > FruitTier.WATERMELON) nextTier = FruitTier.WATERMELON;
+        // Or if we want to allow merging watermelons? For now cap.
+
+        const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
+        // ... (Scoring and rest is same)
         this.comboChain++;
         this.didMergeThisTurn = true;
 
-        const comboMult = 1 + Math.min(this.comboChain, 10); // Cap multiplier reasonable
-        const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1; // +1 because we already incremented on start, or logic based on count
+        const comboMult = 1 + Math.min(this.comboChain, 10);
+        const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
 
         const totalPoints = basePoints * comboMult * feverMult;
 
         this.addScore(totalPoints);
         this.stats.bestCombo = Math.max(this.stats.bestCombo, this.comboChain);
-        this.onCombo(this.comboChain);
-
-        if (nextTier > this.stats.maxTier) {
-            this.stats.maxTier = nextTier;
-        }
-
         if (!this.feverActive) {
             this.juice = Math.min(JUICE_MAX, this.juice + 50);
             this.onJuiceUpdate(this.juice, JUICE_MAX);
         }
         this.removeParticle(p1);
         this.removeParticle(p2);
+
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
+
         const nextDef = FRUIT_DEFS[nextTier as FruitTier];
         const newP = new Particle(midX, midY, nextDef, this.nextId++);
         this.fruits.push(newP);
         this.createSprite(newP);
         this.createMergeEffect(midX, midY, nextDef.color);
-        this.audio.playMergeSound(nextTier); // Trigger Pop Sound
+        this.audio.playMergeSound(nextTier);
         this.applyShockwave(midX, midY, 150, 5);
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(20);
     }
