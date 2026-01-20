@@ -20,7 +20,11 @@ interface GameCanvasProps {
 const BACKGROUND_PATTERNS = [
     `data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='black'%3E%3Ccircle cx='50' cy='50' r='40' /%3E%3C/g%3E%3C/svg%3E`,
     `data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill='black' /%3E%3C/svg%3E`,
-    `data:image/svg+xml,%3Csvg width='100' height='20' viewBox='0 0 100 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10 Q25 20 50 10 T100 10' stroke-width='4' stroke='black' fill='none' /%3E%3C/svg%3E`,
+    // Removed Waves (Too small)
+    // Added Heart
+    `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 88.9L16.7 55.6C7.2 46.1 7.2 30.9 16.7 21.4s24.7-9.5 33.3 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4l0 0 0 0 0 0L50 21.2l0 0.2 0 0 0 0 0 0 0 0 0 0 0 0L50 21.4z' fill='black' /%3E%3Cpath d='M50 30L50 30L20 0 A20 20 0 0 0 0 30 L50 90 L100 30 A20 20 0 0 0 80 0 L50 30 Z' fill='black' /%3E%3Cpath d='M10,30 A20,20 0,0,1 50,30 A20,20 0,0,1 90,30 Q90,60 50,90 Q10,60 10,30 z' fill='black' /%3E%3C/svg%3E`,
+    // Replaced with cleaner Heart Path:
+    `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='black' /%3E%3C/svg%3E`,
     `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10 L70 70 L10 70 Z' fill='black' /%3E%3C/svg%3E`
 ];
 
@@ -227,7 +231,7 @@ const FruitSVG: React.FC<{ tier: FruitTier, size: number }> = ({ tier, size }) =
 
     return (
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            <circle cx={cx} cy={cy} r={r - 2} fill={def.color} stroke={tier !== FruitTier.TOMATO ? def.patternColor : 'none'} strokeWidth={tier !== FruitTier.TOMATO ? 2 : 0} />
+            <circle cx={cx} cy={cy} r={r - 2} fill={def.color} stroke={tier === FruitTier.TOMATO ? '#333333' : (tier !== FruitTier.TOMATO ? def.patternColor : 'none')} strokeWidth={tier === FruitTier.TOMATO ? 3 : (tier !== FruitTier.TOMATO ? 2 : 0)} />
             {renderPattern()}
             {renderFace()}
         </svg>
@@ -343,7 +347,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             <div className="absolute inset-0 bg-[#FFF8E1] z-0"></div>
 
             {/* --- BACKGROUND LAYER 1: Scrolling Pattern (Masked) --- */}
-            <div className="absolute inset-0 pointer-events-none z-0">
+            <div
+                className="absolute inset-0 pointer-events-none z-0"
+                style={{
+                    // Apply static gradient fade mask here on the container
+                    maskImage: 'linear-gradient(to bottom, transparent 0%, black 100%)',
+                    WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 100%)',
+                    maskComposite: 'intersect',
+                    WebkitMaskComposite: 'source-in'
+                }}
+            >
                 {/* Use opacity transition for pattern switching */}
                 {BACKGROUND_PATTERNS.map((pat, idx) => (
                     <div
@@ -356,7 +369,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                             maskSize: '50px',       // 50px size
                             WebkitMaskSize: '50px',
                             backgroundColor: bgColor, // The pattern takes this color
-                            opacity: bgPatternIndex === idx ? 0.12 : 0 // Slightly increased transparency
+                            opacity: bgPatternIndex === idx ? 0.18 : 0, // Slightly increased transparency (Was 0.12)
+                            animationDuration: fever ? '10s' : '20s' // Double speed (half duration) during fever
                         }}
                     />
                 ))}
@@ -490,7 +504,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                     <div className="bg-white/95 backdrop-blur-xl border border-white/50 shadow-[0_20px_60px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 w-full max-w-lg flex flex-col items-center max-h-[85vh] overflow-hidden">
 
                         <h2
-                            className="text-4xl font-black text-gray-800 mb-6 tracking-wide drop-shadow-sm select-none cursor-pointer active:scale-95 transition-transform"
+                            className="text-4xl font-black text-gray-800 mb-6 tracking-wide drop-shadow-sm select-none"
                             onClick={() => {
                                 setPauseTapCount(prev => {
                                     const newCount = prev + 1;

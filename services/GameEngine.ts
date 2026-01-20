@@ -324,7 +324,15 @@ export class GameEngine {
 
     drawFloor() {
         this.floorGraphics.clear();
-        const bottomY = this.height + 200;
+
+        // Calculate dynamic bottomY to ensure it covers the whole screen downwards
+        // logic: (actualScreenHeight - containerY) / scaleFactor = virtualBottomInLocalSpace
+        // Add some buffer (+200) just in case
+        const actualH = this.app?.screen.height || this.height;
+        const containerY = this.container.position.y || 0;
+        const scale = this.scaleFactor || 1;
+        const bottomY = ((actualH - containerY) / scale) + 200;
+
         const step = 5;
         this.floorGraphics.moveTo(0, bottomY);
         this.floorGraphics.lineTo(0, this.getFloorY(0));
@@ -353,7 +361,9 @@ export class GameEngine {
 
             visual.circle(0, 0, r);
             visual.fill({ color: def.color });
-            if (def.tier !== FruitTier.TOMATO) {
+            if (def.tier === FruitTier.TOMATO) {
+                visual.stroke({ width: 3, color: 0x333333, alignment: 0 });
+            } else {
                 visual.stroke({ width: 4, color: pColor, alignment: 0 });
             }
 
@@ -781,7 +791,16 @@ export class GameEngine {
         // 3. Next Preview Fruit (Top Right)
         // Coordinate approx: Width - 50, Top 70 (Based on UI layout)
         if (this.nextFruitTier === FruitTier.TOMATO) {
-            this.spawnPassiveTomatoParticle(this.width - 55, 75, 45);
+            // Convert Screen Space (Top Right) to Virtual Space
+            // Container is scaled by this.scaleFactor.
+            const screenW = this.app?.screen.width || this.width * this.scaleFactor;
+            // The Next Preview is approx right: 24px (1.5rem), top: 24px (1.5rem) + centered content
+            // Let's approximate center of the preview at (ScreenW - 55, 75) in screen pixels
+            const globalX = screenW - 60;
+            const globalY = 90; // Slightly lower to center on fruit
+
+            const virtual = this.getVirtualPos(globalX, globalY);
+            this.spawnPassiveTomatoParticle(virtual.x, virtual.y, 45);
         }
 
         // C. Fever Particles (Stars)
