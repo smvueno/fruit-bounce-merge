@@ -70,6 +70,24 @@ class TomatoEffect {
     }
 }
 
+class BombEffect {
+    bombId: number;
+    x: number;
+    y: number;
+    timer: number;
+    maxTime: number;
+    capturedIds: number[] = [];
+
+    constructor(id: number, x: number, y: number) {
+        this.bombId = id;
+        this.x = x;
+        this.y = y;
+        this.maxTime = 3.0; // 3 seconds timer
+        this.timer = this.maxTime;
+    }
+}
+
+
 class EffectParticle {
     x: number;
     y: number;
@@ -128,7 +146,9 @@ export class GameEngine {
     dragAnchorY: number = 0;
 
     activeTomatoes: TomatoEffect[] = [];
+    activeBombs: BombEffect[] = [];
     visualParticles: EffectParticle[] = [];
+
 
     audio: MusicEngine;
 
@@ -276,7 +296,9 @@ export class GameEngine {
         // Explicitly clear arrays
         this.fruits = [];
         this.activeTomatoes = [];
+        this.activeBombs = [];
         this.visualParticles = [];
+
 
         // Cleanup current fruit if it exists
         if (this.currentFruit) {
@@ -800,6 +822,39 @@ export class GameEngine {
                 this.activeTomatoes.splice(i, 1);
             }
         }
+
+        // Bomb Timer Logic
+        for (let i = this.activeBombs.length - 1; i >= 0; i--) {
+            const b = this.activeBombs[i];
+            b.timer -= dtMs / 1000;
+            const bombParticle = this.fruits.find(p => p.id === b.bombId);
+            if (bombParticle) {
+                b.x = bombParticle.x;
+                b.y = bombParticle.y;
+                const timeRemaining = Math.ceil(b.timer);
+
+                // Cartoony flash effect: flashes faster as time runs out
+                // Flash on whole seconds (3, 2, 1)
+                const flashTiming = b.timer % 1.0;
+                if (flashTiming > 0.7) {
+                    // Quick flash at each second
+                    bombParticle.scaleX = 1.3;
+                    bombParticle.scaleY = 1.3;
+                    bombParticle.alpha = 1.0;
+                } else {
+                    // Normal size between flashes
+                    bombParticle.scaleX = 1.0;
+                    bombParticle.scaleY = 1.0;
+                    bombParticle.alpha = 0.9;
+                }
+            }
+            if (b.timer <= 0) {
+                this.concludeBombEffect(b);
+                this.activeBombs.splice(i, 1);
+            }
+        }
+
+
         for (const p of this.fruits) {
             if (p.cooldownTimer > 0) p.cooldownTimer -= dtMs / 1000;
         }
@@ -909,6 +964,9 @@ export class GameEngine {
         // 3. Tomato Logic (Tractor)
         this.updateTomatoPhysics();
 
+        // 3b. Bomb Logic (Capture)
+        this.updateBombPhysics();
+
         // 4. Solver Loop (Substeps)
         for (let s = 0; s < SUBSTEPS; s++) {
             this.updateContactCounts(); // NEW: Count contacts before resolving
@@ -1013,6 +1071,36 @@ export class GameEngine {
         }
     }
 
+    updateBombPhysics() {
+        for (const b of this.activeBombs) {
+            const bomb = this.fruits.find(p => p.id === b.bombId);
+            if (!bomb) continue;
+
+            // Check which fruits are currently touching the bomb
+            for (const p of this.fruits) {
+                if (p.id === b.bombId || p === this.currentFruit || p.isStatic) continue;
+
+                // Don't capture special fruits
+                if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW || p.tier === FruitTier.BOMB) continue;
+
+                const dx = p.x - bomb.x;
+                const dy = p.y - bomb.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const radSum = p.radius + bomb.radius;
+
+                // If touching and not already tracked, add to list
+                if (dist < radSum + 5) { // 5px buffer for detection
+                    if (!b.capturedIds.includes(p.id)) {
+                        b.capturedIds.push(p.id);
+                        // DON'T freeze the fruits - let them move until explosion
+                        // p.isCaught = true;
+                        // p.ignoreCollisions = true;
+                    }
+                }
+            }
+        }
+    }
+
     resolveWalls() {
         const width = this.width;
         for (const p of this.fruits) {
@@ -1069,7 +1157,8 @@ export class GameEngine {
                     // --- SPECIAL LOGIC: BOMB ---
                     if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
                         this.handleBombExplosion(p1.tier === FruitTier.BOMB ? p1 : p2);
-                        return; // Explosion alters array, safest to return or break carefully. Returning is fine for this frame.
+                        // DON'T return - let normal collision physics apply!
+                        // The bomb should bounce like any other fruit
                     }
 
                     // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
@@ -1164,57 +1253,24 @@ export class GameEngine {
     }
 
     handleBombExplosion(bomb: Particle) {
-        // 1. Visuals
-        // Create expanding ghost
-        const ghost = new EffectParticle(bomb.x, bomb.y, 0x212121, 'bomb-ghost');
-        ghost.size = bomb.radius;
-        ghost.life = 1.0;
-        ghost.alpha = 0.8;
-        this.visualParticles.push(ghost);
+        // Check if bomb already has an active effect
+        const existing = this.activeBombs.find(b => b.bombId === bomb.id);
+        if (existing) return; // Already activated
 
-        this.applyShockwave(bomb.x, bomb.y, 600, 40); // Push Power matches Tomato (600 range, 40 force)
+        // Start the timer
+        const effect = new BombEffect(bomb.id, bomb.x, bomb.y);
+        this.activeBombs.push(effect);
 
-        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
-        this.audio.playMergeSound(FruitTier.WATERMELON);
+        // DON'T make bomb static - let it keep bouncing and rolling!
+        // bomb.isStatic = true;
+        // bomb.vx = 0;
+        // bomb.vy = 0;
 
-        // 2. Logic: Destroy low tier
-        const range = 250;
-        const destroyed: Particle[] = [];
-
-        for (const p of this.fruits) {
-            if (p === bomb || p.isStatic) continue;
-
-            const dx = p.x - bomb.x;
-            const dy = p.y - bomb.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            if (dist < range) {
-                if (p.tier <= FruitTier.STRAWBERRY) {
-                    destroyed.push(p);
-                }
-            }
-        }
-
-        // Remove Bomb
-        this.removeParticle(bomb);
-
-        // Remove destroyed & Spawn Fire Stars
-        destroyed.forEach(p => {
-            // Spawn Orange Red Fire Stars
-            for (let k = 0; k < 8; k++) {
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 2 + Math.random() * 4;
-                const color = Math.random() > 0.5 ? 0xFF4500 : 0xFF6347; // OrangeRed / Tomato
-                const sp = new EffectParticle(p.x, p.y, color, 'star');
-                sp.vx = Math.cos(angle) * speed;
-                sp.vy = Math.sin(angle) * speed;
-                sp.life = 0.5 + Math.random() * 0.5;
-                sp.size = 5 + Math.random() * 5;
-                this.visualParticles.push(sp);
-            }
-            this.removeParticle(p);
-        });
+        // Small visual feedback
+        this.audio.playMergeSound(FruitTier.CHERRY); // Small 'tick' sound
+        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(30);
     }
+
 
     merge(p1: Particle, p2: Particle) {
         // Handle Logic for Rainbow
@@ -1318,6 +1374,96 @@ export class GameEngine {
         this.createMergeEffect(releaseX, releaseY, "#FF4444");
         this.applyShockwave(releaseX, releaseY, 600, 40);
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([50, 50]);
+    }
+
+    concludeBombEffect(effect: BombEffect) {
+        const bomb = this.fruits.find(p => p.id === effect.bombId);
+        let releaseX = effect.x;
+        let releaseY = effect.y;
+
+        if (bomb) {
+            releaseX = bomb.x;
+            releaseY = bomb.y;
+            this.removeParticle(bomb);
+        }
+
+        // Create expanding ghost visual
+        const ghost = new EffectParticle(releaseX, releaseY, 0x212121, 'bomb-ghost');
+        ghost.size = 28; // Bomb radius
+        ghost.life = 1.0;
+        ghost.alpha = 0.8;
+        this.visualParticles.push(ghost);
+
+        // Process each captured fruit
+        for (const id of effect.capturedIds) {
+            const p = this.fruits.find(f => f.id === id);
+            if (!p) continue;
+
+            const tier = p.tier;
+            let targetTier: number;
+            let spawnCount: number;
+
+            // Calculate split logic: tier - 3 levels (INDIVIDUAL per fruit!)
+            if (tier >= 3) {
+                targetTier = tier - 3;
+                spawnCount = 6; // 3 levels down
+            } else if (tier === 2) {
+                targetTier = 0; // 2 levels down (was 1, but let's be more aggressive)
+                spawnCount = 4;
+            } else if (tier === 1) {
+                targetTier = 0;
+                spawnCount = 2; // 1 level down
+            } else {
+                // tier 0 (cherry) - cannot split further, just remove
+                this.removeParticle(p);
+                continue;
+            }
+
+            // SAFETY: Clamp to valid range [0, original tier]
+            targetTier = Math.max(0, Math.min(targetTier, tier));
+
+            // SAFETY: Ensure targetTier is a valid FruitTier
+            if (targetTier < 0 || targetTier > FruitTier.WATERMELON) {
+                console.error(`Invalid targetTier: ${targetTier} from tier ${tier}`);
+                this.removeParticle(p);
+                continue;
+            }
+
+            // Store position before removing
+            const fruitX = p.x;
+            const fruitY = p.y;
+            const fruitColor = FRUIT_DEFS[p.tier]?.color || '#FF6347';
+
+            // Remove original fruit
+            this.removeParticle(p);
+
+            // Spawn split fruits with tomato-style explosion
+            const targetDef = FRUIT_DEFS[targetTier as FruitTier];
+            if (targetDef) {
+                for (let i = 0; i < spawnCount; i++) {
+                    const newP = new Particle(fruitX, fruitY, targetDef, this.nextId++);
+
+                    // Add explosion velocity (similar to tomato release)
+                    const angle = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.3;
+                    const force = 5 + Math.random() * 3;
+                    newP.vx = Math.cos(angle) * force;
+                    newP.vy = Math.sin(angle) * force - 3; // Upward bias
+                    newP.cooldownTimer = 1.5; // LONGER cooldown to prevent immediate merges
+
+                    this.fruits.push(newP);
+                    this.createSprite(newP);
+                }
+            }
+
+            // Create merge effect for visual feedback
+            this.createMergeEffect(fruitX, fruitY, fruitColor);
+        }
+
+        // Explosive visual release and shockwave
+        this.createMergeEffect(releaseX, releaseY, "#212121");
+        this.applyShockwave(releaseX, releaseY, 600, 40);
+        this.audio.playMergeSound(FruitTier.WATERMELON);
+        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
 
     applyShockwave(x: number, y: number, radius: number, force: number) {
