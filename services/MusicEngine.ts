@@ -2,6 +2,13 @@
 type NoteEvent = { freq: number; duration: number; type?: 'kick' | 'snare' | 'hihat' | 'crash' };
 type TrackData = NoteEvent[];
 
+// Durations
+const D16 = 0.25;
+const D8 = 0.5;
+const D4 = 1.0;
+const D2 = 2.0;
+const D1 = 4.0; // Added for completeness if needed
+
 // Frequency Map (Equal Temperament)
 const N = {
     R: 0,
@@ -10,14 +17,17 @@ const N = {
     C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61, G3: 196.00, GS3: 207.65, A3: 220.00, B3: 246.94,
     C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, GS4: 415.30, A4: 440.00, B4: 493.88,
     C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00, B5: 987.77,
-    C6: 1046.50
-};
+    C6: 1046.50,
 
-// Durations
-const D16 = 0.25;
-const D8 = 0.5;
-const D4 = 1.0;
-const D2 = 2.0;
+    // Added accidentals and specific frequencies requested
+    Eb4: 311.13,
+    Fs4: 369.99,
+    Ab4: 415.30,
+    Bb4: 466.16,
+
+    Eb5: 622.25,
+    Bb5: 932.32
+};
 
 export class MusicEngine {
   ctx: AudioContext | null = null;
@@ -60,76 +70,101 @@ export class MusicEngine {
 
   // --- COMPOSITION ---
   composeSong() {
-    // --- INTRO ---
-    // Simple build up
-    this.intro.bass = [...this.createBassRun(N.C3, 4), ...this.createBassRun(N.G2, 4), ...this.createBassRun(N.A2, 4), ...this.createBassRun(N.G2, 4)];
-    this.intro.lead = [
-        {freq: N.C4, duration: D4}, {freq: N.E4, duration: D4}, {freq: N.G4, duration: D4}, {freq: N.C5, duration: D4},
-        {freq: N.D5, duration: D4}, {freq: N.B4, duration: D4}, {freq: N.G4, duration: D4}, {freq: N.D4, duration: D4},
-        {freq: N.C4, duration: D4}, {freq: N.E4, duration: D4}, {freq: N.A4, duration: D4}, {freq: N.C5, duration: D4},
-        {freq: N.B4, duration: D8}, {freq: N.A4, duration: D8}, {freq: N.G4, duration: D8}, {freq: N.F4, duration: D8}, {freq: N.E4, duration: D8}, {freq: N.D4, duration: D8}, {freq: N.C4, duration: D4}
+    // 1. Updated Frequency Map (Adding accidentals found in the track)
+    // defined in global N object above
+
+    // --- INTRO (The first 9 seconds of the video) ---
+    // A simple pluck melody with a 4-on-the-floor kick
+    // 8 beats pattern
+    const introLeadPattern = [
+        {freq: N.C5, duration: D4}, {freq: N.G4, duration: D4}, {freq: N.Bb4, duration: D4}, {freq: N.F4, duration: D4},
+        {freq: N.C5, duration: D8}, {freq: N.D5, duration: D8}, {freq: N.C5, duration: D4}, {freq: N.G4, duration: D2}
     ];
+    // 8 beats pattern
+    const introBassPattern = this.createBassRun(N.C2, 8);
+
+    // Intro needs to be 16 beats to match the drum build
+    this.intro.lead = [...introLeadPattern, ...introLeadPattern];
+    this.intro.bass = [...introBassPattern, ...introBassPattern];
     this.intro.drum = this.createDrumBeat(16, 'build');
     this.intro.harmony = this.createRestTrack(16);
 
-    // --- MAIN LOOP (Bouncy Pop) ---
-    // Progression: C (I) - G (V) - Am (vi) - F (IV) ... ending on G (V) for loop
-    const progBass = [
-        ...this.createBassRun(N.C3, 4), ...this.createBassRun(N.G2, 4),
-        ...this.createBassRun(N.A2, 4), ...this.createBassRun(N.F2, 4)
-    ]; 
-    // Fix: Modify last 4 bars of bass to turnaround on G
-    const loopBass = [...progBass, ...progBass, ...progBass];
-    // Last 4 bars: C - G - Am - G (Turnaround)
-    loopBass.push(...this.createBassRun(N.C3, 4), ...this.createBassRun(N.G2, 4), ...this.createBassRun(N.A2, 4), ...this.createBassRun(N.G2, 4));
+    // --- MAIN LOOP (The "Electro & Dance" section) ---
+    // Chord Progression: Cm - Ab - Eb - Bb (Very common in dance music)
     
-    this.loop.bass = loopBass;
+    // Rhythmic "Bounce" Melody
+    const mainMelody: TrackData = [
+        // Bar 1: C Minor feel (4 beats)
+        {freq: N.C5, duration: D8}, {freq: N.R, duration: D8}, {freq: N.C5, duration: D8}, {freq: N.Eb5, duration: D8},
+        {freq: N.D5, duration: D4}, {freq: N.G4, duration: D4},
+        // Bar 2: Ab Major feel (4 beats)
+        {freq: N.C5, duration: D8}, {freq: N.R, duration: D8}, {freq: N.C5, duration: D8}, {freq: N.Eb5, duration: D8},
+        {freq: N.F5, duration: D4}, {freq: N.Bb4, duration: D4},
+    ];
+    // mainMelody is 8 beats total
 
-    // Melody
-    const motifA = [
-        {freq: N.E5, duration: D8+D16}, {freq: N.R, duration: D16}, {freq: N.C5, duration: D4}, {freq: N.G4, duration: D8}, {freq: N.E4, duration: D8}, // C
-        {freq: N.D4, duration: D8}, {freq: N.E4, duration: D8}, {freq: N.D4, duration: D4}, {freq: N.G3, duration: D2}, // G
+    // Off-beat "Bouncing" Bass (matches the Mixer settings in the video)
+    const bounceBass: TrackData = [
+        {freq: N.R, duration: D8}, {freq: N.C2, duration: D8}, {freq: N.R, duration: D8}, {freq: N.C2, duration: D8},
+        {freq: N.R, duration: D8}, {freq: N.C2, duration: D8}, {freq: N.R, duration: D8}, {freq: N.C2, duration: D8},
     ];
-    const motifB = [
-        {freq: N.C5, duration: D8}, {freq: N.B4, duration: D8}, {freq: N.A4, duration: D4}, {freq: N.G4, duration: D4}, {freq: N.E4, duration: D4}, // Am
-        {freq: N.F4, duration: D8}, {freq: N.G4, duration: D8}, {freq: N.A4, duration: D4}, {freq: N.C5, duration: D4}, {freq: N.D5, duration: D4}  // F
-    ];
-    const verse = [...motifA, ...motifB];
+    // bounceBass is 4 beats total
+
+    this.loop.lead = [...mainMelody, ...mainMelody]; // 16 beats
+    this.loop.bass = [...bounceBass, ...bounceBass, ...bounceBass, ...bounceBass]; // 16 beats (4 * 4)
+    this.loop.drum = this.createDrumBeat(16, 'chorus');
     
-    const chorus = [
-        {freq: N.E5, duration: D4}, {freq: N.G5, duration: D4}, {freq: N.E5, duration: D4}, {freq: N.C5, duration: D4}, // C
-        {freq: N.D5, duration: D8}, {freq: N.C5, duration: D8}, {freq: N.B4, duration: D4}, {freq: N.A4, duration: D4}, {freq: N.G4, duration: D4}, // G
-        {freq: N.A4, duration: D4}, {freq: N.C5, duration: D4}, {freq: N.E5, duration: D4}, {freq: N.A5, duration: D4}, // Am
-        {freq: N.G5, duration: D4}, {freq: N.F5, duration: D8}, {freq: N.E5, duration: D8}, {freq: N.D5, duration: D4}, {freq: N.G4, duration: D4}  // G (Turnaround)
+    // Harmony: In the video, the "Backing" is quite loud.
+    // We simulate this by playing the root notes an octave higher than the bass.
+    const loopHarmonyPattern = [
+        {freq: N.C4, duration: D2}, {freq: N.Eb4, duration: D2},
+        {freq: N.Ab4, duration: D2}, {freq: N.Bb4, duration: D2}
     ];
+    // loopHarmonyPattern is 8 beats. Repeat to fill 16.
+    this.loop.harmony = [...loopHarmonyPattern, ...loopHarmonyPattern];
 
-    this.loop.lead = [...verse, ...verse, ...chorus, ...chorus];
-    this.loop.drum = [...this.createDrumBeat(32, 'verse'), ...this.createDrumBeat(32, 'chorus')];
-    this.loop.harmony = this.loop.lead.map(n => ({ freq: n.freq > 0 ? n.freq * 0.75 : 0, duration: n.duration })); // Simple harmony
-
-    // --- FRENZY (High Tempo / Bonus Level) ---
-    // Double time feel. 
-    // Pattern: Arpeggios C E G C
-    const arp = [
-        {freq: N.C4, duration: D16}, {freq: N.E4, duration: D16}, {freq: N.G4, duration: D16}, {freq: N.C5, duration: D16},
-        {freq: N.E5, duration: D16}, {freq: N.G5, duration: D16}, {freq: N.E5, duration: D16}, {freq: N.C5, duration: D16},
-    ]; // 2 Beats
-    const arpG = arp.map(n => ({...n, freq: n.freq * 1.5})); // G chord
-
+    // --- FRENZY (The "Extreme" mode from the video) ---
+    // High energy, constant 16th notes
     const frenzyLead: TrackData = [];
-    // 4 Bars of C, 4 Bars of G
-    for(let i=0; i<8; i++) frenzyLead.push(...arp);
-    for(let i=0; i<8; i++) frenzyLead.push(...arpG);
-    
-    const frenzyBass: TrackData = [];
-    // Driving octaves
-    for(let i=0; i<16; i++) { frenzyBass.push({freq: N.C3, duration: D8}, {freq: N.C2, duration: D8}); }
-    for(let i=0; i<16; i++) { frenzyBass.push({freq: N.G2, duration: D8}, {freq: N.G1, duration: D8}); }
+    for(let i=0; i<16; i++) {
+        frenzyLead.push({freq: i % 2 === 0 ? N.C5 : N.Eb5, duration: D16});
+    }
+    // frenzyLead is 16 * 0.25 = 4 beats.
 
-    this.frenzy.lead = [...frenzyLead, ...frenzyLead]; // 32 bars worth
-    this.frenzy.bass = [...frenzyBass, ...frenzyBass];
-    this.frenzy.harmony = this.frenzy.lead.map(n => ({freq: n.freq * 0.5, duration: n.duration})); // Sub harmony
-    this.frenzy.drum = this.createDrumBeat(this.calculateTotalBeats(this.frenzy.lead), 'frenzy');
+    this.frenzy.lead = frenzyLead;
+    this.frenzy.bass = this.createBassRun(N.C2, 4); // Fast constant driving bass (4 beats)
+    this.frenzy.drum = this.createDrumBeat(4, 'frenzy');
+    this.frenzy.harmony = this.createRestTrack(4);
+  }
+
+  // --- UPDATED DRUM BEAT ---
+  // To match the "Electro" style, the snare needs to be on 2 and 4,
+  // and the hi-hats need to be on the "off-beats" (the 'and').
+  createDrumBeat(beats: number, style: 'verse'|'chorus'|'build'|'frenzy'): TrackData {
+      const track: TrackData = [];
+      const k = {freq:0, duration: 0.25, type: 'kick' as const};
+      const s = {freq:0, duration: 0.25, type: 'snare' as const};
+      const h = {freq:0, duration: 0.25, type: 'hihat' as const};
+      const r = {freq:0, duration: 0.25};
+
+      let remaining = beats;
+      while(remaining > 0) {
+          if (style === 'chorus') {
+              // Classic House/Electro: Kick on 1,2,3,4. Hat on the 'off'. Snare on 2, 4.
+              track.push(k, h, s, h); // Beat 1 & 2
+              track.push(k, h, s, h); // Beat 3 & 4
+              remaining -= 2;
+          } else if (style === 'frenzy') {
+              // Rapid fire
+              track.push(k, s, k, s);
+              remaining -= 1;
+          } else {
+              // Build up: just kicks
+              track.push(k, r, k, r);
+              remaining -= 1;
+          }
+      }
+      return track;
   }
 
   // --- INTERFACE ---
@@ -179,40 +214,14 @@ export class MusicEngine {
   
   createBassRun(freq: number, bars: number): TrackData {
       const pat: TrackData = [];
+      // Note: 'bars' argument name is inherited but implementation does beats?
+      // "bars" in original code used `pat.push({duration: D8}); pat.push({duration: D8});` which is 1 beat per "bar" in this loop.
+      // So bars=8 creates 8 beats.
       for(let i=0; i<bars; i++) { 
           pat.push({freq: freq, duration: D8});
           pat.push({freq: freq, duration: D8}); 
       }
       return pat;
-  }
-
-  createDrumBeat(beats: number, style: 'verse'|'chorus'|'build'|'frenzy'): TrackData {
-      const track: TrackData = [];
-      const k = {freq:0, duration: 0.25, type: 'kick' as const};
-      const s = {freq:0, duration: 0.25, type: 'snare' as const};
-      const h = {freq:0, duration: 0.25, type: 'hihat' as const};
-      const r = {freq:0, duration: 0.25};
-
-      let remaining = beats;
-      while(remaining > 0) {
-          if (style === 'build') {
-              track.push(k, r, k, r); 
-          } else if (style === 'frenzy') {
-              track.push(k, h, s, h); 
-          } else if (style === 'verse') {
-              track.push(k, r, r, r);
-              track.push(s, r, r, r);
-              track.push(k, r, k, r);
-              track.push(s, r, r, r);
-          } else {
-              track.push(k, r, k, h); 
-              track.push(s, r, r, h); 
-              track.push(k, r, k, h); 
-              track.push(s, r, k, h); 
-          }
-          remaining -= 4;
-      }
-      return track;
   }
 
   createRestTrack(beats: number): TrackData {
@@ -283,11 +292,18 @@ export class MusicEngine {
   scheduleStep(time: number) {
       let src = this.currentSection === 'intro' ? this.intro : (this.currentSection === 'frenzy' ? this.frenzy : this.loop);
       
-      if (this.targetSection !== 'loop' && this.currentSection === 'loop' && this.cursors.lead % 16 === 0) { 
+      // Transition Logic
+      // The melody has 12 notes per 8 beats (2 bars).
+      // Checking % 12 ensures we transition on a 2-bar boundary.
+      // (Originally 16, but our new lead melody is structurally different)
+      const TRANSITION_POINT = 12;
+
+      if (this.targetSection !== 'loop' && this.currentSection === 'loop' && this.cursors.lead % TRANSITION_POINT === 0) {
            this.currentSection = 'frenzy';
            this.resetCursors();
            src = this.frenzy;
       } else if (this.targetSection === 'loop' && this.currentSection === 'frenzy' && this.cursors.lead % 16 === 0) {
+           // Frenzy is fast 16th notes. 16 notes = 1 bar (4 beats).
            this.currentSection = 'loop';
            this.resetCursors();
            src = this.loop;
