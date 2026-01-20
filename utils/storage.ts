@@ -9,11 +9,13 @@ const DEFAULT_DATA: SavedData = {
     [Difficulty.HARD]: 0,
   },
   leaderboard: [],
+  pendingScores: [],
   settings: {
     musicEnabled: true,
     sfxEnabled: true,
     hapticsEnabled: true,
     reducedParticles: false,
+    showLocalOnly: false,
   },
   lastDifficulty: Difficulty.NORMAL,
   tutorialSeen: false,

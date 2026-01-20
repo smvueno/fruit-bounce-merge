@@ -6,16 +6,11 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Check if environment variables are loaded
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase URL or Anon Key is missing. Please check your .env.local file.');
-  throw new Error('Supabase URL or Anon Key is missing.');
+  // We log an error but don't throw, to allow the app to run in "offline/local" mode if config is missing
+  console.warn('Supabase URL or Anon Key is missing. Leaderboard will be local-only.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Example of how to use it:
-// async function getCountries() {
-//   const { data, error } = await supabase.from('countries').select();
-//   if (error) console.error('Error fetching countries:', error);
-//   else console.log('Countries:', data);
-// }
-// getCountries();
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder'
+);
