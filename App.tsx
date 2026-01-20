@@ -5,6 +5,7 @@ import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';
 import { loadData, saveData } from './utils/storage';
+import { getGlobalLeaderboard, submitScore, uploadPendingScores } from './services/leaderboardService';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
@@ -12,10 +13,33 @@ const App: React.FC = () => {
   const [currentScore, setCurrentScore] = useState(0);
   const [finalStats, setFinalStats] = useState<GameStats | null>(null);
   const [isNewHigh, setIsNewHigh] = useState(false);
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
+
+  const syncScores = async () => {
+      // 1. Upload Pending
+      if (data.pendingScores && data.pendingScores.length > 0) {
+          const remaining = await uploadPendingScores(data.pendingScores);
+          // If we managed to upload some, update local storage
+          if (remaining.length !== data.pendingScores.length) {
+              saveData({ pendingScores: remaining });
+              setData(prev => ({ ...prev, pendingScores: remaining }));
+          }
+      }
+      // 2. Fetch Global
+      const global = await getGlobalLeaderboard();
+      setGlobalLeaderboard(global);
+  };
 
   useEffect(() => {
     // Load initial data
     setData(loadData());
+
+    // Initial Sync
+    syncScores();
+
+    // Online listener
+    window.addEventListener('online', syncScores);
+    return () => window.removeEventListener('online', syncScores);
   }, []);
 
   const handleStart = (diff: Difficulty) => {
@@ -26,19 +50,22 @@ const App: React.FC = () => {
   };
 
   const handleGameOver = (stats: GameStats) => {
-    // Check if score qualifies for leaderboard (Top 10)
-    const currentLeaderboard = data.leaderboard || [];
-    const sortedLeaderboard = [...currentLeaderboard].sort((a, b) => b.score - a.score);
-    const LIMIT = 10;
+    // Check if score qualifies for global leaderboard (Top 50 shown usually)
+    // Or check against local?
+    // User wants "New Record" badge.
+    // If we are online, we should probably check against Global.
+    // If offline, check against Local?
+    // For simplicity: Check against the currently visible leaderboard (activeLeaderboard).
+
+    const activeList = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
+    const sortedLeaderboard = [...activeList].sort((a, b) => b.score - a.score);
+    const LIMIT = 10; // Badge usually relevant for top 10
     
     let qualifies = false;
-    // Strictly require a score > 0 to qualify
     if (stats.score > 0) {
         if (sortedLeaderboard.length < LIMIT) {
             qualifies = true;
         } else {
-            // Check against the lowest score in the top 10
-            // If we have 10 items, index 9 is the last one.
             const lowestScore = sortedLeaderboard[LIMIT - 1].score;
             if (stats.score > lowestScore) {
                 qualifies = true;
@@ -60,7 +87,7 @@ const App: React.FC = () => {
     setGameState(GameState.GAME_OVER);
   };
 
-  const saveScoreToLeaderboard = (name: string) => {
+  const saveScoreToLeaderboard = async (name: string) => {
       if (!finalStats) return;
 
       const newEntry: LeaderboardEntry = {
@@ -71,19 +98,34 @@ const App: React.FC = () => {
           date: new Date().toISOString()
       };
 
+      // 1. Update Local History
       const currentLeaderboard = data.leaderboard || [];
       const updatedLeaderboard = [...currentLeaderboard, newEntry]
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 10); // Keep top 10 in storage (Matches display limit)
+          .sort((a, b) => b.score - a.score);
+          // We can keep more history locally if we want, but sticking to logic
 
-      saveData({ leaderboard: updatedLeaderboard });
-      setData(prev => ({ ...prev, leaderboard: updatedLeaderboard }));
+      const newPending = [...(data.pendingScores || [])];
+
+      // 2. Try Global Submit
+      const uploaded = await submitScore(newEntry);
+      if (!uploaded) {
+          newPending.push(newEntry);
+      } else {
+          // Refresh global if successful
+          const global = await getGlobalLeaderboard();
+          setGlobalLeaderboard(global);
+      }
+
+      saveData({ leaderboard: updatedLeaderboard, pendingScores: newPending });
+      setData(prev => ({ ...prev, leaderboard: updatedLeaderboard, pendingScores: newPending }));
   };
   
   const updateSettings = (s: any) => {
     saveData({ settings: s });
     setData(prev => ({ ...prev, settings: s }));
   };
+
+  const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
 
   return (
     <div className="relative w-full h-full bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
@@ -98,7 +140,7 @@ const App: React.FC = () => {
         {gameState === GameState.START && (
           <StartScreen 
               onStart={handleStart} 
-              leaderboard={data.leaderboard || []}
+              leaderboard={activeLeaderboard}
               settings={data.settings}
               onUpdateSettings={updateSettings}
           />
@@ -123,7 +165,8 @@ const App: React.FC = () => {
               <GameCanvas 
                   difficulty={data.lastDifficulty} 
                   settings={data.settings}
-                  leaderboard={data.leaderboard || []}
+                  onUpdateSettings={updateSettings}
+                  leaderboard={activeLeaderboard}
                   onGameOver={handleGameOver}
                   setScore={setCurrentScore}
               />
@@ -134,7 +177,7 @@ const App: React.FC = () => {
           <GameOverScreen 
               stats={finalStats}
               isNewHigh={isNewHigh}
-              leaderboard={data.leaderboard || []}
+              leaderboard={activeLeaderboard}
               onRestart={() => handleStart(data.lastDifficulty)}
               onMenu={() => setGameState(GameState.START)}
               onSaveScore={saveScoreToLeaderboard}

@@ -30,6 +30,7 @@ export interface GameSettings {
   sfxEnabled: boolean;
   hapticsEnabled: boolean;
   reducedParticles: boolean;
+  showLocalOnly: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -42,7 +43,8 @@ export interface LeaderboardEntry {
 
 export interface SavedData {
   highScores: Record<Difficulty, number>; // Kept for legacy/difficulty tracking
-  leaderboard: LeaderboardEntry[]; // Global leaderboard
+  leaderboard: LeaderboardEntry[]; // Local leaderboard history
+  pendingScores: LeaderboardEntry[]; // Scores waiting to be uploaded to Supabase
   settings: GameSettings;
   lastDifficulty: Difficulty;
   tutorialSeen: boolean;
