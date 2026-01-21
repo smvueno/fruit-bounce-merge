@@ -77,7 +77,15 @@ class OfflineManager {
      */
     setSyncInProgress(inProgress: boolean) {
         this.syncInProgress = inProgress;
-        if (!inProgress) {
+        if (inProgress) {
+            // Safety timeout: Auto-clear flag after 15 seconds to prevent locking
+            setTimeout(() => {
+                if (this.syncInProgress) {
+                    console.warn('Sync timed out - resetting flag');
+                    this.syncInProgress = false;
+                }
+            }, 15000);
+        } else {
             this.lastSyncTime = Date.now();
         }
     }
