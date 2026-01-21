@@ -26,6 +26,7 @@ const App: React.FC = () => {
   // Service Worker Update State
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   // Expose sync function to refresh both global state and local pending data
   const handleSync = async () => {
@@ -165,6 +166,23 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]); // Added gameState dependency to ensure modal logic works if state changes
 
+  // Periodic Leaderboard Polling (Simple "Realtime")
+  useEffect(() => {
+    // Poll every 30 seconds to update leaderboard if data changes externally
+    const pollId = setInterval(() => {
+      // Logic: Sync if:
+      // 1. Tab is visible AND Online AND
+      // 2. We are NOT playing (Start/GameOver) OR We ARE playing but Paused (Menu Open)
+      const shouldSync = !document.hidden && navigator.onLine && (gameState !== GameState.PLAYING || isPaused);
+
+      if (shouldSync) {
+        handleSync();
+      }
+    }, 30000);
+
+    return () => clearInterval(pollId);
+  }, [gameState, isPaused]); // Add dependencies so interval closure sees current state
+
   const handleStart = (diff: Difficulty) => {
     // Check for update before starting - prevent game start if update available
     if (waitingWorker) {
@@ -175,6 +193,7 @@ const App: React.FC = () => {
     saveData({ lastDifficulty: diff });
     setData(prev => ({ ...prev, lastDifficulty: diff }));
     setCurrentScore(0);
+    setIsPaused(false); // Reset pause state on start
     setGameState(GameState.PLAYING);
   };
 

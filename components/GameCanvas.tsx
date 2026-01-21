@@ -17,6 +17,7 @@ interface GameCanvasProps {
     onGameOver: (stats: GameStats) => void;
     setScore: (s: number) => void;
     onSync?: () => void;
+    onPauseChange?: (paused: boolean) => void;
 }
 
 // Simple large SVG patterns
@@ -31,7 +32,7 @@ const BACKGROUND_PATTERNS = [
 
 
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<GameEngine | null>(null);
     const [combo, setCombo] = useState(0);
@@ -110,6 +111,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     const handlePauseToggle = () => {
         const newState = !isPaused;
         setIsPaused(newState);
+        if (onPauseChange) onPauseChange(newState);
         if (newState && onSync) {
             onSync();
         }
@@ -123,6 +125,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             engineRef.current.reset(); // Use new reset method instead of destroy/init
         }
         setIsPaused(false);
+        if (onPauseChange) onPauseChange(false);
         setScore(0);
         setCombo(0);
         setFever(false);
