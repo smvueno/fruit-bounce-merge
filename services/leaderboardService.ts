@@ -130,3 +130,52 @@ export const uploadPendingScores = async (pending: LeaderboardEntry[]): Promise<
 
   return remaining;
 };
+
+import { loadData, saveData } from '../utils/storage';
+import { offlineManager } from './offlineManager';
+
+/**
+ * Sync scores helper - uploads pending and fetches latest global
+ * Returns the latest global leaderboard if successful
+ */
+export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
+    // 1. Check connectivity
+    if (!offlineManager.isOnline()) {
+        console.log('Offline - skipping sync');
+        return null;
+    }
+
+    // 2. Prevent overlapping syncs
+    if (offlineManager.isSyncing()) {
+        console.log('Sync already in progress - skipping');
+        return null;
+    }
+
+    offlineManager.setSyncInProgress(true);
+
+    try {
+        // 3. Load FRESH data from storage
+        const currentSaved = loadData();
+        const pending = currentSaved.pendingScores || [];
+
+        if (pending.length > 0) {
+            console.log(`Syncing ${pending.length} pending scores...`);
+            const remaining = await uploadPendingScores(pending);
+
+            // If we managed to upload some, update local storage
+            if (remaining.length !== pending.length) {
+                console.log(`Successfully synced ${pending.length - remaining.length} scores.`);
+                saveData({ pendingScores: remaining });
+            }
+        }
+
+        // 4. Fetch Global (force refresh)
+        const global = await getGlobalLeaderboard(50, true);
+        return global;
+    } catch (e) {
+        console.error('Error during sync:', e);
+        return null;
+    } finally {
+        offlineManager.setSyncInProgress(false);
+    }
+};
