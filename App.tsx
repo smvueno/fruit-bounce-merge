@@ -61,6 +61,15 @@ const App: React.FC = () => {
             });
           }
         });
+
+        // Periodically check for updates (every 60s)
+        const intervalId = setInterval(() => {
+            reg.update().catch(err => console.error('Error checking for SW update:', err));
+        }, 60000);
+
+        // Cleanup interval on unmount (though App usually doesn't unmount)
+        return () => clearInterval(intervalId);
+
       }).catch(err => console.error('Service Worker registration failed:', err));
 
       // Reload when the new worker takes control
