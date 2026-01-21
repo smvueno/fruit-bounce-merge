@@ -1,24 +1,33 @@
-
 import * as PIXI from 'pixi.js';
 import { FruitDef, FruitTier, Difficulty, GameSettings, GameStats } from '../types';
-import { FRUIT_DEFS, DIFFICULTY_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_THRESHOLD, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { FRUIT_DEFS, DIFFICULTY_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
 import { MusicEngine } from './MusicEngine';
-import { Particle, TomatoEffect, BombEffect, CelebrationState, EffectParticle } from '../types/GameObjects';
+import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
+
+// Systems
+import { PhysicsSystem, PhysicsCallbacks } from './systems/PhysicsSystem';
+import { InputSystem } from './systems/InputSystem';
+import { EffectSystem } from './systems/EffectSystem';
+import { RenderSystem } from './systems/RenderSystem';
 
 // --- Virtual Resolution ---
 const V_WIDTH = 600;
 const V_HEIGHT = 900;
 
-
-
 // --- Engine ---
 export class GameEngine {
+    // PIXI references (Managed by RenderSystem mainly, but Engine holds App for Lifecycle)
     app: PIXI.Application | undefined;
     container: PIXI.Container;
     effectContainer: PIXI.Container;
-    effectGraphics: PIXI.Graphics;
-    floorGraphics: PIXI.Graphics;
 
+    // Systems
+    physicsSystem: PhysicsSystem;
+    inputSystem: InputSystem;
+    effectSystem: EffectSystem;
+    renderSystem: RenderSystem;
+
+    // Game State
     fruits: Particle[] = [];
     nextId: number = 0;
     canvasElement: HTMLCanvasElement;
@@ -35,21 +44,17 @@ export class GameEngine {
 
     currentFruit: Particle | null = null;
     nextFruitTier: FruitTier = FruitTier.CHERRY;
-    nextFruitQueue: FruitTier[] = []; // Lookahead queue
-    isAiming: boolean = false;
+    nextFruitQueue: FruitTier[] = [];
     canDrop: boolean = true;
-    aimX: number = 0;
-    dragAnchorX: number = 0;
-    dragAnchorY: number = 0;
 
+    // Active Effects State
     activeTomatoes: TomatoEffect[] = [];
     activeBombs: BombEffect[] = [];
     celebrationEffect: CelebrationState | null = null;
-    visualParticles: EffectParticle[] = [];
-
 
     audio: MusicEngine;
 
+    // Callbacks
     onScore: (amount: number, total: number) => void = () => { };
     onGameOver: (stats: GameStats) => void = () => { };
     onCombo: (count: number) => void = () => { };
@@ -81,13 +86,6 @@ export class GameEngine {
     dangerAccumulator: number = 0;
     readonly DANGER_TRIGGER_DELAY: number = 3000;
 
-    fruitSprites: Map<number, PIXI.Container> = new Map();
-    textures: Map<FruitTier, PIXI.Texture> = new Map();
-    dangerLine: PIXI.Graphics;
-    pointerHistory: { x: number, y: number, time: number }[] = [];
-    lastFruitX: number = 0;
-    lastFruitY: number = 0;
-
     constructor(
         canvas: HTMLCanvasElement,
         difficulty: Difficulty,
@@ -99,12 +97,16 @@ export class GameEngine {
         this.settings = settings;
         Object.assign(this, callbacks);
 
+        // Core PIXI Containers
         this.container = new PIXI.Container();
         this.effectContainer = new PIXI.Container();
-        this.effectGraphics = new PIXI.Graphics();
-        this.effectContainer.addChild(this.effectGraphics);
-        this.floorGraphics = new PIXI.Graphics();
-        this.dangerLine = new PIXI.Graphics();
+
+        // Initialize Systems
+        this.physicsSystem = new PhysicsSystem();
+        this.inputSystem = new InputSystem();
+        this.effectSystem = new EffectSystem();
+        this.renderSystem = new RenderSystem();
+
         this.audio = new MusicEngine(this.settings.musicEnabled, this.settings.sfxEnabled);
     }
 
@@ -153,6 +155,7 @@ export class GameEngine {
         }
         if (!this.app.renderer) return;
 
+        // Scaling Logic
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
         this.scaleFactor = Math.min(actualW / V_WIDTH, actualH / V_HEIGHT);
@@ -168,15 +171,17 @@ export class GameEngine {
 
         this.app.stage.addChild(this.effectContainer);
         this.app.stage.addChild(this.container);
-        this.container.addChild(this.floorGraphics);
-        this.container.addChild(this.dangerLine);
 
-        this.initTextures();
-        this.drawFloor();
+        // Initialize Render System
+        this.renderSystem.initialize(this.app, this.container, this.effectContainer);
+        const containerY = this.container.position.y || 0;
+        this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY);
+
+        // Start Game
         this.spawnNextFruit();
-
         this.app.ticker.add(this.update.bind(this));
 
+        // Input Handling
         this.app.stage.eventMode = 'static';
         if (this.app.screen) this.app.stage.hitArea = this.app.screen;
 
@@ -187,32 +192,18 @@ export class GameEngine {
     }
 
     reset() {
-        // 1. Cleanup ALL fruit sprites to prevent ghosting
-        this.fruitSprites.forEach((sprite) => {
-            if (sprite && sprite.parent) {
-                sprite.parent.removeChild(sprite);
-                sprite.destroy({ children: true });
-            }
-        });
-        this.fruitSprites.clear();
+        // 1. Reset Systems
+        this.effectSystem.reset();
+        this.renderSystem.reset();
+        this.inputSystem.reset(); // Clear pointer history
 
-        // Explicitly clear arrays
+        // 2. Clear Game State
         this.fruits = [];
         this.activeTomatoes = [];
         this.activeBombs = [];
         this.celebrationEffect = null;
-        this.visualParticles = [];
+        this.currentFruit = null;
 
-
-        // Cleanup current fruit if it exists
-        if (this.currentFruit) {
-            this.currentFruit = null;
-        }
-
-        // 2. Clear Graphics
-        this.effectGraphics.clear();
-
-        // 3. Reset Game State
         this.score = 0;
         this.stats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
         this.comboChain = 0;
@@ -224,26 +215,30 @@ export class GameEngine {
         this.dangerActive = false;
         this.dangerAccumulator = 0;
         this.nextId = 0;
-        this.isAiming = false;
         this.canDrop = true;
 
-        // 4. Update UI via callbacks
+        // 3. Update UI
         this.onScore(0, 0);
         this.onCombo(0);
         this.onFeverEnd();
-        this.audio.setFrenzy(false); // Reset frenzy audio
+        this.audio.setFrenzy(false);
         this.onJuiceUpdate(0, JUICE_MAX);
         this.onDanger(false, 0);
         this.onTimeUpdate(0);
 
-        // 5. Restart Gameplay
+        // 4. Restart
         this.setPaused(false);
-        // Reset Save State
         this.savedFruitTier = null;
         this.canSwap = true;
         this.onSaveUpdate(null);
 
-        // Seed Queue
+        // Redraw floor to ensure clean state
+        if (this.app) {
+            const actualH = this.app.screen.height;
+            const containerY = this.container.position.y || 0;
+            this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY);
+        }
+
         this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
 
@@ -252,507 +247,166 @@ export class GameEngine {
         }
     }
 
-    getFloorY(x: number) {
-        const baseY = this.height - 60;
-        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
-    }
+    // --- Input Delegation ---
 
-    drawFloor() {
-        this.floorGraphics.clear();
-
-        // Calculate dynamic bottomY to ensure it covers the whole screen downwards
-        // logic: (actualScreenHeight - containerY) / scaleFactor = virtualBottomInLocalSpace
-        // Add some buffer (+200) just in case
-        const actualH = this.app?.screen.height || this.height;
-        const containerY = this.container.position.y || 0;
-        const scale = this.scaleFactor || 1;
-        const bottomY = ((actualH - containerY) / scale) + 200;
-
-        const step = 5;
-        this.floorGraphics.moveTo(0, bottomY);
-        this.floorGraphics.lineTo(0, this.getFloorY(0));
-        for (let x = 0; x <= this.width; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x));
-        }
-        this.floorGraphics.lineTo(this.width, this.getFloorY(this.width));
-        this.floorGraphics.lineTo(this.width, bottomY);
-        this.floorGraphics.closePath();
-        this.floorGraphics.fill({ color: 0x76C043 });
-        this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
-        this.floorGraphics.circle(50, this.height, 15);
-        this.floorGraphics.circle(80, this.height + 20, 20);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-        this.floorGraphics.circle(this.width - 100, this.height, 25);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-    }
-
-    initTextures() {
-        if (!this.app?.renderer) return;
-        Object.values(FRUIT_DEFS).forEach(def => {
-            const container = new PIXI.Container();
-            // Use the centralized rendering logic
-            def.renderPixiBody(container, def.radius);
-
-            const texture = this.app!.renderer.generateTexture({ target: container });
-            this.textures.set(def.tier, texture);
-            container.destroy({ children: true });
-        });
-    }
-
-    createFace(tier: FruitTier, radius: number): PIXI.Container {
-        const def = FRUIT_DEFS[tier];
-        if (def && def.renderPixiFace) {
-            return def.renderPixiFace(radius);
-        }
-        return new PIXI.Container();
-    }
-
-    spawnNextFruit() {
-        if (!this.canDrop) return;
-
-        // Calculate max tier for difficulty scaling
-        let maxTier = FruitTier.CHERRY;
-        for (const p of this.fruits) {
-            if (!p.isStatic && p.tier !== FruitTier.TOMATO && p.tier !== FruitTier.BOMB && p.tier !== FruitTier.RAINBOW) {
-                if (p.tier > maxTier) maxTier = p.tier;
-            }
-        }
-        this.onMaxFruit(maxTier);
-        if (maxTier > this.stats.maxTier) {
-            this.stats.maxTier = maxTier;
-        }
-
-        // 1. Get tier from Queue (or generate if empty - fallback)
-        let tier = this.nextFruitQueue.shift();
-        if (tier === undefined) tier = this.pickRandomFruit(maxTier);
-
-        // 2. Replenish Queue (Next Lookahead)
-        const nextLookahead = this.pickRandomFruit(maxTier);
-        this.nextFruitQueue.push(nextLookahead);
-
-        // 3. Update UI to show the *newly queued* fruit
-        this.onNextFruit(nextLookahead);
-
-        // 4. Spawn the *current* fruit (dequeued)
-        this.nextFruitTier = tier;
-        this.canSwap = true; // Reset swap ability on new spawn
-        this.currentFruit = new Particle(
-            this.width / 2,
-            this.height * SPAWN_Y_PERCENT,
-            FRUIT_DEFS[tier],
-            this.nextId++
-        );
-        this.currentFruit.isStatic = true;
-        this.dragAnchorX = this.width / 2;
-        this.dragAnchorY = this.height * SPAWN_Y_PERCENT;
-        this.createSprite(this.currentFruit);
-    }
-
-    forceCurrentFruit(tier: FruitTier) {
-        if (!this.currentFruit) return;
-
-        // Cleanup existing sprite
-        const oldSprite = this.fruitSprites.get(this.currentFruit.id);
-        if (oldSprite) {
-            this.container.removeChild(oldSprite);
-            oldSprite.destroy({ children: true });
-            this.fruitSprites.delete(this.currentFruit.id);
-        }
-
-        this.nextFruitTier = tier;
-        // Don't update "Next" preview when forcing current fruit (debug cheat)
-
-        // Create new particle at same position
-        this.currentFruit = new Particle(
-            this.currentFruit.x,
-            this.currentFruit.y,
-            FRUIT_DEFS[tier],
-            this.nextId++
-        );
-        this.currentFruit.isStatic = true;
-
-        this.createSprite(this.currentFruit);
-    }
-
-    createSprite(p: Particle) {
-        if (!this.textures.has(p.tier)) return;
-        const tex = this.textures.get(p.tier)!;
-        const sprite = new PIXI.Container();
-        const body = new PIXI.Sprite(tex);
-        body.anchor.set(0.5);
-        sprite.addChild(body);
-        const face = this.createFace(p.tier, p.radius);
-        face.label = "face";
-        sprite.addChild(face);
-        this.fruitSprites.set(p.id, sprite);
-        this.container.addChild(sprite);
-    }
-
-    getVirtualPos(globalX: number, globalY: number) {
-        if (!this.app || !this.app.stage) return { x: globalX / this.scaleFactor, y: globalY / this.scaleFactor };
-        const containerY = this.container.position.y;
+    getInputContext() {
         return {
-            x: globalX / this.scaleFactor,
-            y: (globalY - containerY) / this.scaleFactor
+            containerY: this.container.position.y,
+            scaleFactor: this.scaleFactor,
+            width: this.width,
+            height: this.height,
+            paused: this.paused,
+            currentFruit: this.currentFruit,
+            canDrop: this.canDrop
         };
     }
 
     onPointerDown(e: PIXI.FederatedPointerEvent) {
         if (this.paused) return;
         this.audio.resume();
-        if (!this.currentFruit || !this.canDrop) return;
-        this.isAiming = true;
-        const p = this.getVirtualPos(e.global.x, e.global.y);
-        this.updateAim(p.x, p.y);
-        this.pointerHistory = [];
+        this.inputSystem.onPointerDown(e, this.getInputContext());
     }
 
     onPointerMove(e: PIXI.FederatedPointerEvent) {
-        if (this.paused) return;
-        if (!this.isAiming) return;
-        const p = this.getVirtualPos(e.global.x, e.global.y);
-        this.updateAim(p.x, p.y);
-        const now = performance.now();
-        this.pointerHistory.push({ x: p.x, y: p.y, time: now });
-        if (this.pointerHistory.length > 8) this.pointerHistory.shift();
-    }
-
-    updateAim(x: number, y: number) {
-        const r = this.currentFruit ? this.currentFruit.radius : 20;
-        this.aimX = Math.max(r, Math.min(this.width - r, x));
-        this.dragAnchorX = this.aimX;
-        this.dragAnchorY = (this.height * SPAWN_Y_PERCENT) + (Math.min(y, this.height * 0.4) - this.height * 0.2) * 0.1;
+        this.inputSystem.onPointerMove(e, this.getInputContext());
     }
 
     onPointerUp(e: PIXI.FederatedPointerEvent) {
-        if (this.paused) return;
-        if (!this.isAiming || !this.currentFruit) return;
-        this.isAiming = false;
-        let vx = 0;
-        let vy = 0;
-        if (this.pointerHistory.length >= 2) {
-            const newest = this.pointerHistory[this.pointerHistory.length - 1];
-            const oldest = this.pointerHistory[0];
-            const dt = newest.time - oldest.time;
-            if (dt > 0) {
-                // BOOSTED THROW POWER! (Was 15)
-                vx = (newest.x - oldest.x) / dt * 22;
-                vy = (newest.y - oldest.y) / dt * 22;
+        const result = this.inputSystem.onPointerUp(e, this.getInputContext());
+        if (result && this.currentFruit) {
+            // Logic moved from old onPointerUp
+
+            // Chain Reset Logic
+            if (!this.didMergeThisTurn) {
+                this.comboChain = 0;
+                this.onCombo(0);
             }
-        }
-        const maxSpeed = 40; // INCREASED MAX SPEED (Was 25)
-        const len = Math.sqrt(vx * vx + vy * vy);
-        if (len > maxSpeed) {
-            vx = (vx / len) * maxSpeed;
-            vy = (vy / len) * maxSpeed;
-        }
-        if (vy < -15) vy = -15;
+            this.didMergeThisTurn = false;
 
-        // --- CHAIN COMBO LOGIC RESET ---
-        // If the previous turn (drop) resulted in NO merges, reset the combo chain.
-        if (!this.didMergeThisTurn) {
-            this.comboChain = 0;
-            this.onCombo(0);
-        }
-        // Reset flags for the upcoming turn
-        this.didMergeThisTurn = false;
+            this.currentFruit.isStatic = false;
+            this.currentFruit.vx = result.vx;
+            this.currentFruit.vy = result.vy;
+            this.currentFruit.angularVelocity = result.vx * 0.05;
+            this.fruits.push(this.currentFruit);
+            this.currentFruit = null;
+            this.canDrop = false;
 
-        this.currentFruit.isStatic = false;
-        this.currentFruit.vx = vx;
-        this.currentFruit.vy = vy;
-        this.currentFruit.angularVelocity = vx * 0.05;
-        this.fruits.push(this.currentFruit);
-        this.currentFruit = null;
-        this.canDrop = false;
-        const config = DIFFICULTY_CONFIG[this.difficulty];
-        setTimeout(() => {
-            this.canDrop = true;
-            this.spawnNextFruit();
-        }, config.spawnDelay);
+            const config = DIFFICULTY_CONFIG[this.difficulty];
+            setTimeout(() => {
+                this.canDrop = true;
+                this.spawnNextFruit();
+            }, config.spawnDelay);
+        }
     }
+
+    // --- Update Loop ---
 
     update(ticker: PIXI.Ticker) {
         if (this.paused) return;
         const dt = 1 / 60;
-        this.updateGameLogic(dt * 1000);
-        this.updatePhysics(dt);
-        this.updateVisualEffects(dt);
+        const dtMs = dt * 1000;
+
+        // 1. Update Game Logic (Timers, Stats, Fever)
+        this.updateGameLogic(dtMs);
+
+        // 2. Update Physics
+        const physicsContext = {
+            fruits: this.fruits,
+            activeTomatoes: this.activeTomatoes,
+            activeBombs: this.activeBombs,
+            celebrationEffect: this.celebrationEffect,
+            currentFruit: this.currentFruit,
+            isAiming: this.inputSystem.isAiming,
+            dragAnchorX: this.inputSystem.dragAnchorX,
+            dragAnchorY: this.inputSystem.dragAnchorY,
+            width: this.width,
+            height: this.height,
+            difficulty: this.difficulty
+        };
+
+        const callbacks: PhysicsCallbacks = {
+            onMerge: (p1, p2) => this.merge(p1, p2),
+            onBombExplosion: (bomb) => this.handleBombExplosion(bomb),
+            onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
+            onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
+        };
+
+        this.physicsSystem.update(dt, physicsContext, callbacks);
+
+        // 3. Update Effects
+        const effectContext = {
+            fruits: this.fruits,
+            activeTomatoes: this.activeTomatoes,
+            currentFruit: this.currentFruit,
+            feverActive: this.feverActive,
+            width: this.width,
+            height: this.height
+        };
+        this.effectSystem.update(dt, effectContext);
+
+        // 4. Audio
         this.audio.update();
-        this.drawDangerLine();
-        this.renderSync();
+
+        // 5. Render
+        this.renderSystem.drawDangerLine(this.width, this.height, this.dangerActive);
+
+        // Sync Render State
+        const renderCtx = {
+            fruits: this.fruits,
+            currentFruit: this.currentFruit,
+            feverActive: this.feverActive,
+            scaleFactor: this.scaleFactor
+        };
+        this.renderSystem.renderSync(renderCtx);
+
+        // Draw Effects
+        this.renderSystem.renderEffects(this.effectSystem.visualParticles, this.height);
     }
 
-    spawnPassiveTomatoParticle(x: number, y: number, radius: number) {
-        if (Math.random() < 0.3) {
-            const angle = Math.random() * Math.PI * 2;
-            const r = radius * (0.8 + Math.random() * 0.3);
-            const sx = x + Math.cos(angle) * r;
-            const sy = y + Math.sin(angle) * r;
-
-            const part = new EffectParticle(sx, sy, 0xFF6347, 'circle');
-            // MUCH slower drift (buggy fast issue fix)
-            part.vx = Math.cos(angle) * 0.1;
-            part.vy = Math.sin(angle) * 0.1 - 0.1;
-            part.life = 1.0;
-            part.size = 1 + Math.random() * 2; // Start smaller, expand later
-            part.alpha = 0.5;
-            this.visualParticles.push(part);
-        }
-    }
-
-    spawnTrailParticles(x: number, y: number, radius: number, parentVx: number, parentVy: number) {
-        // "Poppy" trail logic
-        for (let i = 0; i < 2; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const r = Math.random() * radius * 0.5;
-            const px = x + Math.cos(angle) * r;
-            const py = y + Math.sin(angle) * r;
-
-            const part = new EffectParticle(px, py, 0xFF6347, 'circle');
-            // Inherit 20% of parent velocity for "follow along" + small random drift
-            part.vx = (parentVx * 0.2) + (Math.random() - 0.5) * 0.5;
-            part.vy = (parentVy * 0.2) + (Math.random() - 0.5) * 0.5;
-            part.life = 0.6; // Short life
-            part.size = 3 + Math.random() * 3;
-            part.alpha = 0.8;
-            this.visualParticles.push(part);
-        }
-    }
-
-    updateVisualEffects(dt: number) {
-        this.effectGraphics.clear();
-        const activeTomatoes = this.activeTomatoes;
-        const hasActive = activeTomatoes.length > 0;
-
-        // 1. SPAWN PARTICLES
-
-        // A. Active Tomato "Event Horizon" Spawning
-        if (hasActive) {
-            if (this.visualParticles.filter(p => p.type === 'suck').length < 300) {
-                for (const t of activeTomatoes) {
-                    for (let i = 0; i < 3; i++) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const spawnR = 180 + Math.random() * 40;
-                        const px = t.x + Math.cos(angle) * spawnR;
-                        const py = t.y + Math.sin(angle) * spawnR;
-
-                        const p = new EffectParticle(px, py, 0xFF4444, 'suck');
-                        p.targetId = t.tomatoId;
-                        p.life = 1.0;
-                        p.size = 3 + Math.random() * 3;
-                        p.alpha = 0; // Fade in
-                        this.visualParticles.push(p);
-                    }
-                }
-            }
-        }
-
-        // B. Passive Particles & Trails (Existing Fruits)
-        for (const p of this.fruits) {
-            if (p.isCaught) continue;
-
-            // 1. Passive Particles (Floating around)
-            if (p.tier === FruitTier.TOMATO) {
-                this.spawnPassiveTomatoParticle(p.x, p.y, p.radius);
-            } else if (p.tier === FruitTier.RAINBOW) {
-                if (Math.random() < 0.3) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const r = p.radius * (0.8 + Math.random() * 0.4);
-                    const px = p.x + Math.cos(angle) * r;
-                    const py = p.y + Math.sin(angle) * r;
-                    const color = Math.random() > 0.5 ? 0xFFD700 : 0xFFA500;
-                    const part = new EffectParticle(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
-                    part.vx = Math.cos(angle) * 0.2;
-                    part.vy = Math.sin(angle) * 0.2 - 0.2;
-                    part.life = 1.2;
-                    part.size = 2 + Math.random() * 3;
-                    part.alpha = 0.6;
-                    this.visualParticles.push(part);
-                }
-            }
-
-            // 2. Trails (Moving fast)
-            if (!p.isStatic) {
-                const speedSq = p.vx * p.vx + p.vy * p.vy;
-                if (speedSq > 25) { // speed > 5
-                    if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW) {
-                        this.spawnTrailParticles(p.x, p.y, p.radius, p.vx, p.vy);
-                    }
-                }
-            }
-        }
-
-        // C. Current Fruit Passive Particles
-        if (this.currentFruit) {
-            if (this.currentFruit.tier === FruitTier.TOMATO) {
-                this.spawnPassiveTomatoParticle(this.currentFruit.x, this.currentFruit.y, this.currentFruit.radius);
-            } else if (this.currentFruit.tier === FruitTier.RAINBOW) {
-                if (Math.random() < 0.3) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const r = this.currentFruit.radius * 1.2;
-                    const px = this.currentFruit.x + Math.cos(angle) * r;
-                    const py = this.currentFruit.y + Math.sin(angle) * r;
-                    const color = Math.random() > 0.5 ? 0xFFD700 : 0xFFA500;
-                    const part = new EffectParticle(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
-                    part.vx = Math.cos(angle) * 0.2;
-                    part.vy = Math.sin(angle) * 0.2 - 0.2;
-                    part.life = 1.0; // shorter life for aimed fruit
-                    part.size = 3 + Math.random() * 3;
-                    part.alpha = 0.8;
-                    this.visualParticles.push(part);
-                }
-            }
-        }
-
-        // D. Fever Particles
-        if (this.feverActive) {
-            if (Math.random() < 0.3) {
-                const sparkle = new EffectParticle(Math.random() * this.width, this.height + 20, 0xFFD700, 'star');
-                sparkle.vy = -Math.random() * 2 - 2;
-                sparkle.vx = (Math.random() - 0.5) * 1;
-                this.visualParticles.push(sparkle);
-            }
-        }
-
-        // 2. UPDATE & RENDER PARTICLES
-        for (let i = this.visualParticles.length - 1; i >= 0; i--) {
-            const p = this.visualParticles[i];
-            let targetTomato: TomatoEffect | null = null;
-
-            // Find associated tomato for 'suck' particles
-            if (p.type === 'suck' && hasActive && p.targetId !== undefined) {
-                targetTomato = activeTomatoes.find(t => t.tomatoId === p.targetId) || null;
-                if (!targetTomato) {
-                    this.visualParticles.splice(i, 1);
-                    continue;
-                }
-            }
-
-            if (targetTomato) {
-                // --- EVENT HORIZON MODE ---
-                const dx = p.x - targetTomato.x;
-                const dy = p.y - targetTomato.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const currentAngle = Math.atan2(dy, dx);
-
-                if (dist < 20) {
-                    this.visualParticles.splice(i, 1);
-                    continue;
-                }
-
-                const radialSpeed = 3 + (200 / (dist + 10));
-                const tangentialSpeed = 0.15;
-
-                const nextAngle = currentAngle + tangentialSpeed;
-                const nextRadius = dist - radialSpeed;
-
-                p.x = targetTomato.x + Math.cos(nextAngle) * nextRadius;
-                p.y = targetTomato.y + Math.sin(nextAngle) * nextRadius;
-                p.color = 0xFF0000;
-                if (p.alpha < 1.0) p.alpha += 0.05;
-
-                this.effectGraphics.circle(p.x, p.y, p.size);
-                this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
-
-            } else {
-                // --- PASSIVE / STANDARD MODE ---
-                if (p.type === 'bomb-ghost') {
-                    p.size += 4;
-                    p.alpha -= 0.04;
-                    p.life -= 0.04;
-                } else {
-                    p.x += p.vx;
-                    p.y += p.vy;
-                    p.life -= dt;
-
-                    if (p.type === 'circle') {
-                        p.alpha = Math.min(0.6, p.life);
-                        p.vx *= 0.96;
-                        p.vy *= 0.96;
-                        if (p.life > 0.5) p.size += 0.05;
-                    } else if (p.type === 'star') {
-                        p.alpha = Math.min(1, p.life);
-                        p.rotation += 0.1;
-                    } else if (p.type === 'suck') {
-                        p.life = 0; // Orphaned suck particle
-                    }
-                }
-
-                if (p.life <= 0 || p.alpha <= 0 || p.y < -100 || p.y > this.height + 100) {
-                    this.visualParticles.splice(i, 1);
-                    continue;
-                }
-
-                // Render
-                if (p.type === 'star') {
-                    this.effectGraphics.star(p.x, p.y, 5, p.size, p.size * 0.4, p.rotation);
-                    this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
-                } else if (p.type === 'bomb-ghost') {
-                    this.effectGraphics.circle(p.x, p.y, p.size);
-                    this.effectGraphics.fill({ color: 0x212121, alpha: p.alpha });
-                } else {
-                    this.effectGraphics.circle(p.x, p.y, p.size);
-                    this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
-                }
-            }
-        }
-    }
-
-
-    createMergeEffect(x: number, y: number, color: string) {
-        for (let i = 0; i < 15; i++) {
-            const p = new EffectParticle(x, y, color, Math.random() > 0.5 ? 'circle' : 'star');
-            const angle = Math.random() * Math.PI * 2;
-            const force = Math.random() * 10 + 5;
-            p.vx = Math.cos(angle) * force;
-            p.vy = Math.sin(angle) * force;
-            this.visualParticles.push(p);
-        }
-    }
+    // --- Game Logic Methods ---
 
     updateGameLogic(dtMs: number) {
         this.stats.timePlayed += dtMs;
         this.onTimeUpdate(this.stats.timePlayed);
 
+        // Update Timers for Active Effects
+        // Tomato Timer
         for (let i = this.activeTomatoes.length - 1; i >= 0; i--) {
             const t = this.activeTomatoes[i];
             t.timer -= dtMs / 1000;
+            // Visual Update for captured fruit (Scaling/Alpha) handled by Rendering/Physics now?
+            // Actually PhysicsSystem only updates P position/velocity.
+            // Scale/Alpha logic for captured fruits was in GameEngine logic loop.
+            // PhysicsSystem updates positions for suck. 
+            // We should keep the Scale/Alpha interpolation here or move to Physics/Effect.
+            // Let's keep it here for now to ensure behavior match:
             const tomatoParticle = this.fruits.find(p => p.id === t.tomatoId);
             if (tomatoParticle) {
-                t.x = tomatoParticle.x;
-                t.y = tomatoParticle.y;
                 const progress = 1 - (t.timer / t.maxTime);
                 tomatoParticle.scaleX = 1 + (progress * 0.3);
                 tomatoParticle.scaleY = 1 + (progress * 0.3);
                 tomatoParticle.alpha = 1 - (progress * 0.4);
                 tomatoParticle.rotation += 0.05;
             }
+
             if (t.timer <= 0) {
                 this.concludeTomatoEffect(t);
                 this.activeTomatoes.splice(i, 1);
             }
         }
 
-        // Bomb Timer Logic
+        // Bomb Timer
         for (let i = this.activeBombs.length - 1; i >= 0; i--) {
             const b = this.activeBombs[i];
             b.timer -= dtMs / 1000;
             const bombParticle = this.fruits.find(p => p.id === b.bombId);
             if (bombParticle) {
-                b.x = bombParticle.x;
-                b.y = bombParticle.y;
-                const timeRemaining = Math.ceil(b.timer);
-
-                // Cartoony flash effect: flashes faster as time runs out
-                // Flash on whole seconds (3, 2, 1)
                 const flashTiming = b.timer % 1.0;
                 if (flashTiming > 0.7) {
-                    // Quick flash at each second
                     bombParticle.scaleX = 1.3;
                     bombParticle.scaleY = 1.3;
                     bombParticle.alpha = 1.0;
                 } else {
-                    // Normal size between flashes
                     bombParticle.scaleX = 1.0;
                     bombParticle.scaleY = 1.0;
                     bombParticle.alpha = 0.9;
@@ -764,21 +418,22 @@ export class GameEngine {
             }
         }
 
-        // Celebration Logic
+        // Celebration Timer
         if (this.celebrationEffect) {
             this.updateCelebrationLogic(dtMs);
         }
 
+        // Cooldowns
         for (const p of this.fruits) {
             if (p.cooldownTimer > 0) p.cooldownTimer -= dtMs / 1000;
         }
-        // Removed old combo decay logic. Combo now controlled by drop chain.
 
+        // Fever Logic
         if (this.feverActive) {
             this.feverTimer -= dtMs;
             if (this.feverTimer <= 0) {
                 this.feverActive = false;
-                this.audio.setFrenzy(false); // Music normal
+                this.audio.setFrenzy(false);
                 this.juice = 0;
                 this.onJuiceUpdate(0, JUICE_MAX);
                 this.onFeverEnd();
@@ -786,17 +441,15 @@ export class GameEngine {
         } else {
             if (this.juice >= JUICE_MAX && !this.feverActive) {
                 this.feverActive = true;
-                this.audio.setFrenzy(true); // Music frenzy
+                this.audio.setFrenzy(true);
                 this.feverTimer = FEVER_DURATION_MS;
                 this.stats.feverCount++;
-                // Multiplier is Count + 1 (1st time = x2, 2nd = x3) IF we count from 0-based index logically, 
-                // but stats.feverCount is purely how many times it happened. 
-                // User requirement: "Increase by 1 every time".
-                // First fever (count=1) -> x2. Second (count=2) -> x3.
                 const mult = this.stats.feverCount + 1;
                 this.onFeverStart(mult);
             }
         }
+
+        // Danger Logic
         const dangerY = this.height * DANGER_Y_PERCENT;
         let inDangerZone = false;
         for (const f of this.fruits) {
@@ -827,516 +480,67 @@ export class GameEngine {
         }
     }
 
-    // --- REFACTORED PHYSICS LOOP ---
-    updatePhysics(dt: number) {
-        const config = DIFFICULTY_CONFIG[this.difficulty];
-        const gravity = config.gravity;
-        const friction = config.friction;
+    // --- Action Methods ---
 
-        // 1. Reset Collision Flags
+    spawnNextFruit() {
+        if (!this.canDrop) return;
+
+        let maxTier = FruitTier.CHERRY;
         for (const p of this.fruits) {
-            if (!p.isCaught) p.ignoreCollisions = false;
-        }
-
-        // 2. Integration & Aiming
-        if (this.currentFruit && this.isAiming) {
-            const k = 0.1;
-            const ax = this.dragAnchorX - this.currentFruit.x;
-            const ay = this.dragAnchorY - this.currentFruit.y;
-            this.currentFruit.vx += ax * k;
-            this.currentFruit.vy += ay * k;
-            this.currentFruit.vx *= 0.8;
-            this.currentFruit.vy *= 0.8;
-            this.currentFruit.x += this.currentFruit.vx;
-            this.currentFruit.y += this.currentFruit.vy;
-        }
-
-        for (const p of this.fruits) {
-            if (p.isStatic) continue;
-
-            if (!p.isCaught) {
-                p.vy += gravity;
-                p.vx *= friction;
-                p.vy *= friction;
-            }
-
-            // Apply Velocity
-            p.x += p.vx;
-            p.y += p.vy;
-
-            // Rotation
-            p.rotation += p.angularVelocity;
-            p.angularVelocity *= 0.95; // Strong rotational drag
-
-            p.blinkTimer -= 1;
-            if (p.blinkTimer <= 0) {
-                p.isBlinking = !p.isBlinking;
-                p.blinkTimer = p.isBlinking ? 10 : 200 + Math.random() * 300;
+            if (!p.isStatic && p.tier !== FruitTier.TOMATO && p.tier !== FruitTier.BOMB && p.tier !== FruitTier.RAINBOW) {
+                if (p.tier > maxTier) maxTier = p.tier;
             }
         }
-
-        // 3. Tomato Logic (Tractor)
-        this.updateTomatoPhysics();
-
-        // 3b. Bomb Logic (Capture)
-        this.updateBombPhysics();
-
-        // 3c. Celebration Logic (Suction)
-        this.updateCelebrationPhysics();
-
-        // 4. Solver Loop (Substeps)
-        for (let s = 0; s < SUBSTEPS; s++) {
-            this.updateContactCounts(); // NEW: Count contacts before resolving
-
-            // --- GLOBAL LOCKING FRICTION ---
-            // If a particle is touching > 1 things, we dampen it heavily here.
-            // This stops sliding when wedged, regardless of collision angle.
-            for (const p of this.fruits) {
-                if (p.isStatic || p.isCaught) continue;
-
-                if (p.contactCount > 1) {
-                    // LOCK IT DOWN
-                    p.vx *= FRICTION_LOCK;
-                    p.vy *= FRICTION_LOCK;
-                    p.angularVelocity *= 0.5; // Kill rotation
-                }
-            }
-
-            this.resolveCollisions();
-            this.resolveWalls();
+        this.onMaxFruit(maxTier);
+        if (maxTier > this.stats.maxTier) {
+            this.stats.maxTier = maxTier;
         }
+
+        let tier = this.nextFruitQueue.shift();
+        if (tier === undefined) tier = this.pickRandomFruit(maxTier);
+
+        const nextLookahead = this.pickRandomFruit(maxTier);
+        this.nextFruitQueue.push(nextLookahead);
+
+        this.onNextFruit(nextLookahead);
+
+        this.nextFruitTier = tier;
+        this.canSwap = true;
+        this.currentFruit = new Particle(
+            this.width / 2,
+            this.height * SPAWN_Y_PERCENT,
+            FRUIT_DEFS[tier],
+            this.nextId++
+        );
+        this.currentFruit.isStatic = true;
+
+        // Input System Update for Anchor
+        this.inputSystem.dragAnchorX = this.width / 2;
+        this.inputSystem.dragAnchorY = this.height * SPAWN_Y_PERCENT;
+
+        this.renderSystem.createSprite(this.currentFruit);
     }
 
-    updateContactCounts() {
-        // Reset counts
-        for (const p of this.fruits) {
-            p.contactCount = 0;
-        }
+    forceCurrentFruit(tier: FruitTier) {
+        if (!this.currentFruit) return;
 
-        // Check floor
-        for (const p of this.fruits) {
-            if (p.isStatic || p.isCaught) continue;
-            // Check if touching floor
-            const groundY = this.getFloorY(p.x);
-            if (p.y + p.radius >= groundY - 2) { // 2px epsilon
-                p.contactCount++;
-            }
-        }
+        this.renderSystem.removeSprite(this.currentFruit);
 
-        // Check pairs
-        for (let i = 0; i < this.fruits.length; i++) {
-            for (let j = i + 1; j < this.fruits.length; j++) {
-                const p1 = this.fruits[i];
-                const p2 = this.fruits[j];
-                if (p1.ignoreCollisions || p2.ignoreCollisions || p1.isStatic || p2.isStatic) continue;
-
-                const dx = p1.x - p2.x;
-                const dy = p1.y - p2.y;
-                const distSq = dx * dx + dy * dy;
-                const radSum = p1.radius + p2.radius;
-                if (distSq < radSum * radSum) {
-                    p1.contactCount++;
-                    p2.contactCount++;
-                }
-            }
-        }
-
-        // Calculate Stability (Inertia)
-        // > 1 Contact = Stable (Massive inertia)
-        // <= 1 Contact = Unstable (Normal mass)
-        for (const p of this.fruits) {
-            if (p.contactCount > 1) {
-                p.stability = 1.0;
-            } else {
-                p.stability = 0.0;
-            }
-        }
+        this.nextFruitTier = tier;
+        this.currentFruit = new Particle(
+            this.currentFruit.x,
+            this.currentFruit.y,
+            FRUIT_DEFS[tier],
+            this.nextId++
+        );
+        this.currentFruit.isStatic = true;
+        this.renderSystem.createSprite(this.currentFruit);
     }
-
-    updateTomatoPhysics() {
-        for (const t of this.activeTomatoes) {
-            const tomato = this.fruits.find(p => p.id === t.tomatoId);
-            if (!tomato) continue;
-
-            for (const p of this.fruits) {
-                if (p.id === t.tomatoId || p === this.currentFruit || p.isStatic) continue;
-
-                if (p.tier === t.targetTier) {
-                    p.isCaught = true;
-                    p.ignoreCollisions = true;
-                    if (!t.capturedIds.includes(p.id)) t.capturedIds.push(p.id);
-
-                    const dx = tomato.x - p.x;
-                    const dy = tomato.y - p.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    const angle = Math.atan2(dy, dx) + (Math.PI / 9);
-                    const speed = 15 + (1000 / (dist + 50));
-
-                    p.vx = p.vx * 0.85 + Math.cos(angle) * speed * 0.15;
-                    p.vy = p.vy * 0.85 + Math.sin(angle) * speed * 0.15;
-
-                    const suckRadius = tomato.radius * 4;
-                    if (dist < suckRadius) {
-                        const scale = Math.max(0.1, dist / suckRadius);
-                        p.scaleX = scale;
-                        p.scaleY = scale;
-                        p.alpha = scale;
-                        p.rotation += 0.3;
-                    }
-                }
-            }
-        }
-    }
-
-    updateBombPhysics() {
-        for (const b of this.activeBombs) {
-            const bomb = this.fruits.find(p => p.id === b.bombId);
-            if (!bomb) continue;
-
-            // Check which fruits are currently touching the bomb
-            for (const p of this.fruits) {
-                if (p.id === b.bombId || p === this.currentFruit || p.isStatic) continue;
-
-                // Don't capture special fruits
-                if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW || p.tier === FruitTier.BOMB) continue;
-
-                const dx = p.x - bomb.x;
-                const dy = p.y - bomb.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const radSum = p.radius + bomb.radius;
-
-                // If touching and not already tracked, add to list
-                if (dist < radSum + 5) { // 5px buffer for detection
-                    if (!b.capturedIds.includes(p.id)) {
-                        b.capturedIds.push(p.id);
-                        // DON'T freeze the fruits - let them move until explosion
-                        // p.isCaught = true;
-                        // p.ignoreCollisions = true;
-                    }
-                }
-            }
-        }
-    }
-
-    resolveWalls() {
-        const width = this.width;
-        for (const p of this.fruits) {
-            if (p.isStatic || p.isCaught) continue;
-
-            const groundY = this.getFloorY(p.x);
-
-            // Strict Floor Clamp
-            if (p.y + p.radius > groundY) {
-                p.y = groundY - p.radius; // HARD RESET
-                p.vy *= -FLOOR_DAMPING; // Bounce (Uses constant for bounciness)
-                p.vx *= 0.85; // Floor Friction
-
-                // Push out of slope if needed (simplified)
-                // Just ensuring y is correct fixes 90% of tunneling
-            }
-
-            // Walls
-            if (p.x - p.radius < 0) {
-                p.x = p.radius;
-                p.vx *= -WALL_DAMPING; // Bounce
-            }
-            if (p.x + p.radius > width) {
-                p.x = width - p.radius;
-                p.vx *= -WALL_DAMPING; // Bounce
-            }
-        }
-    }
-
-    resolveCollisions() {
-        for (let i = 0; i < this.fruits.length; i++) {
-            for (let j = i + 1; j < this.fruits.length; j++) {
-                const p1 = this.fruits[i];
-                const p2 = this.fruits[j];
-
-                if (p1.ignoreCollisions || p2.ignoreCollisions) continue;
-                if (p1.isStatic && p2.isStatic) continue;
-
-                // Tomato Logic Pass-through
-                const tEffect = this.activeTomatoes.find(t => t.tomatoId === p1.id || t.tomatoId === p2.id);
-                if (tEffect) {
-                    const other = p1.id === tEffect.tomatoId ? p2 : p1;
-                    if (other.tier === tEffect.targetTier) continue;
-                }
-
-                const dx = p1.x - p2.x;
-                const dy = p1.y - p2.y;
-                const distSq = dx * dx + dy * dy;
-                const radSum = p1.radius + p2.radius;
-
-                if (distSq < radSum * radSum) {
-                    const dist = Math.sqrt(distSq);
-
-                    // --- SPECIAL LOGIC: BOMB ---
-                    if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
-                        this.handleBombExplosion(p1.tier === FruitTier.BOMB ? p1 : p2);
-                        // DON'T return - let normal collision physics apply!
-                        // The bomb should bounce like any other fruit
-                    }
-
-                    // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
-                    let canMerge = false;
-
-                    // Case 1: Normal Same Tier
-                    if (p1.tier === p2.tier) {
-                        // Check Watermelon Celebration
-                        if (p1.tier === FruitTier.WATERMELON) {
-                            if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                                this.triggerCelebration(p1, p2);
-                                i--;
-                                break;
-                            }
-                        }
-
-                        // Normal Merge
-                        if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
-                            canMerge = true;
-                        }
-                    }
-
-                    // Case 2: Rainbow + Anything (except specials)
-                    else if ((p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW)) {
-                        const validP1 = p1.tier < 90; // Not a special fruit
-                        const validP2 = p2.tier < 90;
-
-                        // Rainbow + Rainbow = Highest Tier? or just Watermelon? Let's say Watermelon.
-                        if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
-                            // Merge to Watermelon directly? or just allow normal merge?
-                            // Let's treat it as a "super merge" -> Clears screen? Or just makes watermelon. 
-                            // Simplest: Treat as last tier merge.
-                            // We construct a fake merge where tier is WATERMELON - 1 so result is WATERMELON.
-                            // Hacky side effect: Force nextTier logic to handle it.
-                            canMerge = true;
-                        } else if (validP1 || validP2) {
-                            canMerge = true;
-                        }
-                    }
-
-                    if (canMerge) {
-                        if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                            this.merge(p1, p2);
-                            i--;
-                            break;
-                        }
-                    }
-
-                    // --- RESTORED TOMATO LOGIC ---
-                    if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
-                        this.handleTomatoCollision(p1, p2);
-                        return;
-                    }
-
-                    if (dist === 0) continue;
-
-                    // --- PHYSICS RESOLUTION (Weighted by Stability) ---
-                    // ... (rest of physics resolution remains same)
-                    const overlap = radSum - dist;
-                    const nx = dx / dist;
-                    const ny = dy / dist;
-
-                    const im1 = 1 / (p1.mass * (1 + p1.stability * 10));
-                    const im2 = 1 / (p2.mass * (1 + p2.stability * 10));
-                    const totalIm = im1 + im2;
-
-                    const r1 = p1.isStatic ? 0 : (im1 / totalIm);
-                    const r2 = p2.isStatic ? 0 : (im2 / totalIm);
-
-                    if (!p1.isStatic) {
-                        p1.x += nx * overlap * r1;
-                        p1.y += ny * overlap * r1;
-                    }
-                    if (!p2.isStatic) {
-                        p2.x -= nx * overlap * r2;
-                        p2.y -= ny * overlap * r2;
-                    }
-
-                    // Impulse
-                    const dvx = p1.vx - p2.vx;
-                    const dvy = p1.vy - p2.vy;
-                    const dot = dvx * nx + dvy * ny;
-
-                    if (dot < 0) {
-                        const restitution = 0.4;
-                        const j = -(1 + restitution) * dot;
-
-                        p1.vx += j * nx * r1;
-                        p1.vy += j * ny * r1;
-                        p2.vx -= j * nx * r2;
-                        p2.vy -= j * ny * r2;
-
-                        if (p1.contactCount <= 1) {
-                            p1.vx *= FRICTION_SLIDE;
-                            p1.vy *= FRICTION_SLIDE;
-                        }
-                        if (p2.contactCount <= 1) {
-                            p2.vx *= FRICTION_SLIDE;
-                            p2.vy *= FRICTION_SLIDE;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    handleBombExplosion(bomb: Particle) {
-        // Check if bomb already has an active effect
-        const existing = this.activeBombs.find(b => b.bombId === bomb.id);
-        if (existing) return; // Already activated
-
-        // Start the timer
-        const effect = new BombEffect(bomb.id, bomb.x, bomb.y);
-        this.activeBombs.push(effect);
-
-        // DON'T make bomb static - let it keep bouncing and rolling!
-        // bomb.isStatic = true;
-        // bomb.vx = 0;
-        // bomb.vy = 0;
-
-        // Small visual feedback
-        this.audio.playMergeSound(FruitTier.CHERRY); // Small 'tick' sound
-        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(30);
-    }
-
-    triggerCelebration(p1: Particle, p2: Particle) {
-        if (this.celebrationEffect) return;
-
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-
-        this.removeParticle(p1);
-        this.removeParticle(p2);
-
-        // Visuals
-        this.createMergeEffect(midX, midY, "#4CAF50");
-        this.applyShockwave(midX, midY, 600, 50);
-        this.audio.playMergeSound(FruitTier.WATERMELON);
-
-        // Identify Tiers 0, 1, 2
-        const capturedIds: number[] = [];
-        for (const p of this.fruits) {
-            if (p.isStatic || p.tier > FruitTier.GRAPE) continue; // Only 0, 1, 2
-
-            p.isCaught = true;
-            p.ignoreCollisions = true;
-            capturedIds.push(p.id);
-        }
-
-        this.celebrationEffect = new CelebrationState(midX, midY, capturedIds);
-        this.celebrationEffect.phase = 'suck';
-        this.celebrationEffect.timer = 0;
-
-        // Trigger UI
-        this.onCelebration();
-
-        // Set Level 11 (Max Tier 10)
-        if (this.stats.maxTier < 10) {
-            this.stats.maxTier = 10 as FruitTier; // Cast as it's outside normal enum
-            this.onMaxFruit(this.stats.maxTier);
-        }
-
-        this.addScore(5000); // Big bonus
-    }
-
-    updateCelebrationLogic(dtMs: number) {
-        if (!this.celebrationEffect) return;
-
-        const state = this.celebrationEffect;
-        state.timer += dtMs;
-
-        if (state.phase === 'suck') {
-            // Check if all particles have reached the top
-            let allArrived = true;
-            const targetY = this.height * SPAWN_Y_PERCENT;
-
-            for (const id of state.capturedIds) {
-                const p = this.fruits.find(f => f.id === id);
-                if (!p) continue;
-                if (Math.abs(p.y - targetY) > 50) {
-                    allArrived = false;
-                }
-            }
-
-            if (allArrived || state.timer > 3000) { // Max 3s suck
-                state.phase = 'hold';
-                state.timer = 0;
-            }
-        } else if (state.phase === 'hold') {
-            if (state.timer > 500) {
-                state.phase = 'explode';
-
-                // Explode them out
-                const targetX = this.width / 2;
-                const targetY = this.height * SPAWN_Y_PERCENT;
-
-                this.createMergeEffect(targetX, targetY, "#FFD700");
-                this.audio.playMergeSound(FruitTier.RAINBOW);
-
-                for (const id of state.capturedIds) {
-                    const p = this.fruits.find(f => f.id === id);
-                    if (!p) continue;
-
-                    p.isCaught = false;
-                    p.ignoreCollisions = false;
-
-                    const angle = Math.random() * Math.PI * 2;
-                    const force = 10 + Math.random() * 15;
-                    p.vx = Math.cos(angle) * force;
-                    p.vy = Math.sin(angle) * force + 5; // Downward bias
-                    p.cooldownTimer = 1.0;
-                }
-
-                this.celebrationEffect = null; // End effect
-            }
-        }
-    }
-
-    updateCelebrationPhysics() {
-        if (!this.celebrationEffect) return;
-        const state = this.celebrationEffect;
-
-        if (state.phase === 'suck') {
-            const targetX = this.width / 2;
-            const targetY = this.height * SPAWN_Y_PERCENT;
-
-            for (const id of state.capturedIds) {
-                const p = this.fruits.find(f => f.id === id);
-                if (!p) continue;
-
-                const dx = targetX - p.x;
-                const dy = targetY - p.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const angle = Math.atan2(dy, dx);
-
-                const speed = 20 + (dist * 0.05); // Faster as they are further, slow on arrive
-
-                p.vx = p.vx * 0.8 + Math.cos(angle) * speed * 0.2;
-                p.vy = p.vy * 0.8 + Math.sin(angle) * speed * 0.2;
-
-                // Rotation effect
-                p.rotation += 0.2;
-                p.angularVelocity = 0.2;
-            }
-        } else if (state.phase === 'hold') {
-            for (const id of state.capturedIds) {
-                const p = this.fruits.find(f => f.id === id);
-                if (!p) continue;
-                p.vx *= 0.8;
-                p.vy *= 0.8;
-            }
-        }
-    }
-
 
     merge(p1: Particle, p2: Particle) {
-        // Handle Logic for Rainbow
         let nextTier: number;
 
         if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
-            // Rainbow + Rainbow = Watermelon (Reward)
             nextTier = FruitTier.WATERMELON;
         } else if (p1.tier === FruitTier.RAINBOW) {
             nextTier = p2.tier + 1;
@@ -1346,19 +550,15 @@ export class GameEngine {
             nextTier = p1.tier + 1;
         }
 
-        // Cap at Watermelon
         if (nextTier > FruitTier.WATERMELON) nextTier = FruitTier.WATERMELON;
-        // Or if we want to allow merging watermelons? For now cap.
 
         const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
-        // ... (Scoring and rest is same)
         this.comboChain++;
         this.didMergeThisTurn = true;
         this.onCombo(this.comboChain);
 
         const comboMult = 1 + Math.min(this.comboChain, 10);
         const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
-
         const totalPoints = basePoints * comboMult * feverMult;
 
         this.addScore(totalPoints);
@@ -1367,6 +567,7 @@ export class GameEngine {
             this.juice = Math.min(JUICE_MAX, this.juice + 50);
             this.onJuiceUpdate(this.juice, JUICE_MAX);
         }
+
         this.removeParticle(p1);
         this.removeParticle(p2);
 
@@ -1376,8 +577,9 @@ export class GameEngine {
         const nextDef = FRUIT_DEFS[nextTier as FruitTier];
         const newP = new Particle(midX, midY, nextDef, this.nextId++);
         this.fruits.push(newP);
-        this.createSprite(newP);
-        this.createMergeEffect(midX, midY, nextDef.color);
+        this.renderSystem.createSprite(newP);
+
+        this.effectSystem.createMergeEffect(midX, midY, nextDef.color);
         this.audio.playMergeSound(nextTier);
         this.applyShockwave(midX, midY, 150, 5);
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(20);
@@ -1396,10 +598,19 @@ export class GameEngine {
         tomato.vx = 0;
         tomato.vy = 0;
         tomato.y = Math.max(tomato.radius, tomato.y - 50);
-        const sprite = this.fruitSprites.get(tomato.id);
-        if (sprite) {
-            sprite.alpha = 1;
-        }
+        // Sprite update? RenderSystem handles syncing, but alpha change for active tomato?
+        // Original code: sprite.alpha = 1.
+    }
+
+    handleBombExplosion(bomb: Particle) {
+        const existing = this.activeBombs.find(b => b.bombId === bomb.id);
+        if (existing) return;
+
+        const effect = new BombEffect(bomb.id, bomb.x, bomb.y);
+        this.activeBombs.push(effect);
+
+        this.audio.playMergeSound(FruitTier.CHERRY);
+        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(30);
     }
 
     concludeTomatoEffect(effect: TomatoEffect) {
@@ -1429,8 +640,7 @@ export class GameEngine {
                 p.vy = Math.sin(angle) * force - 3;
             }
         }
-        // Explosive visual release
-        this.createMergeEffect(releaseX, releaseY, "#FF4444");
+        this.effectSystem.createMergeEffect(releaseX, releaseY, "#FF4444");
         this.applyShockwave(releaseX, releaseY, 600, 40);
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([50, 50]);
     }
@@ -1446,14 +656,8 @@ export class GameEngine {
             this.removeParticle(bomb);
         }
 
-        // Create expanding ghost visual
-        const ghost = new EffectParticle(releaseX, releaseY, 0x212121, 'bomb-ghost');
-        ghost.size = 28; // Bomb radius
-        ghost.life = 1.0;
-        ghost.alpha = 0.8;
-        this.visualParticles.push(ghost);
+        this.effectSystem.createGhostEffect(releaseX, releaseY, 28);
 
-        // Process each captured fruit
         for (const id of effect.capturedIds) {
             const p = this.fruits.find(f => f.id === id);
             if (!p) continue;
@@ -1462,67 +666,136 @@ export class GameEngine {
             let targetTier: number;
             let spawnCount: number;
 
-            // Calculate split logic: tier - 3 levels (INDIVIDUAL per fruit!)
             if (tier >= 3) {
                 targetTier = tier - 3;
-                spawnCount = 6; // 3 levels down
+                spawnCount = 6;
             } else if (tier === 2) {
-                targetTier = 0; // 2 levels down (was 1, but let's be more aggressive)
+                targetTier = 0;
                 spawnCount = 4;
             } else if (tier === 1) {
                 targetTier = 0;
-                spawnCount = 2; // 1 level down
+                spawnCount = 2;
             } else {
-                // tier 0 (cherry) - cannot split further, just remove
                 this.removeParticle(p);
                 continue;
             }
 
-            // SAFETY: Clamp to valid range [0, original tier]
             targetTier = Math.max(0, Math.min(targetTier, tier));
-
-            // SAFETY: Ensure targetTier is a valid FruitTier
-            if (targetTier < 0 || targetTier > FruitTier.WATERMELON) {
-                console.error(`Invalid targetTier: ${targetTier} from tier ${tier}`);
-                this.removeParticle(p);
-                continue;
-            }
-
-            // Store position before removing
             const fruitX = p.x;
             const fruitY = p.y;
             const fruitColor = FRUIT_DEFS[p.tier]?.color || '#FF6347';
 
-            // Remove original fruit
             this.removeParticle(p);
 
-            // Spawn split fruits with tomato-style explosion
             const targetDef = FRUIT_DEFS[targetTier as FruitTier];
             if (targetDef) {
                 for (let i = 0; i < spawnCount; i++) {
                     const newP = new Particle(fruitX, fruitY, targetDef, this.nextId++);
 
-                    // Add explosion velocity (similar to tomato release)
                     const angle = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.3;
                     const force = 5 + Math.random() * 3;
                     newP.vx = Math.cos(angle) * force;
-                    newP.vy = Math.sin(angle) * force - 3; // Upward bias
-                    newP.cooldownTimer = 1.5; // LONGER cooldown to prevent immediate merges
+                    newP.vy = Math.sin(angle) * force - 3;
+                    newP.cooldownTimer = 1.5;
 
                     this.fruits.push(newP);
-                    this.createSprite(newP);
+                    this.renderSystem.createSprite(newP);
                 }
             }
-
-            // Create merge effect for visual feedback
-            this.createMergeEffect(fruitX, fruitY, fruitColor);
+            this.effectSystem.createMergeEffect(fruitX, fruitY, fruitColor);
         }
 
-        // Explosive visual release and shockwave
-        this.createMergeEffect(releaseX, releaseY, "#212121");
+        this.effectSystem.createMergeEffect(releaseX, releaseY, "#212121");
         this.applyShockwave(releaseX, releaseY, 600, 40);
         this.audio.playMergeSound(FruitTier.WATERMELON);
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
+    }
+
+    triggerCelebration(p1: Particle, p2: Particle) {
+        if (this.celebrationEffect) return;
+
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        this.removeParticle(p1);
+        this.removeParticle(p2);
+
+        this.effectSystem.createMergeEffect(midX, midY, "#4CAF50");
+        this.applyShockwave(midX, midY, 600, 50);
+        this.audio.playMergeSound(FruitTier.WATERMELON);
+
+        const capturedIds: number[] = [];
+        for (const p of this.fruits) {
+            if (p.isStatic || p.tier > FruitTier.GRAPE) continue;
+
+            p.isCaught = true;
+            p.ignoreCollisions = true;
+            capturedIds.push(p.id);
+        }
+
+        this.celebrationEffect = new CelebrationState(midX, midY, capturedIds);
+        this.celebrationEffect.phase = 'suck';
+        this.celebrationEffect.timer = 0;
+
+        this.onCelebration();
+
+        if (this.stats.maxTier < 10) {
+            this.stats.maxTier = 10 as FruitTier;
+            this.onMaxFruit(this.stats.maxTier);
+        }
+
+        this.addScore(5000);
+    }
+
+    updateCelebrationLogic(dtMs: number) {
+        if (!this.celebrationEffect) return;
+
+        const state = this.celebrationEffect;
+        state.timer += dtMs;
+
+        if (state.phase === 'suck') {
+            let allArrived = true;
+            const targetY = this.height * SPAWN_Y_PERCENT;
+
+            for (const id of state.capturedIds) {
+                const p = this.fruits.find(f => f.id === id);
+                if (!p) continue;
+                if (Math.abs(p.y - targetY) > 50) {
+                    allArrived = false;
+                }
+            }
+
+            if (allArrived || state.timer > 3000) {
+                state.phase = 'hold';
+                state.timer = 0;
+            }
+        } else if (state.phase === 'hold') {
+            if (state.timer > 500) {
+                state.phase = 'explode';
+
+                const targetX = this.width / 2;
+                const targetY = this.height * SPAWN_Y_PERCENT;
+
+                this.effectSystem.createMergeEffect(targetX, targetY, "#FFD700");
+                this.audio.playMergeSound(FruitTier.RAINBOW);
+
+                for (const id of state.capturedIds) {
+                    const p = this.fruits.find(f => f.id === id);
+                    if (!p) continue;
+
+                    p.isCaught = false;
+                    p.ignoreCollisions = false;
+
+                    const angle = Math.random() * Math.PI * 2;
+                    const force = 10 + Math.random() * 15;
+                    p.vx = Math.cos(angle) * force;
+                    p.vy = Math.sin(angle) * force + 5;
+                    p.cooldownTimer = 1.0;
+                }
+
+                this.celebrationEffect = null;
+            }
+        }
     }
 
     applyShockwave(x: number, y: number, radius: number, force: number) {
@@ -1547,11 +820,6 @@ export class GameEngine {
 
         const rand = Math.random();
 
-        // Adjusted Probabilities:
-        // Rainbow: 1.5%
-        // Tomato: 1.5%
-        // Bomb: 1.5%
-
         if (rand < 0.015) {
             return FruitTier.RAINBOW;
         } else if (rand < 0.030) {
@@ -1569,40 +837,26 @@ export class GameEngine {
         const currentTier = this.currentFruit.tier;
 
         if (this.savedFruitTier === null) {
-            // First time save: Store current, spawn next from queue
             this.savedFruitTier = currentTier;
-
-            // Remove current sprite
-            this.removeParticle(this.currentFruit);
+            this.renderSystem.removeSprite(this.currentFruit);
             this.currentFruit = null;
-
-            // Spawn next immediate (force logic from spawnNextFruit without the full check)
-            // But properly, we should just shift queue.
-            // spawnNextFruit handles shifting.
-            this.spawnNextFruit();
+            this.spawnNextFruit(); // Actually need to handle logic: if swapping, do we use queue or force next?
+            // "spawnNextFruit" uses queue. Correct behavior for first swap.
         } else {
-            // Swap logic
             const oldSaved = this.savedFruitTier;
             this.savedFruitTier = currentTier;
-
-            // Force the current fruit to be the old saved one
             this.forceCurrentFruit(oldSaved);
         }
 
         this.canSwap = false;
         this.onSaveUpdate(this.savedFruitTier);
-        this.audio.playMergeSound(FruitTier.CHERRY); // Simple feedback sound
+        this.audio.playMergeSound(FruitTier.CHERRY);
     }
 
     removeParticle(p: Particle) {
         const idx = this.fruits.indexOf(p);
         if (idx >= 0) this.fruits.splice(idx, 1);
-        const sprite = this.fruitSprites.get(p.id);
-        if (sprite) {
-            this.container.removeChild(sprite);
-            sprite.destroy();
-            this.fruitSprites.delete(p.id);
-        }
+        this.renderSystem.removeSprite(p);
     }
 
     addScore(amt: number) {
@@ -1616,65 +870,6 @@ export class GameEngine {
         this.app?.ticker.stop();
         this.audio.stop();
         this.onGameOver(this.stats);
-    }
-
-    drawDangerLine() {
-        this.dangerLine.clear();
-        const y = this.height * DANGER_Y_PERCENT;
-        const width = this.width;
-        this.dangerLine.moveTo(0, y);
-        this.dangerLine.lineTo(width, y);
-        if (this.dangerActive) {
-            this.dangerLine.stroke({ width: 4, color: 0xFF4444, alpha: 0.8 }); // Solid line for now to fix type error
-        } else {
-            this.dangerLine.stroke({ width: 4, color: 0x000000, alpha: 0.2 });
-        }
-    }
-
-    renderSync() {
-        let rhythmicScaleX = 1;
-        let rhythmicScaleY = 1;
-        if (this.feverActive) {
-            const time = Date.now();
-            const pulse = Math.sin((time / 250) * Math.PI) * 0.05;
-            rhythmicScaleX = 1 + pulse;
-            rhythmicScaleY = 1 - pulse;
-        }
-        if (this.currentFruit) {
-            const sprite = this.fruitSprites.get(this.currentFruit.id);
-            if (sprite) {
-                sprite.x = this.currentFruit.x;
-                sprite.y = this.currentFruit.y;
-                sprite.rotation = this.currentFruit.rotation;
-            }
-        }
-        for (const p of this.fruits) {
-            const sprite = this.fruitSprites.get(p.id);
-            if (sprite) {
-                sprite.x = p.x;
-                sprite.y = p.y;
-                sprite.rotation = p.rotation;
-                sprite.alpha = p.alpha;
-                sprite.scale.set(
-                    p.scaleX * rhythmicScaleX,
-                    p.scaleY * rhythmicScaleY
-                );
-                const face = sprite.getChildByLabel("face") as PIXI.Container;
-                if (face) {
-                    const eyes = face.getChildByLabel("eyes");
-                    if (eyes) {
-                        if (p.isBlinking) {
-                            eyes.scale.y = 0.1;
-                        } else {
-                            eyes.scale.y = 1;
-                        }
-                    }
-                    const lookX = Math.min(10, Math.max(-10, p.vx));
-                    const lookY = Math.min(10, Math.max(-10, p.vy));
-                    face.position.set(lookX * 0.5, lookY * 0.5);
-                }
-            }
-        }
     }
 
     cleanup() {
