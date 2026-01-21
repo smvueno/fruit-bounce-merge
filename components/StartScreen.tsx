@@ -41,7 +41,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
 
         {/* Header */}
         <div className="mb-6 relative shrink-0">
-          <h1 className="text-6xl font-black text-gray-900 drop-shadow-sm tracking-tight leading-none">
+          <h1 className="text-6xl font-bold text-gray-900 drop-shadow-sm tracking-tight leading-none">
             FRUIT<br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">BOUNCE</span>
           </h1>
@@ -60,7 +60,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         {/* Main Action - Solid Green Button */}
         <button
           onClick={() => onStart(Difficulty.HARD)}
-          className="group relative w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-black text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden mb-6 shrink-0"
+          className="group relative w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-bold text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden mb-6 shrink-0"
         >
           <span className="relative z-10 flex items-center justify-center gap-3 drop-shadow-md">
             <Play size={32} fill="currentColor" /> PLAY

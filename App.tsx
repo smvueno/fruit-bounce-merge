@@ -278,14 +278,14 @@ const App: React.FC = () => {
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
 
   return (
-    <div className="relative w-full h-full bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
+    <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-yellow-100 opacity-5">
         <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       </div>
 
       {/* Responsive Game Container - Fixed Aspect Ratio 2:3 (Portrait) */}
-      <div className="relative w-full max-w-[600px] h-full max-h-[95vh] aspect-[2/3] bg-white shadow-2xl rounded-xl overflow-hidden ring-8 ring-black/10 flex flex-col">
+      <div className="relative w-full max-w-[600px] h-full max-h-[95svh] aspect-[2/3] bg-white shadow-2xl rounded-xl ring-8 ring-black/10 flex flex-col">
 
         {gameState === GameState.START && (
           <StartScreen
@@ -310,13 +310,6 @@ const App: React.FC = () => {
 
         {gameState === GameState.PLAYING && (
           <>
-            {/* Score Display - Top Left */}
-            <div className="absolute top-6 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka']">
-              <div className="text-gray-900 font-black tracking-widest text-lg drop-shadow-sm mb-0 opacity-80">SCORE</div>
-              <div className="text-6xl font-black text-gray-900 drop-shadow-sm leading-none" style={{ textShadow: '3px 3px 0 #F97316' }}>
-                {currentScore.toLocaleString()}
-              </div>
-            </div>
 
             <GameCanvas
               difficulty={data.lastDifficulty}

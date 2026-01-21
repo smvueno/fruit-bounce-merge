@@ -11,8 +11,9 @@ import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
 
 // --- Virtual Resolution ---
+// Aspect Ratio: 4:5
 const V_WIDTH = 600;
-const V_HEIGHT = 900;
+const V_HEIGHT = 750;
 
 // --- Engine ---
 export class GameEngine {
@@ -175,7 +176,9 @@ export class GameEngine {
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container, this.effectContainer);
         const containerY = this.container.position.y || 0;
-        this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY);
+
+        // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
+        // this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY, actualW);
 
         // Start Game
         this.spawnNextFruit();
@@ -233,11 +236,13 @@ export class GameEngine {
         this.onSaveUpdate(null);
 
         // Redraw floor to ensure clean state
-        if (this.app) {
-            const actualH = this.app.screen.height;
-            const containerY = this.container.position.y || 0;
-            this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY);
-        }
+        // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
+        // if (this.app) {
+        //     const actualH = this.app.screen.height;
+        //     const actualW = this.app.screen.width;
+        //     const containerY = this.container.position.y || 0;
+        //     this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY, actualW);
+        // }
 
         this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
