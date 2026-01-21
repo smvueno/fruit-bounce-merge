@@ -9,9 +9,15 @@ interface StartScreenProps {
   leaderboard: LeaderboardEntry[];
   settings: GameSettings;
   onUpdateSettings: (s: GameSettings) => void;
+  onSync?: () => void;
 }
 
-export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, settings, onUpdateSettings }) => {
+export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, settings, onUpdateSettings, onSync }) => {
+  React.useEffect(() => {
+    if (onSync) onSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggleMusic = () => onUpdateSettings({ ...settings, musicEnabled: !settings.musicEnabled });
   const toggleSfx = () => onUpdateSettings({ ...settings, sfxEnabled: !settings.sfxEnabled });
   const toggleHaptics = () => onUpdateSettings({ ...settings, hapticsEnabled: !settings.hapticsEnabled });

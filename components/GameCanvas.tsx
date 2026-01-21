@@ -14,6 +14,7 @@ interface GameCanvasProps {
     leaderboard: LeaderboardEntry[];
     onGameOver: (stats: GameStats) => void;
     setScore: (s: number) => void;
+    onSync?: () => void;
 }
 
 // Simple large SVG patterns
@@ -111,6 +112,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     const handlePauseToggle = () => {
         const newState = !isPaused;
         setIsPaused(newState);
+        if (newState && onSync) {
+            onSync();
+        }
         if (engineRef.current) {
             engineRef.current.setPaused(newState);
         }
