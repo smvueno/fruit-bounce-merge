@@ -3,8 +3,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Difficulty, GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { FRUIT_DEFS } from '../constants';
-import { Pause, Play, RotateCcw, Volume2, VolumeX, Vibrate, VibrateOff, Home, Trophy, Music, Music4, Clock, Globe, User, X } from 'lucide-react';
+import { Pause, Play, RotateCcw, Volume2, VolumeX, Vibrate, VibrateOff, Home, Trophy, Music, Music4, Clock, Globe, User } from 'lucide-react';
 import { RankingTable } from './RankingTable';
+import { FruitSVG } from './FruitSVG';
+import { DebugMenu } from './DebugMenu';
 import { saveData } from '../utils/storage';
 
 interface GameCanvasProps {
@@ -27,13 +29,9 @@ const BACKGROUND_PATTERNS = [
     `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10 L70 70 L10 70 Z' fill='black' /%3E%3C/svg%3E`
 ];
 
-// --- FRUIT SVG RENDERER (Exact Match to PIXI GameEngine) ---
-const FruitSVG: React.FC<{ tier: FruitTier, size: number }> = ({ tier, size }) => {
-    const def = FRUIT_DEFS[tier] || FRUIT_DEFS[FruitTier.CHERRY];
-    return <>{def.renderSvg(size)}</>;
-};
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore }) => {
+
+export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<GameEngine | null>(null);
     const [combo, setCombo] = useState(0);
@@ -292,52 +290,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
 
             {/* Debug/Cheat Menu - Left Side Under Level/Score */}
             {debugMode && (
-                <div className="absolute left-6 top-56 z-30 animate-fade-in pointer-events-auto flex flex-col gap-2 mt-4">
-                    {/* Bomb Button - 50% transparent */}
-                    <button
-                        onClick={() => {
-                            if (engineRef.current) {
-                                engineRef.current.forceCurrentFruit(FruitTier.BOMB);
-                            }
-                        }}
-                        className="w-14 h-14 bg-gray-900/50 backdrop-blur-sm hover:bg-gray-800/50 rounded-full flex items-center justify-center shadow-lg border-2 border-gray-600 active:scale-95 transition-all group"
-                        title="Spawn Bomb"
-                    >
-                        <FruitSVG tier={FruitTier.BOMB} size={40} />
-                    </button>
-                    {/* Rainbow Button - 50% transparent */}
-                    <button
-                        onClick={() => {
-                            if (engineRef.current) {
-                                engineRef.current.forceCurrentFruit(FruitTier.RAINBOW);
-                            }
-                        }}
-                        className="w-14 h-14 bg-white/50 backdrop-blur-sm hover:bg-white/60 rounded-full flex items-center justify-center shadow-lg border-2 border-pink-300 active:scale-95 transition-all group"
-                        title="Spawn Rainbow"
-                    >
-                        <FruitSVG tier={FruitTier.RAINBOW} size={40} />
-                    </button>
-                    {/* Tomato Button - 50% transparent */}
-                    <button
-                        onClick={() => {
-                            if (engineRef.current) {
-                                engineRef.current.forceCurrentFruit(FruitTier.TOMATO);
-                            }
-                        }}
-                        className="w-14 h-14 bg-white/50 backdrop-blur-sm hover:bg-white/60 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 active:scale-95 transition-all"
-                        title="Spawn Tomato"
-                    >
-                        <FruitSVG tier={FruitTier.TOMATO} size={40} />
-                    </button>
-                    {/* Close Cheat Menu Button - 50% transparent */}
-                    <button
-                        onClick={() => setDebugMode(false)}
-                        className="w-14 h-14 bg-red-500/50 backdrop-blur-sm hover:bg-red-600/50 rounded-full flex items-center justify-center shadow-lg border-2 border-red-700 active:scale-95 transition-all"
-                        title="Close Cheat Menu"
-                    >
-                        <X size={24} className="text-white" strokeWidth={3} />
-                    </button>
-                </div>
+                <DebugMenu
+                    engine={engineRef.current}
+                    onClose={() => setDebugMode(false)}
+                />
             )}
 
 

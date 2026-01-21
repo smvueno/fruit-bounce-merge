@@ -1,10 +1,8 @@
 // Service Worker for offline support
 const CACHE_NAME = 'fruit-bounce-v1-' + '{{BUILD_TIME}}'; // Will be replaced at build time
 const urlsToCache = [
-    '/',
-    '/index.html',
-    '/src/main.tsx',
-    '/src/index.css',
+    './',
+    './index.html'
 ];
 
 // Install event - cache resources
@@ -78,7 +76,7 @@ self.addEventListener('fetch', (event) => {
                     return response;
                 }).catch(() => {
                     // Network failed, try to return cached version
-                    return caches.match('/index.html');
+                    return caches.match('./index.html');
                 });
             })
     );

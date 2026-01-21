@@ -9,6 +9,12 @@ import { getGlobalLeaderboard, submitScore, performFullSync } from './services/l
 import { offlineManager } from './services/offlineManager';
 import { UpdateModal } from './components/UpdateModal';
 
+declare global {
+  interface Window {
+    forceReset: () => void;
+  }
+}
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
   const [data, setData] = useState<SavedData>(loadData());
@@ -32,51 +38,56 @@ const App: React.FC = () => {
     }
   };
 
+  // Emergency Reset Function
+  useEffect(() => {
+    window.forceReset = async () => {
+      console.log('🚨 Starting Emergency Reset...');
+      console.log('   Origin:', window.location.origin);
+
+      // 1. Unregister all service workers
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          console.log(`   Found ${registrations.length} registrations.`);
+
+          for (const registration of registrations) {
+            console.log(`   👉 Attempting to unregister SW at scope: ${registration.scope}`);
+            const result = await registration.unregister();
+            console.log(`      Result: ${result ? 'SUCCESS' : 'FAILED'}`);
+          }
+
+          if (registrations.length === 0) {
+            console.log('   ⚠️ No registrations found via getRegistrations(). usage might be restricted?');
+          }
+        } catch (err) {
+          console.error('   ❌ Error getting registrations:', err);
+        }
+      } else {
+        console.log('   ❌ navigator.serviceWorker not supported');
+      }
+
+      // 2. Clear all caches
+      if ('caches' in window) {
+        try {
+          const keys = await caches.keys();
+          console.log(`   Found ${keys.length} caches.`);
+          for (const key of keys) {
+            console.log(`   🗑️ Deleting cache: ${key}`);
+            await caches.delete(key);
+          }
+        } catch (err) {
+          console.error('   ❌ Error clearing caches:', err);
+        }
+      }
+
+      console.log('✅ Reset logic finished. Reloading in 1s...');
+      setTimeout(() => window.location.reload(), 1000);
+    };
+  }, []);
+
   useEffect(() => {
     // Load initial data
     setData(loadData());
-
-    // Register service worker for offline support
-    if ('serviceWorker' in navigator) {
-      const swPath = '/sw.js';  // Vite will add base URL automatically in build
-      navigator.serviceWorker.register(swPath).then(reg => {
-        console.log('Service Worker registered:', swPath);
-
-        // Check if there's already a waiting worker
-        if (reg.waiting) {
-          setWaitingWorker(reg.waiting);
-          if (gameState === GameState.START) setShowUpdateModal(true);
-        }
-
-        // Listen for new workers
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (newWorker) {
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New update available and installed
-                setWaitingWorker(newWorker);
-                if (gameState === GameState.START) setShowUpdateModal(true);
-              }
-            });
-          }
-        });
-
-        // Periodically check for updates (every 60s)
-        const intervalId = setInterval(() => {
-          reg.update().catch(err => console.error('Error checking for SW update:', err));
-        }, 60000);
-
-        // Cleanup interval on unmount (though App usually doesn't unmount)
-        return () => clearInterval(intervalId);
-
-      }).catch(err => console.error('Service Worker registration failed:', err));
-
-      // Reload when the new worker takes control
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window.location.reload();
-      });
-    }
 
     // Initial Sync
     handleSync();
@@ -89,11 +100,70 @@ const App: React.FC = () => {
       }
     });
 
-    return () => {
-      unsubscribe();
-    };
+    // Register service worker for offline support
+    if ('serviceWorker' in navigator) {
+      const swPath = `${import.meta.env.BASE_URL}sw.js`;
+
+      const handleControllerChange = () => {
+        window.location.reload();
+      };
+
+      // Store cleanup function for registration listeners
+      let cleanupRegistrationListeners: (() => void) | undefined;
+
+      navigator.serviceWorker.register(swPath).then(reg => {
+        console.log('Service Worker registered:', swPath);
+
+        // Check if there's already a waiting worker
+        if (reg.waiting) {
+          setWaitingWorker(reg.waiting);
+          if (gameState === GameState.START) setShowUpdateModal(true);
+        }
+
+        const handleUpdateFound = () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New update available and installed
+                setWaitingWorker(newWorker);
+                if (gameState === GameState.START) setShowUpdateModal(true);
+              }
+            });
+          }
+        };
+
+        // Listen for new workers
+        reg.addEventListener('updatefound', handleUpdateFound);
+
+        // Periodically check for updates (every 60s)
+        const intervalId = setInterval(() => {
+          reg.update().catch(err => console.error('Error checking for SW update:', err));
+        }, 60000);
+
+        // Assign cleanup function
+        cleanupRegistrationListeners = () => {
+          clearInterval(intervalId);
+          reg.removeEventListener('updatefound', handleUpdateFound);
+        };
+
+      }).catch(err => console.error('Service Worker registration failed:', err));
+
+      // Reload when the new worker takes control
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+      return () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+        if (cleanupRegistrationListeners) cleanupRegistrationListeners();
+        unsubscribe();
+      };
+    } else {
+      return () => {
+        unsubscribe();
+      };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gameState]); // Added gameState dependency to ensure modal logic works if state changes
 
   const handleStart = (diff: Difficulty) => {
     // Check for update before starting - prevent game start if update available
