@@ -130,3 +130,88 @@ export const uploadPendingScores = async (pending: LeaderboardEntry[]): Promise<
 
   return remaining;
 };
+
+import { loadData, saveData } from '../utils/storage';
+import { offlineManager } from './offlineManager';
+
+/**
+ * Sync scores helper - uploads pending and fetches latest global
+ * Returns the latest global leaderboard if successful
+ */
+export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
+  // 1. Check connectivity
+  if (!offlineManager.isOnline()) {
+    console.log('Offline - skipping sync');
+    return null;
+  }
+
+  // 2. Prevent overlapping syncs
+  if (offlineManager.isSyncing()) {
+    console.log('Sync already in progress - skipping');
+    return null;
+  }
+
+  offlineManager.setSyncInProgress(true);
+
+  try {
+    // 3. Load FRESH data from storage
+    // We grab the snapshot of pending scores to attempt uploading
+    const initialLoad = loadData();
+    const pendingToUpload = initialLoad.pendingScores || [];
+
+    if (pendingToUpload.length > 0) {
+      console.log(`Syncing ${pendingToUpload.length} pending scores...`);
+
+      // Keep track of which specific entries (by unique props) succeeded
+      const successIndices: number[] = [];
+
+      for (let i = 0; i < pendingToUpload.length; i++) {
+        const entry = pendingToUpload[i];
+        const success = await submitScore(entry);
+        if (success) {
+          successIndices.push(i);
+        }
+      }
+
+      if (successIndices.length > 0) {
+        // Critical: Re-load data to ensure we don't overwrite any NEW pending scores 
+        // that were added while we were awaiting the uploads above.
+        const currentData = loadData();
+        const currentPending = currentData.pendingScores || [];
+
+        // We identify items to remove based on the objects we tried to upload.
+        // Since objects are by reference in memory but by value in storage, 
+        // we filtered based on content matching or we assumes FIFO?
+        // Safest is to filter out the exact entries we succeeded with.
+        // We use date+score+name as a unique-ish signature or strict object equality if not reloaded?
+        // Strict equality won't work because we re-loaded.
+        // Let's filter by matching properties.
+
+        const successfullyUploaded = pendingToUpload.filter((_, index) => successIndices.includes(index));
+
+        const newPending = currentPending.filter(currentEntry => {
+          // Keep this entry IF it was NOT one of the successfully uploaded ones
+          const isUploaded = successfullyUploaded.some(uploaded =>
+            uploaded.date === currentEntry.date &&
+            uploaded.name === currentEntry.name &&
+            uploaded.score === currentEntry.score
+          );
+          return !isUploaded;
+        });
+
+        console.log(`Successfully synced ${successIndices.length} scores. Remaining pending: ${newPending.length}`);
+        saveData({ pendingScores: newPending });
+      }
+    }
+
+    // 4. Fetch Global (force refresh)
+    const global = await getGlobalLeaderboard(50, true);
+    return global;
+  } catch (e) {
+    console.error('Error during sync:', e);
+    return null;
+  } finally {
+    offlineManager.setSyncInProgress(false);
+  }
+
+};

@@ -5,8 +5,15 @@ import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';
 import { loadData, saveData } from './utils/storage';
-import { getGlobalLeaderboard, submitScore, uploadPendingScores } from './services/leaderboardService';
+import { getGlobalLeaderboard, submitScore, performFullSync } from './services/leaderboardService';
 import { offlineManager } from './services/offlineManager';
+import { UpdateModal } from './components/UpdateModal';
+
+declare global {
+  interface Window {
+    forceReset: () => void;
+  }
+}
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
@@ -18,112 +25,175 @@ const App: React.FC = () => {
 
   // Service Worker Update State
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
-  const syncScores = async () => {
-    // 1. Check connectivity
-    if (!offlineManager.isOnline()) {
-      console.log('Offline - skipping sync');
-      return;
+  // Expose sync function to refresh both global state and local pending data
+  const handleSync = async () => {
+    const globalData = await performFullSync();
+    if (globalData) {
+      setGlobalLeaderboard(globalData);
+      // Also refresh local pending scores view
+      const reloaded = loadData();
+      setData(prev => ({ ...prev, pendingScores: reloaded.pendingScores }));
     }
+  };
 
-    // 2. Prevent overlapping syncs
-    if (offlineManager.isSyncing()) {
-      console.log('Sync already in progress - skipping');
-      return;
-    }
+  // Emergency Reset Function
+  useEffect(() => {
+    window.forceReset = async () => {
+      console.log('🚨 Starting Emergency Reset...');
+      console.log('   Origin:', window.location.origin);
 
-    offlineManager.setSyncInProgress(true);
+      // 1. Unregister all service workers
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          console.log(`   Found ${registrations.length} registrations.`);
 
-    try {
-      // 3. Load FRESH data from storage to avoid stale closures
-      // We do not rely on 'data.pendingScores' from component state
-      const currentSaved = loadData();
-      const pending = currentSaved.pendingScores || [];
+          for (const registration of registrations) {
+            console.log(`   👉 Attempting to unregister SW at scope: ${registration.scope}`);
+            const result = await registration.unregister();
+            console.log(`      Result: ${result ? 'SUCCESS' : 'FAILED'}`);
+          }
 
-      if (pending.length > 0) {
-        console.log(`Syncing ${pending.length} pending scores...`);
-        const remaining = await uploadPendingScores(pending);
+          if (registrations.length === 0) {
+            console.log('   ⚠️ No registrations found via getRegistrations(). usage might be restricted?');
+          }
+        } catch (err) {
+          console.error('   ❌ Error getting registrations:', err);
+        }
+      } else {
+        console.log('   ❌ navigator.serviceWorker not supported');
+      }
 
-        // If we managed to upload some, update local storage and state
-        if (remaining.length !== pending.length) {
-          console.log(`Successfully synced ${pending.length - remaining.length} scores.`);
-          saveData({ pendingScores: remaining });
-          setData(prev => ({ ...prev, pendingScores: remaining }));
+      // 2. Clear all caches
+      if ('caches' in window) {
+        try {
+          const keys = await caches.keys();
+          console.log(`   Found ${keys.length} caches.`);
+          for (const key of keys) {
+            console.log(`   🗑️ Deleting cache: ${key}`);
+            await caches.delete(key);
+          }
+        } catch (err) {
+          console.error('   ❌ Error clearing caches:', err);
         }
       }
 
-      // 4. Fetch Global (force refresh)
-      const global = await getGlobalLeaderboard(50, true);
-      setGlobalLeaderboard(global);
-    } catch (e) {
-      console.error('Error during sync:', e);
-    } finally {
-      offlineManager.setSyncInProgress(false);
-    }
-  };
+      console.log('✅ Reset logic finished. Reloading in 1s...');
+      setTimeout(() => window.location.reload(), 1000);
+    };
+  }, []);
 
   useEffect(() => {
     // Load initial data
     setData(loadData());
 
+    // Initial Sync
+    handleSync();
+
+    // Listen for connection changes
+    const unsubscribe = offlineManager.onConnectionChange((isOnline) => {
+      if (isOnline) {
+        console.log('Back online - syncing...');
+        handleSync();
+      }
+    });
+
     // Register service worker for offline support
     if ('serviceWorker' in navigator) {
-      const swPath = import.meta.env.BASE_URL + 'sw.js';
+      const swPath = `${import.meta.env.BASE_URL}sw.js`;
+
+      const handleControllerChange = () => {
+        window.location.reload();
+      };
+
+      // Store cleanup function for registration listeners
+      let cleanupRegistrationListeners: (() => void) | undefined;
+
       navigator.serviceWorker.register(swPath).then(reg => {
         console.log('Service Worker registered:', swPath);
 
         // Check if there's already a waiting worker
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);
+          if (gameState === GameState.START) setShowUpdateModal(true);
         }
 
-        // Listen for new workers
-        reg.addEventListener('updatefound', () => {
+        const handleUpdateFound = () => {
           const newWorker = reg.installing;
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                 // New update available and installed
                 setWaitingWorker(newWorker);
+                if (gameState === GameState.START) setShowUpdateModal(true);
               }
             });
           }
-        });
+        };
+
+        // Listen for new workers
+        reg.addEventListener('updatefound', handleUpdateFound);
+
+        // Periodically check for updates (every 60s)
+        const intervalId = setInterval(() => {
+          reg.update().catch(err => console.error('Error checking for SW update:', err));
+        }, 60000);
+
+        // Assign cleanup function
+        cleanupRegistrationListeners = () => {
+          clearInterval(intervalId);
+          reg.removeEventListener('updatefound', handleUpdateFound);
+        };
+
       }).catch(err => console.error('Service Worker registration failed:', err));
 
       // Reload when the new worker takes control
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window.location.reload();
-      });
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
+      return () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+        if (cleanupRegistrationListeners) cleanupRegistrationListeners();
+        unsubscribe();
+      };
+    } else {
+      return () => {
+        unsubscribe();
+      };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState]); // Added gameState dependency to ensure modal logic works if state changes
 
-    // Initial Sync
-    syncScores();
+  // Periodic Leaderboard Polling (Simple "Realtime")
+  useEffect(() => {
+    // Poll every 30 seconds to update leaderboard if data changes externally
+    const pollId = setInterval(() => {
+      // Logic: Sync if:
+      // 1. Tab is visible AND Online AND
+      // 2. We are NOT playing (Start/GameOver) OR We ARE playing but Paused (Menu Open)
+      const shouldSync = !document.hidden && navigator.onLine && (gameState !== GameState.PLAYING || isPaused);
 
-    // Listen for connection changes
-    const unsubscribe = offlineManager.onConnectionChange((isOnline) => {
-      if (isOnline) {
-        console.log('Back online - syncing...');
-        syncScores();
+      if (shouldSync) {
+        handleSync();
       }
-    });
+    }, 30000);
 
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+    return () => clearInterval(pollId);
+  }, [gameState, isPaused]); // Add dependencies so interval closure sees current state
 
   const handleStart = (diff: Difficulty) => {
+    // Check for update before starting - prevent game start if update available
     if (waitingWorker) {
-      if (confirm("A new version of the game is available! The game will reload to update.")) {
-        waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-        return;
-      }
+      setShowUpdateModal(true);
+      return; // Don't start the game
     }
 
     saveData({ lastDifficulty: diff });
     setData(prev => ({ ...prev, lastDifficulty: diff }));
     setCurrentScore(0);
+    setIsPaused(false); // Reset pause state on start
     setGameState(GameState.PLAYING);
   };
 
@@ -188,14 +258,16 @@ const App: React.FC = () => {
     const uploaded = await submitScore(newEntry);
     if (!uploaded) {
       newPending.push(newEntry);
-    } else {
-      // Refresh global if successful
-      const global = await getGlobalLeaderboard();
-      setGlobalLeaderboard(global);
     }
 
+    // Always update local storage first so we don't lose the record
     saveData({ leaderboard: updatedLeaderboard, pendingScores: newPending });
     setData(prev => ({ ...prev, leaderboard: updatedLeaderboard, pendingScores: newPending }));
+
+    // If uploaded successfully OR if we just added to pending, trigger a full sync/refresh
+    // This ensures we get the latest global state (including our own new score if uploaded)
+    // and ensures pending queue is processed if connection flickered back on
+    handleSync();
   };
 
   const updateSettings = (s: any) => {
@@ -221,6 +293,18 @@ const App: React.FC = () => {
             leaderboard={activeLeaderboard}
             settings={data.settings}
             onUpdateSettings={updateSettings}
+          />
+        )}
+
+        {showUpdateModal && waitingWorker && (
+          <UpdateModal
+            onConfirm={async () => {
+              // Trigger sync before updating
+              await handleSync();
+              // Tell service worker to skip waiting and take control
+              waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+              // The page will reload via controllerchange event
+            }}
           />
         )}
 
@@ -252,7 +336,14 @@ const App: React.FC = () => {
             leaderboard={activeLeaderboard}
             isLocalOnly={data.settings.showLocalOnly}
             onRestart={() => handleStart(data.lastDifficulty)}
-            onMenu={() => setGameState(GameState.START)}
+            onMenu={() => {
+              // Check for update when returning to menu too
+              if (waitingWorker) {
+                setShowUpdateModal(true);
+              } else {
+                setGameState(GameState.START);
+              }
+            }}
             onSaveScore={saveScoreToLeaderboard}
           />
         )}

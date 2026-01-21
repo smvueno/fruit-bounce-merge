@@ -13,11 +13,17 @@ interface GameOverScreenProps {
   onRestart: () => void;
   onMenu: () => void;
   onSaveScore: (name: string) => void;
+  onSync?: () => void;
 }
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh, leaderboard, isLocalOnly, onRestart, onMenu, onSaveScore }) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh, leaderboard, isLocalOnly, onRestart, onMenu, onSaveScore, onSync }) => {
   const [name, setName] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
+
+  React.useEffect(() => {
+    if (onSync) onSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSave = () => {
     if (name.trim().length > 0) {

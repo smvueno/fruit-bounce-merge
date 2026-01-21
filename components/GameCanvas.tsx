@@ -3,8 +3,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Difficulty, GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { FRUIT_DEFS } from '../constants';
-import { Pause, Play, RotateCcw, Volume2, VolumeX, Vibrate, VibrateOff, Home, Trophy, Music, Music4, Clock, Globe, User, X } from 'lucide-react';
+import { Pause, Play, RotateCcw, Volume2, VolumeX, Vibrate, VibrateOff, Home, Trophy, Music, Music4, Clock, Globe, User } from 'lucide-react';
 import { RankingTable } from './RankingTable';
+import { FruitSVG } from './FruitSVG';
+import { DebugMenu } from './DebugMenu';
 import { saveData } from '../utils/storage';
 
 interface GameCanvasProps {
@@ -14,6 +16,8 @@ interface GameCanvasProps {
     leaderboard: LeaderboardEntry[];
     onGameOver: (stats: GameStats) => void;
     setScore: (s: number) => void;
+    onSync?: () => void;
+    onPauseChange?: (paused: boolean) => void;
 }
 
 // Simple large SVG patterns
@@ -26,13 +30,9 @@ const BACKGROUND_PATTERNS = [
     `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10 L70 70 L10 70 Z' fill='black' /%3E%3C/svg%3E`
 ];
 
-// --- FRUIT SVG RENDERER (Exact Match to PIXI GameEngine) ---
-const FruitSVG: React.FC<{ tier: FruitTier, size: number }> = ({ tier, size }) => {
-    const def = FRUIT_DEFS[tier] || FRUIT_DEFS[FruitTier.CHERRY];
-    return <>{def.renderSvg(size)}</>;
-};
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore }) => {
+
+export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<GameEngine | null>(null);
     const [combo, setCombo] = useState(0);
@@ -40,11 +40,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     const [dangerTime, setDangerTime] = useState(0);
     const [juice, setJuice] = useState(0);
     const [nextFruit, setNextFruit] = useState<FruitTier>(FruitTier.CHERRY);
+    const [savedFruit, setSavedFruit] = useState<FruitTier | null>(null);
     const [playTime, setPlayTime] = useState(0);
     const [maxTier, setMaxTier] = useState<FruitTier>(FruitTier.CHERRY);
     const [isPaused, setIsPaused] = useState(false);
     const [debugMode, setDebugMode] = useState(false);
     const [pauseTapCount, setPauseTapCount] = useState(0);
+    const [showCelebration, setShowCelebration] = useState(false);
 
     // Background State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
@@ -75,10 +77,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
             onMaxFruit: (t: FruitTier) => {
-                setBgColor(FRUIT_DEFS[t].patternColor);
+                if (FRUIT_DEFS[t]) { // Safety check
+                    setBgColor(FRUIT_DEFS[t].patternColor);
+                }
                 setMaxTier(prev => Math.max(prev, t));
             },
             onTimeUpdate: (ms: number) => setPlayTime(ms),
+            onSaveUpdate: (t: FruitTier | null) => setSavedFruit(t),
+            onCelebration: () => {
+                setShowCelebration(true);
+                setTimeout(() => setShowCelebration(false), 4000);
+            }
         });
 
         engine.initialize().catch(e => console.error("Game init failed", e));
@@ -102,6 +111,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     const handlePauseToggle = () => {
         const newState = !isPaused;
         setIsPaused(newState);
+        if (onPauseChange) onPauseChange(newState);
+        if (newState && onSync) {
+            onSync();
+        }
         if (engineRef.current) {
             engineRef.current.setPaused(newState);
         }
@@ -112,12 +125,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             engineRef.current.reset(); // Use new reset method instead of destroy/init
         }
         setIsPaused(false);
+        if (onPauseChange) onPauseChange(false);
         setScore(0);
         setCombo(0);
         setFever(false);
         setJuice(0);
         setPlayTime(0);
+        setSavedFruit(null);
         setMaxTier(FruitTier.CHERRY);
+        setShowCelebration(false);
     };
 
     const handleEndGame = () => {
@@ -228,17 +244,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
 
                 {/* MAX LEVEL */}
                 <div className="text-2xl font-black text-gray-900 drop-shadow-sm tracking-wide flex items-center gap-2 opacity-90">
-                    <div className="w-5 h-5 rounded-full border-2 border-gray-900 shadow-sm" style={{ backgroundColor: FRUIT_DEFS[maxTier]?.color }}></div>
-                    LVL {maxTier + 1}
+                    <div className="w-5 h-5 rounded-full border-2 border-gray-900 shadow-sm" style={{ backgroundColor: (FRUIT_DEFS[maxTier] || FRUIT_DEFS[FruitTier.WATERMELON])?.color }}></div>
+                    LVL {maxTier >= 10 ? 11 : maxTier + 1}
                 </div>
             </div>
 
-            {/* Next Fruit Preview - Top Right */}
-            <div className="absolute top-6 right-6 pointer-events-auto z-20 flex flex-col items-end gap-3 animate-fade-in">
+            {/* Top Right Container: Next Fruit & Save Box */}
+            <div className="absolute top-6 right-6 pointer-events-auto z-20 flex flex-col items-center gap-6 animate-fade-in">
+
+                {/* Next Fruit */}
                 <div className="flex flex-col items-center pointer-events-none drop-shadow-md">
                     <div className="text-sm text-gray-900 font-bold mb-1 tracking-widest drop-shadow-sm opacity-80">NEXT</div>
                     <FruitSVG tier={nextFruit} size={60} />
                 </div>
+
+                {/* Save Box */}
+                <div
+                    className="flex flex-col items-center cursor-pointer active:scale-95 transition-transform group"
+                    onClick={() => engineRef.current?.swapSavedFruit()}
+                    title="Tap to Save/Swap Fruit"
+                >
+                    <div className="text-sm text-gray-900 font-bold mb-1 tracking-widest drop-shadow-sm opacity-80">SAVE</div>
+                    <div className="w-[70px] h-[70px] rounded-2xl border-4 border-gray-900 bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg relative overflow-hidden">
+                        {savedFruit !== null ? (
+                            <div className="animate-pop">
+                                <FruitSVG tier={savedFruit} size={60} />
+                                {/* Shine Effect */}
+                                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                            </div>
+                        ) : (
+                            <div className="text-gray-500 text-xs font-bold opacity-40">EMPTY</div>
+                        )}
+                    </div>
+                </div>
+
             </div>
 
             {/* Pause Button - Bottom Center (On the Floor) */}
@@ -254,54 +293,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
 
             {/* Debug/Cheat Menu - Left Side Under Level/Score */}
             {debugMode && (
-                <div className="absolute left-6 top-56 z-30 animate-fade-in pointer-events-auto flex flex-col gap-2 mt-4">
-                    {/* Bomb Button - 50% transparent */}
-                    <button
-                        onClick={() => {
-                            if (engineRef.current) {
-                                engineRef.current.forceCurrentFruit(FruitTier.BOMB);
-                            }
-                        }}
-                        className="w-14 h-14 bg-gray-900/50 backdrop-blur-sm hover:bg-gray-800/50 rounded-full flex items-center justify-center shadow-lg border-2 border-gray-600 active:scale-95 transition-all group"
-                        title="Spawn Bomb"
-                    >
-                        <FruitSVG tier={FruitTier.BOMB} size={40} />
-                    </button>
-                    {/* Rainbow Button - 50% transparent */}
-                    <button
-                        onClick={() => {
-                            if (engineRef.current) {
-                                engineRef.current.forceCurrentFruit(FruitTier.RAINBOW);
-                            }
-                        }}
-                        className="w-14 h-14 bg-white/50 backdrop-blur-sm hover:bg-white/60 rounded-full flex items-center justify-center shadow-lg border-2 border-pink-300 active:scale-95 transition-all group"
-                        title="Spawn Rainbow"
-                    >
-                        <FruitSVG tier={FruitTier.RAINBOW} size={40} />
-                    </button>
-                    {/* Tomato Button - 50% transparent */}
-                    <button
-                        onClick={() => {
-                            if (engineRef.current) {
-                                engineRef.current.forceCurrentFruit(FruitTier.TOMATO);
-                            }
-                        }}
-                        className="w-14 h-14 bg-white/50 backdrop-blur-sm hover:bg-white/60 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 active:scale-95 transition-all"
-                        title="Spawn Tomato"
-                    >
-                        <FruitSVG tier={FruitTier.TOMATO} size={40} />
-                    </button>
-                    {/* Close Cheat Menu Button - 50% transparent */}
-                    <button
-                        onClick={() => setDebugMode(false)}
-                        className="w-14 h-14 bg-red-500/50 backdrop-blur-sm hover:bg-red-600/50 rounded-full flex items-center justify-center shadow-lg border-2 border-red-700 active:scale-95 transition-all"
-                        title="Close Cheat Menu"
-                    >
-                        <X size={24} className="text-white" strokeWidth={3} />
-                    </button>
-                </div>
+                <DebugMenu
+                    engine={engineRef.current}
+                    onClose={() => setDebugMode(false)}
+                />
             )}
 
+
+            {/* Watermelon Celebration Overlay (Level 11) */}
+            {showCelebration && (
+                <div className="absolute inset-0 pointer-events-none z-40 flex items-center justify-center animate-pop-in">
+                    <div className="flex flex-col items-center transform -rotate-3">
+                        <h1 className="text-6xl font-black text-green-500 drop-shadow-[0_4px_0_rgba(0,0,0,0.5)] tracking-tighter text-center leading-none"
+                            style={{ WebkitTextStroke: '3px #1B5E20' }}>
+                            WATERMELON<br />CRUSH!
+                        </h1>
+                        <div className="text-4xl font-black text-white mt-4 drop-shadow-lg stroke-black"
+                            style={{ WebkitTextStroke: '2px black' }}>
+                            LEVEL 11 REACHED!
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Danger Overlay */}
             {dangerTime > 0 && (
