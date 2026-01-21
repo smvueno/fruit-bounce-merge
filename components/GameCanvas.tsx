@@ -347,7 +347,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                     <div className="flex flex-col items-center transform -rotate-3">
                         <h1 className="text-6xl font-black text-green-500 drop-shadow-[0_4px_0_rgba(0,0,0,0.5)] tracking-tighter text-center leading-none"
                             style={{ WebkitTextStroke: '3px #1B5E20' }}>
-                            WATERMELON<br/>CRUSH!
+                            WATERMELON<br />CRUSH!
                         </h1>
                         <div className="text-4xl font-black text-white mt-4 drop-shadow-lg stroke-black"
                             style={{ WebkitTextStroke: '2px black' }}>

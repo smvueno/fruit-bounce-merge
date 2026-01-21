@@ -1438,12 +1438,12 @@ export class GameEngine {
                 p.angularVelocity = 0.2;
             }
         } else if (state.phase === 'hold') {
-             for (const id of state.capturedIds) {
+            for (const id of state.capturedIds) {
                 const p = this.fruits.find(f => f.id === id);
                 if (!p) continue;
                 p.vx *= 0.8;
                 p.vy *= 0.8;
-             }
+            }
         }
     }
 

@@ -25,10 +25,10 @@ const App: React.FC = () => {
   const handleSync = async () => {
     const globalData = await performFullSync();
     if (globalData) {
-        setGlobalLeaderboard(globalData);
-        // Also refresh local pending scores view
-        const reloaded = loadData();
-        setData(prev => ({ ...prev, pendingScores: reloaded.pendingScores }));
+      setGlobalLeaderboard(globalData);
+      // Also refresh local pending scores view
+      const reloaded = loadData();
+      setData(prev => ({ ...prev, pendingScores: reloaded.pendingScores }));
     }
   };
 
@@ -38,7 +38,7 @@ const App: React.FC = () => {
 
     // Register service worker for offline support
     if ('serviceWorker' in navigator) {
-      const swPath = import.meta.env.BASE_URL + 'sw.js';
+      const swPath = '/sw.js';  // Vite will add base URL automatically in build
       navigator.serviceWorker.register(swPath).then(reg => {
         console.log('Service Worker registered:', swPath);
 
@@ -64,7 +64,7 @@ const App: React.FC = () => {
 
         // Periodically check for updates (every 60s)
         const intervalId = setInterval(() => {
-            reg.update().catch(err => console.error('Error checking for SW update:', err));
+          reg.update().catch(err => console.error('Error checking for SW update:', err));
         }, 60000);
 
         // Cleanup interval on unmount (though App usually doesn't unmount)
@@ -96,10 +96,10 @@ const App: React.FC = () => {
   }, []);
 
   const handleStart = (diff: Difficulty) => {
-    // Double check for update before starting
+    // Check for update before starting - prevent game start if update available
     if (waitingWorker) {
       setShowUpdateModal(true);
-      return;
+      return; // Don't start the game
     }
 
     saveData({ lastDifficulty: diff });
@@ -208,9 +208,15 @@ const App: React.FC = () => {
         )}
 
         {showUpdateModal && waitingWorker && (
-            <UpdateModal
-                onConfirm={() => waitingWorker.postMessage({ type: 'SKIP_WAITING' })}
-            />
+          <UpdateModal
+            onConfirm={async () => {
+              // Trigger sync before updating
+              await handleSync();
+              // Tell service worker to skip waiting and take control
+              waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+              // The page will reload via controllerchange event
+            }}
+          />
         )}
 
         {gameState === GameState.PLAYING && (
@@ -241,7 +247,14 @@ const App: React.FC = () => {
             leaderboard={activeLeaderboard}
             isLocalOnly={data.settings.showLocalOnly}
             onRestart={() => handleStart(data.lastDifficulty)}
-            onMenu={() => setGameState(GameState.START)}
+            onMenu={() => {
+              // Check for update when returning to menu too
+              if (waitingWorker) {
+                setShowUpdateModal(true);
+              } else {
+                setGameState(GameState.START);
+              }
+            }}
             onSaveScore={saveScoreToLeaderboard}
           />
         )}

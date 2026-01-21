@@ -1,5 +1,5 @@
 // Service Worker for offline support
-const CACHE_NAME = 'fruit-bounce-v1';
+const CACHE_NAME = 'fruit-bounce-v1-' + '{{BUILD_TIME}}'; // Will be replaced at build time
 const urlsToCache = [
     '/',
     '/index.html',
@@ -90,3 +90,4 @@ self.addEventListener('message', (event) => {
         self.skipWaiting();
     }
 });
+// Cache update test - Build 2
