@@ -1,6 +1,21 @@
 
 import { INTRO_TRACK, LOOP_TRACK, FRENZY_TRACK, TrackData, NoteEvent } from './musicData';
 
+// Pentatonic C Major ish frequencies for pleasant progression
+const TIER_FREQUENCIES = [
+    1046.50, // Tier 0: C6 (High, cute)
+    987.77,  // Tier 1: B5
+    880.00,  // Tier 2: A5
+    783.99,  // Tier 3: G5
+    698.46,  // Tier 4: F5
+    659.25,  // Tier 5: E5
+    587.33,  // Tier 6: D5
+    523.25,  // Tier 7: C5
+    392.00,  // Tier 8: G4 (Low start)
+    261.63,  // Tier 9: C4
+    196.00,  // Tier 10: G3 (Bass)
+];
+
 export class MusicEngine {
     ctx: AudioContext | null = null;
     compressor: DynamicsCompressorNode | null = null;
@@ -31,9 +46,10 @@ export class MusicEngine {
     currentSection: 'intro' | 'loop' | 'frenzy' = 'intro';
     targetSection: 'loop' | 'frenzy' = 'loop'; // For transitions
 
-    // Concurrency / Limiter State
-    lastSfxTime: number = 0;
-    sfxCount: number = 0;
+    // Sound Queue System
+    soundQueue: number[] = []; // Stores Tier IDs to play
+    nextSfxTime: number = 0;
+    readonly MIN_SFX_GAP = 0.06; // 60ms gap for "machine gun" feel without overlapping mess
 
     constructor(musicEnabled: boolean, sfxEnabled: boolean) {
         this.musicEnabled = musicEnabled;
@@ -52,8 +68,6 @@ export class MusicEngine {
 
     setMusicEnabled(enabled: boolean) {
         this.musicEnabled = enabled;
-        // Note: We don't stop the scheduler, we just silence the output
-        // in processTrack to keep rhythm sync.
         if (enabled && this.ctx && this.ctx.state === 'suspended') {
             this.ctx.resume();
         }
@@ -84,7 +98,7 @@ export class MusicEngine {
                 this.compressor.connect(this.ctx.destination);
 
                 // White Noise Buffer
-                const bufferSize = this.ctx.sampleRate * 1;
+                const bufferSize = this.ctx.sampleRate * 2; // 2 seconds
                 this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
                 const data = this.noiseBuffer.getChannelData(0);
                 for (let i = 0; i < bufferSize; i++) {
@@ -103,6 +117,7 @@ export class MusicEngine {
         this.isPlaying = true;
         if (this.ctx) {
             this.nextNoteTime = this.ctx.currentTime + 0.1;
+            this.nextSfxTime = this.ctx.currentTime;
         }
     }
 
@@ -114,9 +129,34 @@ export class MusicEngine {
         if (!this.ctx || !this.isPlaying) return;
 
         const now = this.ctx.currentTime;
+
+        // 1. Process Music Scheduler
         while (this.nextNoteTime < now + this.lookahead) {
             this.scheduleStep(this.nextNoteTime);
             this.nextNoteTime += (this.beatDur / 4); // 16th note scheduling
+        }
+
+        // 2. Process SFX Queue
+        // If we have sounds to play and it's time to play them
+        if (this.soundQueue.length > 0) {
+            // Catch up if falling behind (game lag), but maintain gap
+            if (this.nextSfxTime < now) {
+                this.nextSfxTime = now;
+            }
+
+            while (this.soundQueue.length > 0 && this.nextSfxTime < now + this.lookahead) {
+                const tier = this.soundQueue.shift();
+                if (tier !== undefined) {
+                    this._triggerMergeSound(tier, this.nextSfxTime);
+
+                    // Dynamic Gap: If queue is huge, play faster
+                    let gap = this.MIN_SFX_GAP;
+                    if (this.soundQueue.length > 5) gap = 0.04;
+                    if (this.soundQueue.length > 10) gap = 0.03;
+
+                    this.nextSfxTime += gap;
+                }
+            }
         }
     }
 
@@ -133,11 +173,11 @@ export class MusicEngine {
             src = this.loop;
         }
 
-        // SIGNIFICANTLY REDUCED VOLUMES FOR BALANCE
-        this.processTrack(src.lead, 'lead', 'square', 0.04, time); // was 0.10
-        this.processTrack(src.bass, 'bass', 'triangle', 0.15, time); // was 0.25
-        this.processTrack(src.harmony, 'harmony', 'square', 0.02, time); // was 0.05
-        this.processTrack(src.drum, 'drum', 'noise', 0.08, time); // was 0.15
+        // Volumes
+        this.processTrack(src.lead, 'lead', 'square', 0.04, time);
+        this.processTrack(src.bass, 'bass', 'triangle', 0.15, time);
+        this.processTrack(src.harmony, 'harmony', 'square', 0.02, time);
+        this.processTrack(src.drum, 'drum', 'noise', 0.08, time);
 
         // Loop Logic
         if (this.cursors.lead >= src.lead.length) {
@@ -155,136 +195,182 @@ export class MusicEngine {
         this.trackTimes = { lead: 0, bass: 0, harmony: 0, drum: 0 };
     }
 
-    // --- INTERFACE ---
-
-    setFrenzy(isFrenzy: boolean) {
-        if (isFrenzy) {
-            if (this.currentSection !== 'frenzy') {
-                this.targetSection = 'frenzy';
-            }
-        } else {
-            if (this.currentSection === 'frenzy') {
-                this.targetSection = 'loop';
-            }
-        }
-    }
+    // --- SFX QUEUE INTERFACE ---
 
     playMergeSound(tier: number) {
-        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        if (!this.sfxEnabled) return;
+        this.soundQueue.push(tier);
+    }
 
-        const now = this.ctx.currentTime;
+    // Internal trigger method (executed by queue)
+    _triggerMergeSound(tier: number, time: number) {
+        if (!this.ctx || !this.masterGain) return;
 
-        // Limiter Logic
-        // If many sounds happen in a very short window (e.g. 50ms), throttle them.
-        if (now - this.lastSfxTime < 0.05) {
-            this.sfxCount++;
-        } else {
-            this.sfxCount = 0;
-        }
-        this.lastSfxTime = now;
-
-        if (this.sfxCount > 5) {
-            // Hard cutoff to prevent glitching/overload
-            return;
-        }
-
-        // --- TIERED SOUND DESIGN ---
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.connect(gain);
-        gain.connect(this.masterGain); // Route to Master (Compressor)
+        gain.connect(this.masterGain);
 
-        // Default Volume
+        // Default
         let volume = 0.5;
-        let duration = 0.15;
+        let duration = 0.12;
 
-        // --- SOUND PROFILES ---
-
-        // SPECIAL: Rainbow, Tomato, Bomb (IDs 90+)
+        // --- SPECIALS ---
         if (tier >= 90) {
-            // Special Effect Sound (Bigger, Chimier)
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(600, now);
-            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1); // Up-sweep
-            osc.frequency.exponentialRampToValueAtTime(800, now + 0.3);
+            osc.frequency.setValueAtTime(600, time);
+            osc.frequency.exponentialRampToValueAtTime(1200, time + 0.1);
+            osc.frequency.exponentialRampToValueAtTime(800, time + 0.3);
             duration = 0.4;
             volume = 0.6;
 
-            // Add vibrato for special feel
             const lfo = this.ctx.createOscillator();
             lfo.frequency.value = 20;
             const lfoGain = this.ctx.createGain();
             lfoGain.gain.value = 50;
             lfo.connect(lfoGain);
             lfoGain.connect(osc.frequency);
-            lfo.start(now);
-            lfo.stop(now + duration);
+            lfo.start(time);
+            lfo.stop(time + duration);
         }
-        // LARGE FRUITS (8, 9, 10 - Pineapple, Melon, Watermelon)
+        // --- LARGE (8, 9, 10) ---
         else if (tier >= 8) {
-             // Bassy Thud + Tone
-             osc.type = 'sawtooth';
-             // Create Lowpass Filter for "Thud"
+             osc.type = 'sawtooth'; // Richer tone
+             // Filter for Thud
              const filter = this.ctx.createBiquadFilter();
              filter.type = 'lowpass';
-             filter.frequency.setValueAtTime(400, now);
-             filter.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+             filter.frequency.setValueAtTime(600, time); // Higher start than before for audibility
+             filter.frequency.exponentialRampToValueAtTime(150, time + 0.2);
 
-             // Reroute: Osc -> Filter -> Gain
              osc.disconnect();
              osc.connect(filter);
              filter.connect(gain);
 
              // Pitch Drop
-             const baseFreq = 150 - (tier - 8) * 30; // 150, 120, 90
-             osc.frequency.setValueAtTime(baseFreq, now);
-             osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, now + 0.2);
+             const baseFreq = TIER_FREQUENCIES[tier];
+             osc.frequency.setValueAtTime(baseFreq, time);
+             osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, time + 0.25);
 
-             duration = 0.35;
-             volume = 0.7; // Louder bass needs more gain perception
+             duration = 0.3;
+             volume = 0.85; // Boosted volume
         }
-        // MEDIUM FRUITS (4, 5, 6, 7 - Persimmon, Apple, Pear, Peach)
+        // --- MEDIUM (4, 5, 6, 7) ---
         else if (tier >= 4) {
-            // Mid-range "Pop-bloop"
             osc.type = 'triangle';
-            const baseFreq = 500 - (tier - 4) * 50; // 500 down to 350
-            osc.frequency.setValueAtTime(baseFreq, now);
-            osc.frequency.linearRampToValueAtTime(baseFreq - 100, now + 0.1); // Slight down-chirp
+            const baseFreq = TIER_FREQUENCIES[tier];
+            osc.frequency.setValueAtTime(baseFreq, time);
+            osc.frequency.linearRampToValueAtTime(baseFreq - 50, time + 0.1);
 
-            duration = 0.2;
+            duration = 0.15;
             volume = 0.5;
         }
-        // SMALL FRUITS (0, 1, 2, 3 - Cherry, Strawberry, Grape, Dekopon)
+        // --- SMALL (0, 1, 2, 3) ---
         else {
-            // High, crisp, short
             osc.type = 'sine';
-            const baseFreq = 1000 - tier * 100; // 1000, 900, 800, 700
-            osc.frequency.setValueAtTime(baseFreq, now);
-            osc.frequency.exponentialRampToValueAtTime(baseFreq + 100, now + 0.05); // Up-chirp for "cute" sound
+            const baseFreq = TIER_FREQUENCIES[tier];
+            osc.frequency.setValueAtTime(baseFreq, time);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq + 150, time + 0.08); // More distinct chirp
 
             duration = 0.1;
-            volume = 0.4;
+            volume = 0.45;
         }
 
-        // --- ENVELOPE (LATENCY FIX) ---
-        // Instant attack. No linearRamp from 0.
-        gain.gain.setValueAtTime(volume, now);
-        // Fast decay
-        gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+        // Instant Attack
+        gain.gain.setValueAtTime(volume, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + duration);
 
-        osc.start(now);
-        osc.stop(now + duration);
+        osc.start(time);
+        osc.stop(time + duration);
     }
 
+    // --- NEW SFX METHODS ---
+
+    playBombTick(rate: number) {
+        // Rate: 0.0 (slow) to 1.0 (fast)
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        // Woodblock-ish sound
+        osc.type = 'sine';
+        // Pitch goes up as rate increases
+        const pitch = 800 + (rate * 400);
+        osc.frequency.setValueAtTime(pitch, now);
+
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+
+        osc.start(now);
+        osc.stop(now + 0.05);
+    }
+
+    playTomatoSuck() {
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain || !this.noiseBuffer) return;
+        const now = this.ctx.currentTime;
+
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuffer;
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(200, now);
+        filter.frequency.exponentialRampToValueAtTime(1500, now + 1.0); // Swoosh up
+        filter.Q.value = 2;
+
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.5);
+        gain.gain.linearRampToValueAtTime(0, now + 1.2);
+
+        src.start(now);
+        src.stop(now + 1.2);
+    }
+
+    playBombShrapnel() {
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        // Machine gun bubbles
+        const count = 5;
+        const gap = 0.04;
+
+        for (let i = 0; i < count; i++) {
+            const t = now + (i * gap);
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc.type = 'sine';
+            const pitch = 1200 + (Math.random() * 400);
+            osc.frequency.setValueAtTime(pitch, t);
+            osc.frequency.exponentialRampToValueAtTime(pitch - 300, t + 0.05);
+
+            gain.gain.setValueAtTime(0.3, t);
+            gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
+
+            osc.start(t);
+            osc.stop(t + 0.05);
+        }
+    }
+
+    // --- MUSIC PROCESSING ---
+
     processTrack(track: TrackData, name: keyof typeof this.cursors, wave: OscillatorType | 'noise', vol: number, time: number) {
-        // Logic runs even if muted to keep cursor sync
         const cursor = this.cursors[name];
         if (cursor >= track.length) return;
 
         if (this.trackTimes[name] <= 0.01) {
             const note = track[cursor];
             if (note) {
-                // Only actually make sound if enabled
                 if (this.musicEnabled) {
                     if (wave === 'noise' && note.type) {
                         this.playNoise(note.type, time, vol);
@@ -310,7 +396,7 @@ export class MusicEngine {
         osc.frequency.setValueAtTime(freq, time);
 
         osc.connect(gain);
-        gain.connect(this.masterGain); // Route to Master
+        gain.connect(this.masterGain);
 
         const attack = 0.01;
         const release = 0.02;
@@ -349,7 +435,7 @@ export class MusicEngine {
             src.connect(gain);
         }
 
-        gain.connect(this.masterGain); // Route to Master
+        gain.connect(this.masterGain);
         const dur = type === 'kick' ? 0.15 : (type === 'hihat' ? 0.05 : 0.1);
 
         gain.gain.setValueAtTime(vol, time);
