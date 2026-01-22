@@ -163,21 +163,9 @@ export class MusicEngine {
     scheduleStep(time: number) {
         let src = this.currentSection === 'intro' ? this.intro : (this.currentSection === 'frenzy' ? this.frenzy : this.loop);
 
-        if (this.targetSection !== 'loop' && this.currentSection === 'loop' && this.cursors.lead % 16 === 0) {
-            this.currentSection = 'frenzy';
-            this.resetCursors();
-            src = this.frenzy;
-        } else if (this.targetSection === 'loop' && this.currentSection === 'frenzy' && this.cursors.lead % 16 === 0) {
-            this.currentSection = 'loop';
-            this.resetCursors();
-            src = this.loop;
-        }
-
-        // Volumes
-        this.processTrack(src.lead, 'lead', 'square', 0.04, time);
-        this.processTrack(src.bass, 'bass', 'triangle', 0.15, time);
-        this.processTrack(src.harmony, 'harmony', 'square', 0.02, time);
-        this.processTrack(src.drum, 'drum', 'noise', 0.08, time);
+        // Previous Logic: Timed transitions
+        // Now: Handled by setFrenzy mostly.
+        // We only handle Intro -> Loop auto-transition here.
 
         // Loop Logic
         if (this.cursors.lead >= src.lead.length) {
@@ -188,11 +176,43 @@ export class MusicEngine {
                 this.resetCursors();
             }
         }
+
+        // Re-check src in case section changed above
+        src = this.currentSection === 'intro' ? this.intro : (this.currentSection === 'frenzy' ? this.frenzy : this.loop);
+
+        // Volumes
+        this.processTrack(src.lead, 'lead', 'square', 0.04, time);
+        this.processTrack(src.bass, 'bass', 'triangle', 0.15, time);
+        this.processTrack(src.harmony, 'harmony', 'square', 0.02, time);
+        this.processTrack(src.drum, 'drum', 'noise', 0.08, time);
     }
 
     resetCursors() {
         this.cursors = { lead: 0, bass: 0, harmony: 0, drum: 0 };
         this.trackTimes = { lead: 0, bass: 0, harmony: 0, drum: 0 };
+    }
+
+    // --- INTERFACE ---
+
+    setFrenzy(isFrenzy: boolean) {
+        if (isFrenzy) {
+            if (this.currentSection !== 'frenzy') {
+                // Immediate Transition
+                this.currentSection = 'frenzy';
+                this.resetCursors();
+                // We should ensure nextNoteTime is aligned?
+                // Actually, if we just swap the track data pointer, the next scheduleStep call
+                // will pick up from the new track at cursor 0.
+                // This is effectively an instant "Hard Cut" or crossfade.
+                // To prevent glitching if we are mid-measure, resetting cursors is key.
+            }
+        } else {
+            if (this.currentSection === 'frenzy') {
+                // Immediate Transition Back
+                this.currentSection = 'loop';
+                this.resetCursors();
+            }
+        }
     }
 
     // --- SFX QUEUE INTERFACE ---
