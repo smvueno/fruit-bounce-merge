@@ -1,0 +1,45 @@
+name: Deploy TEST to external Pages repo
+
+on:
+  push:
+    branches: ["test"]        # auto on every commit to test
+  workflow_dispatch:          # optional: manual Run workflow button
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "pages-test"
+  cancel-in-progress: true
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Deploy to TEST repo
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          token: ${{ secrets.TEST_REPO_PAT }}           # fine-grained PAT
+          repository-name: smvueno/test                # target repo
+          branch: gh-pages                             # or 'main' if you prefer
+          folder: dist                                 # or 'dist' if that's your build output
+          clean: true
