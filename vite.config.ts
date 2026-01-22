@@ -5,8 +5,16 @@ import { injectBuildTime } from './vite-plugins/inject-build-time';
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, '.', '');
+
+  // Determine base path:
+  // - In dev mode: always '/'
+  // - In build mode: use VITE_BASE_PATH env var or default to '/'
+  const base = command === 'build'
+    ? (env.VITE_BASE_PATH || '/')
+    : '/';
+
   return {
-    base: command === 'build' ? '/fruit-bounce-merge/' : '/',
+    base,
     server: {
       port: 4000,
       host: '0.0.0.0',
@@ -22,7 +30,7 @@ export default defineConfig(({ command, mode }) => {
       }
     },
     build: {
-      outDir: 'docs'
+      outDir: 'dist'
     }
   };
 });

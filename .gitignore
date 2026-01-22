@@ -116,5 +116,5 @@ web_modules/
 *.sw?
 
 # Vite build output
-docs
-docs/
+dist
+dist/

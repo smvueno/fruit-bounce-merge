@@ -12,7 +12,7 @@ export function injectBuildTime(): Plugin {
         apply: 'build',
         closeBundle() {
             const buildTime = Date.now().toString();
-            const swPath = path.resolve(__dirname, '../docs/sw.js');
+            const swPath = path.resolve(__dirname, '../dist/sw.js');
 
             if (fs.existsSync(swPath)) {
                 let content = fs.readFileSync(swPath, 'utf-8');

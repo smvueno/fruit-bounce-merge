@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:gh-pages": "VITE_BASE_PATH=/fruit-bounce-merge/ vite build",
+    "build:test": "VITE_BASE_PATH=/test/ vite build",
     "preview": "vite preview"
   },
   "dependencies": {
