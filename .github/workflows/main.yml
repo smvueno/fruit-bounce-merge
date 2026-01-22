@@ -34,6 +34,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_BASE_PATH: /test/
 
       - name: Deploy to TEST repo
         uses: JamesIves/github-pages-deploy-action@v4
@@ -43,3 +44,4 @@ jobs:
           branch: gh-pages                             # or 'main' if you prefer
           folder: dist                                 # or 'dist' if that's your build output
           clean: true
+

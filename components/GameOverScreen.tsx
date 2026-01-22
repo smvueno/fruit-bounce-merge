@@ -51,7 +51,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
       {/* High-Opacity Glass Card - Widened to max-w-lg (32rem) to fit columns without scroll if possible */}
       <div className="bg-white/95 backdrop-blur-2xl border border-white/50 text-gray-800 rounded-[2.5rem] p-6 w-full max-w-lg text-center shadow-[0_20px_60px_rgba(0,0,0,0.3)] transform scale-100 animate-pop flex flex-col items-center max-h-[85vh] overflow-y-auto min-h-0">
 
-        <h2 className="text-4xl font-black mb-2 text-red-500 drop-shadow-sm tracking-wide shrink-0">GAME OVER</h2>
+        <h2 className="text-4xl font-bold mb-2 text-red-500 drop-shadow-sm tracking-wide shrink-0">GAME OVER</h2>
 
         {/* Only show badge if qualifies for leaderboard AND hasn't saved yet */}
         {isNewHigh && !hasSaved && (
@@ -63,7 +63,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
           </div>
         )}
 
-        <div className="text-5xl font-black text-gray-900 mb-4 font-mono tracking-tighter drop-shadow-sm shrink-0">
+        <div className="text-5xl font-bold text-gray-900 mb-4 font-mono tracking-tighter drop-shadow-sm shrink-0">
           {stats.score.toLocaleString()}
         </div>
 
@@ -71,13 +71,13 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
         <div className="grid grid-cols-2 gap-3 text-sm mb-4 w-full shrink-0">
           <div className="bg-slate-100 p-2 rounded-2xl flex flex-col items-center">
             <span className="font-bold text-slate-400 uppercase text-[10px] tracking-wider mb-1">Time</span>
-            <span className="text-lg font-black text-slate-700 flex items-center gap-1">
+            <span className="text-lg font-bold text-slate-700 flex items-center gap-1">
               <Clock size={14} /> {formatTime(stats.timePlayed)}
             </span>
           </div>
           <div className="bg-slate-100 p-2 rounded-2xl flex flex-col items-center">
             <span className="font-bold text-slate-400 uppercase text-[10px] tracking-wider mb-1">Level</span>
-            <span className="text-lg font-black text-slate-700 flex items-center gap-1">
+            <span className="text-lg font-bold text-slate-700 flex items-center gap-1">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: FRUIT_DEFS[stats.maxTier]?.color || '#000' }}></div>
               {stats.maxTier + 1}
             </span>
@@ -122,7 +122,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
         <div className="w-full space-y-3 shrink-0">
           <button
             onClick={onRestart}
-            className="w-full bg-amber-500 hover:bg-amber-400 text-white font-black text-xl py-4 rounded-2xl shadow-[0_8px_16px_rgba(245,158,11,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2"
+            className="w-full bg-amber-500 hover:bg-amber-400 text-white font-bold text-xl py-4 rounded-2xl shadow-[0_8px_16px_rgba(245,158,11,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             <RotateCcw size={24} strokeWidth={3} /> PLAY AGAIN
           </button>

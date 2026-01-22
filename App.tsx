@@ -5,7 +5,7 @@ import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';
 import { loadData, saveData } from './utils/storage';
-import { getGlobalLeaderboard, submitScore, performFullSync } from './services/leaderboardService';
+import { getGlobalLeaderboard, submitScore, performFullSync, subscribeToLeaderboard, unsubscribeFromLeaderboard } from './services/leaderboardService';
 import { offlineManager } from './services/offlineManager';
 import { UpdateModal } from './components/UpdateModal';
 
@@ -90,14 +90,33 @@ const App: React.FC = () => {
     // Load initial data
     setData(loadData());
 
+    // Clear any stale saving flags from previous session
+    offlineManager.setSavingInProgress(false);
+
     // Initial Sync
     handleSync();
+
+    // Subscribe to Realtime updates for live leaderboard (if online)
+    if (offlineManager.isOnline()) {
+      subscribeToLeaderboard((newScores) => {
+        console.log('Leaderboard updated via Realtime');
+        setGlobalLeaderboard(newScores);
+      });
+    }
 
     // Listen for connection changes
     const unsubscribe = offlineManager.onConnectionChange((isOnline) => {
       if (isOnline) {
-        console.log('Back online - syncing...');
+        console.log('Back online - syncing and subscribing to Realtime...');
         handleSync();
+        // Subscribe to Realtime when coming back online
+        subscribeToLeaderboard((newScores) => {
+          console.log('Leaderboard updated via Realtime');
+          setGlobalLeaderboard(newScores);
+        });
+      } else {
+        console.log('Gone offline - unsubscribing from Realtime...');
+        unsubscribeFromLeaderboard();
       }
     });
 
@@ -118,7 +137,10 @@ const App: React.FC = () => {
         // Check if there's already a waiting worker
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);
-          if (gameState === GameState.START) setShowUpdateModal(true);
+          // Only show modal if not saving and on start screen
+          if (gameState === GameState.START && !offlineManager.isSavingInProgress()) {
+            setShowUpdateModal(true);
+          }
         }
 
         const handleUpdateFound = () => {
@@ -126,6 +148,14 @@ const App: React.FC = () => {
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // Check if currently saving before showing update modal
+                if (offlineManager.isSavingInProgress()) {
+                  console.log('Update available but saving in progress - will retry...');
+                  // Retry after a short delay
+                  setTimeout(() => handleUpdateFound(), 2000);
+                  return;
+                }
+
                 // New update available and installed
                 setWaitingWorker(newWorker);
                 if (gameState === GameState.START) setShowUpdateModal(true);
@@ -137,10 +167,23 @@ const App: React.FC = () => {
         // Listen for new workers
         reg.addEventListener('updatefound', handleUpdateFound);
 
-        // Periodically check for updates (every 60s)
+        // Periodically check for updates (every 30s)
         const intervalId = setInterval(() => {
-          reg.update().catch(err => console.error('Error checking for SW update:', err));
-        }, 60000);
+          reg.update().catch(err => {
+            // Improved error handling - distinguish between server offline and actual errors
+            const errorMessage = err?.message || String(err);
+
+            if (errorMessage.includes('Failed to fetch') ||
+              errorMessage.includes('NetworkError') ||
+              errorMessage.includes('unknown error occurred when fetching')) {
+              // Server is offline - this is expected during dev when stopping server
+              console.log('ℹ️ Update check skipped - server offline or unreachable');
+            } else {
+              // Actual error that should be logged
+              console.warn('⚠️ Service worker update check failed:', errorMessage);
+            }
+          });
+        }, 30000);
 
         // Assign cleanup function
         cleanupRegistrationListeners = () => {
@@ -157,18 +200,21 @@ const App: React.FC = () => {
         navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
         if (cleanupRegistrationListeners) cleanupRegistrationListeners();
         unsubscribe();
+        unsubscribeFromLeaderboard(); // Clean up Realtime subscription
       };
     } else {
       return () => {
         unsubscribe();
+        unsubscribeFromLeaderboard(); // Clean up Realtime subscription
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState]); // Added gameState dependency to ensure modal logic works if state changes
+  }, []); // Only run once on mount - removed gameState dependency
 
-  // Periodic Leaderboard Polling (Simple "Realtime")
+  // Periodic Leaderboard Polling (Fallback for Realtime)
+  // Since Realtime handles live updates, we only need occasional polling as a fallback
   useEffect(() => {
-    // Poll every 30 seconds to update leaderboard if data changes externally
+    // Poll every 5 minutes to update leaderboard if data changes externally
     const pollId = setInterval(() => {
       // Logic: Sync if:
       // 1. Tab is visible AND Online AND
@@ -178,7 +224,7 @@ const App: React.FC = () => {
       if (shouldSync) {
         handleSync();
       }
-    }, 30000);
+    }, 300000); // 5 minutes (reduced from 30s since Realtime handles live updates)
 
     return () => clearInterval(pollId);
   }, [gameState, isPaused]); // Add dependencies so interval closure sees current state
@@ -186,6 +232,8 @@ const App: React.FC = () => {
   const handleStart = (diff: Difficulty) => {
     // Check for update before starting - prevent game start if update available
     if (waitingWorker) {
+      // Navigate to START screen so the modal can be shown
+      setGameState(GameState.START);
       setShowUpdateModal(true);
       return; // Don't start the game
     }
@@ -238,36 +286,44 @@ const App: React.FC = () => {
   const saveScoreToLeaderboard = async (name: string) => {
     if (!finalStats) return;
 
-    const newEntry: LeaderboardEntry = {
-      name,
-      score: finalStats.score,
-      timePlayed: finalStats.timePlayed,
-      maxTier: finalStats.maxTier,
-      date: new Date().toISOString()
-    };
+    // Set saving flag to prevent update interruptions
+    offlineManager.setSavingInProgress(true);
 
-    // 1. Update Local History
-    const currentLeaderboard = data.leaderboard || [];
-    const updatedLeaderboard = [...currentLeaderboard, newEntry]
-      .sort((a, b) => b.score - a.score);
-    // We can keep more history locally if we want, but sticking to logic
+    try {
+      const newEntry: LeaderboardEntry = {
+        name,
+        score: finalStats.score,
+        timePlayed: finalStats.timePlayed,
+        maxTier: finalStats.maxTier,
+        date: new Date().toISOString()
+      };
 
-    const newPending = [...(data.pendingScores || [])];
+      // 1. Update Local History
+      const currentLeaderboard = data.leaderboard || [];
+      const updatedLeaderboard = [...currentLeaderboard, newEntry]
+        .sort((a, b) => b.score - a.score);
+      // We can keep more history locally if we want, but sticking to logic
 
-    // 2. Try Global Submit
-    const uploaded = await submitScore(newEntry);
-    if (!uploaded) {
-      newPending.push(newEntry);
+      const newPending = [...(data.pendingScores || [])];
+
+      // 2. Try Global Submit
+      const uploaded = await submitScore(newEntry);
+      if (!uploaded) {
+        newPending.push(newEntry);
+      }
+
+      // Always update local storage first so we don't lose the record
+      saveData({ leaderboard: updatedLeaderboard, pendingScores: newPending });
+      setData(prev => ({ ...prev, leaderboard: updatedLeaderboard, pendingScores: newPending }));
+
+      // If uploaded successfully OR if we just added to pending, trigger a full sync/refresh
+      // This ensures we get the latest global state (including our own new score if uploaded)
+      // and ensures pending queue is processed if connection flickered back on
+      await handleSync();
+    } finally {
+      // Always clear the saving flag, even if an error occurred
+      offlineManager.setSavingInProgress(false);
     }
-
-    // Always update local storage first so we don't lose the record
-    saveData({ leaderboard: updatedLeaderboard, pendingScores: newPending });
-    setData(prev => ({ ...prev, leaderboard: updatedLeaderboard, pendingScores: newPending }));
-
-    // If uploaded successfully OR if we just added to pending, trigger a full sync/refresh
-    // This ensures we get the latest global state (including our own new score if uploaded)
-    // and ensures pending queue is processed if connection flickered back on
-    handleSync();
   };
 
   const updateSettings = (s: any) => {
@@ -278,46 +334,41 @@ const App: React.FC = () => {
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
 
   return (
-    <div className="relative w-full h-full bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
+    <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-yellow-100 opacity-5">
         <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       </div>
 
       {/* Responsive Game Container - Fixed Aspect Ratio 2:3 (Portrait) */}
-      <div className="relative w-full max-w-[600px] h-full max-h-[95vh] aspect-[2/3] bg-white shadow-2xl rounded-xl overflow-hidden ring-8 ring-black/10 flex flex-col">
+      <div className="relative w-full h-full max-h-[100svh] bg-white shadow-2xl rounded-xl ring-8 ring-black/10 flex flex-col">
 
         {gameState === GameState.START && (
-          <StartScreen
-            onStart={handleStart}
-            leaderboard={activeLeaderboard}
-            settings={data.settings}
-            onUpdateSettings={updateSettings}
-          />
-        )}
+          <>
+            <StartScreen
+              onStart={handleStart}
+              leaderboard={activeLeaderboard}
+              settings={data.settings}
+              onUpdateSettings={updateSettings}
+            />
 
-        {showUpdateModal && waitingWorker && (
-          <UpdateModal
-            onConfirm={async () => {
-              // Trigger sync before updating
-              await handleSync();
-              // Tell service worker to skip waiting and take control
-              waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-              // The page will reload via controllerchange event
-            }}
-          />
+            {/* Update modal only shows on START screen */}
+            {showUpdateModal && waitingWorker && (
+              <UpdateModal
+                onConfirm={async () => {
+                  // Trigger sync before updating
+                  await handleSync();
+                  // Tell service worker to skip waiting and take control
+                  waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+                  // The page will reload via controllerchange event
+                }}
+              />
+            )}
+          </>
         )}
 
         {gameState === GameState.PLAYING && (
           <>
-            {/* Score Display - Top Left */}
-            <div className="absolute top-6 left-6 z-20 pointer-events-none flex flex-col items-start font-['Fredoka']">
-              <div className="text-gray-900 font-black tracking-widest text-lg drop-shadow-sm mb-0 opacity-80">SCORE</div>
-              <div className="text-6xl font-black text-gray-900 drop-shadow-sm leading-none" style={{ textShadow: '3px 3px 0 #F97316' }}>
-                {currentScore.toLocaleString()}
-              </div>
-            </div>
-
             <GameCanvas
               difficulty={data.lastDifficulty}
               settings={data.settings}
@@ -337,11 +388,11 @@ const App: React.FC = () => {
             isLocalOnly={data.settings.showLocalOnly}
             onRestart={() => handleStart(data.lastDifficulty)}
             onMenu={() => {
-              // Check for update when returning to menu too
+              setGameState(GameState.START);
+              // Check for update after transitioning to menu
+              // Modal will show on START screen if update is available
               if (waitingWorker) {
                 setShowUpdateModal(true);
-              } else {
-                setGameState(GameState.START);
               }
             }}
             onSaveScore={saveScoreToLeaderboard}

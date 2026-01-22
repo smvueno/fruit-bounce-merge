@@ -100,24 +100,30 @@ export class RenderSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
-    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number) {
+    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
         this.floorGraphics.clear();
 
         const bottomY = ((screenHeight - containerY) / scaleFactor) + 200;
 
+        // Calculate extended width to cover full screen
+        const virtualScreenWidth = screenWidth / scaleFactor;
+        const gameCenter = width / 2;
+        const startX = gameCenter - (virtualScreenWidth / 2);
+        const endX = gameCenter + (virtualScreenWidth / 2);
+
         const step = 5;
-        this.floorGraphics.moveTo(0, bottomY);
-        this.floorGraphics.lineTo(0, this.getFloorY(0, height));
-        for (let x = 0; x <= width; x += step) {
+        this.floorGraphics.moveTo(startX, bottomY);
+        this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
+        for (let x = startX; x <= endX; x += step) {
             this.floorGraphics.lineTo(x, this.getFloorY(x, height));
         }
-        this.floorGraphics.lineTo(width, this.getFloorY(width, height));
-        this.floorGraphics.lineTo(width, bottomY);
+        this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
+        this.floorGraphics.lineTo(endX, bottomY);
         this.floorGraphics.closePath();
         this.floorGraphics.fill({ color: 0x76C043 });
         this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
 
-        // Decorations
+        // Decorations - keep relative to game area center
         this.floorGraphics.circle(50, height, 15);
         this.floorGraphics.circle(80, height + 20, 20);
         this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });

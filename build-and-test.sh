@@ -8,12 +8,11 @@ echo "    Fruit Bounce Merge - Build & Test   "
 echo "========================================"
 
 # Clean up previous build
-if [ -d "docs" ]; then
+if [ -d "dist" ]; then
     echo "🧹 Cleaning previous build..."
-    rm -rf docs
+    rm -rf dist
 fi
 
-# Run the build process
 echo "🏗️  Building application..."
 npm run build
 
@@ -26,6 +25,6 @@ echo "ℹ️  The app will be served at: http://localhost:4173/fruit-bounce-merg
 echo "ℹ️  Press Ctrl+C to stop the server"
 echo ""
 
-# Start the preview server with the correct base path configuration
-# We pass --base to ensure assets load correctly locally
-npm run preview -- --base=/fruit-bounce-merge/
+# Start the preview server
+# Vite preview will automatically use the base from vite.config
+npm run preview

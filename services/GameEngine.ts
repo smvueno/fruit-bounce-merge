@@ -11,8 +11,9 @@ import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
 
 // --- Virtual Resolution ---
+// Aspect Ratio: 4:5
 const V_WIDTH = 600;
-const V_HEIGHT = 900;
+const V_HEIGHT = 750;
 
 // --- Engine ---
 export class GameEngine {
@@ -142,6 +143,9 @@ export class GameEngine {
                 preference: 'webgl',
                 resizeTo: this.canvasElement
             });
+
+            this.app.renderer.on('resize', () => this.handleResize());
+
         } catch (e) {
             console.error(`[GameEngine] PIXI Init Error:`, e);
             this.initializing = false;
@@ -155,19 +159,8 @@ export class GameEngine {
         }
         if (!this.app.renderer) return;
 
-        // Scaling Logic
-        const actualW = this.app.screen.width;
-        const actualH = this.app.screen.height;
-        this.scaleFactor = Math.min(actualW / V_WIDTH, actualH / V_HEIGHT);
-        this.container.scale.set(this.scaleFactor);
-        this.effectContainer.scale.set(this.scaleFactor);
-
-        const virtualHeightScaled = V_HEIGHT * this.scaleFactor;
-        if (actualH > virtualHeightScaled) {
-            const yOffset = (actualH - virtualHeightScaled) / 2;
-            this.container.position.y = yOffset;
-            this.effectContainer.position.y = yOffset;
-        }
+        // Initial Resize
+        this.handleResize();
 
         this.app.stage.addChild(this.effectContainer);
         this.app.stage.addChild(this.container);
@@ -175,7 +168,9 @@ export class GameEngine {
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container, this.effectContainer);
         const containerY = this.container.position.y || 0;
-        this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY);
+
+        // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
+        // this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY, actualW);
 
         // Start Game
         this.spawnNextFruit();
@@ -189,6 +184,37 @@ export class GameEngine {
         this.app.stage.on('pointermove', this.onPointerMove.bind(this));
         this.app.stage.on('pointerup', this.onPointerUp.bind(this));
         this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
+    }
+
+    handleResize() {
+        if (!this.app || !this.app.screen) return;
+
+        const actualW = this.app.screen.width;
+        const actualH = this.app.screen.height;
+
+        // V_WIDTH/V_HEIGHT is the logical game size (600x750)
+        // We want to scale based on the "View Size" (the 4:5 area), not the full canvas size
+        // Helper: We need to know what the "visible" width/height is.
+        // For now, we assume the canvas is 140% of the view.
+        // So viewWidth = actualW / 1.4
+        //    viewHeight = actualH / 1.4
+
+        const viewW = actualW / 1.4;
+        const viewH = actualH / 1.4;
+
+        this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
+        this.container.scale.set(this.scaleFactor);
+        this.effectContainer.scale.set(this.scaleFactor);
+
+        // Center the container in the canvas
+        const logicalW = V_WIDTH * this.scaleFactor;
+        const logicalH = V_HEIGHT * this.scaleFactor;
+
+        const xOffset = (actualW - logicalW) / 2;
+        const yOffset = (actualH - logicalH) / 2;
+
+        this.container.position.set(xOffset, yOffset);
+        this.effectContainer.position.set(xOffset, yOffset);
     }
 
     reset() {
@@ -233,11 +259,13 @@ export class GameEngine {
         this.onSaveUpdate(null);
 
         // Redraw floor to ensure clean state
-        if (this.app) {
-            const actualH = this.app.screen.height;
-            const containerY = this.container.position.y || 0;
-            this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY);
-        }
+        // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
+        // if (this.app) {
+        //     const actualH = this.app.screen.height;
+        //     const actualW = this.app.screen.width;
+        //     const containerY = this.container.position.y || 0;
+        //     this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY, actualW);
+        // }
 
         this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
@@ -251,6 +279,7 @@ export class GameEngine {
 
     getInputContext() {
         return {
+            containerX: this.container.position.x,
             containerY: this.container.position.y,
             scaleFactor: this.scaleFactor,
             width: this.width,

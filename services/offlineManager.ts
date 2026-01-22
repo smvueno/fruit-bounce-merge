@@ -139,6 +139,25 @@ class OfflineManager {
     getLastSyncTime(): number | null {
         return this.lastSyncTime;
     }
+
+    /**
+     * Set/clear the saving in progress flag
+     * Used to prevent update notifications during critical save operations
+     */
+    setSavingInProgress(inProgress: boolean): void {
+        if (inProgress) {
+            this.setItem('savingInProgress', 'true');
+        } else {
+            this.removeItem('savingInProgress');
+        }
+    }
+
+    /**
+     * Check if a save operation is currently in progress
+     */
+    isSavingInProgress(): boolean {
+        return this.getItem('savingInProgress') === 'true';
+    }
 }
 
 // Singleton instance
