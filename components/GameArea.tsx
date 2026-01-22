@@ -11,8 +11,13 @@ export const GameArea: React.FC<GameAreaProps> = ({ children, canvasRef }) => {
             {/* The Actual Game Canvas */}
             <canvas
                 ref={canvasRef}
-                className="absolute left-0 right-0 top-0 bottom-0 h-full touch-none cursor-grab active:cursor-grabbing z-10 block"
-                style={{ width: '100%' }}
+                className="absolute touch-none cursor-grab active:cursor-grabbing z-10 block"
+                style={{
+                    width: '140%',
+                    height: '140%',
+                    top: '-20%',
+                    left: '-20%'
+                }}
             />
 
             {/* Overlay Elements */}

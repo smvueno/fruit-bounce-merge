@@ -3,6 +3,7 @@ import { Particle } from '../../types/GameObjects';
 import { SPAWN_Y_PERCENT } from '../../constants';
 
 export interface InputContext {
+    containerX: number;
     containerY: number;
     scaleFactor: number;
     width: number;
@@ -34,7 +35,7 @@ export class InputSystem {
 
     getVirtualPos(globalX: number, globalY: number, ctx: InputContext) {
         return {
-            x: globalX / ctx.scaleFactor,
+            x: (globalX - ctx.containerX) / ctx.scaleFactor,
             y: (globalY - ctx.containerY) / ctx.scaleFactor
         };
     }

@@ -27,7 +27,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
   const leaderboardTitle = settings.showLocalOnly ? "Local Best" : "Global Ranking";
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 z-20 text-center font-['Fredoka'] overflow-hidden">
+    <div className="absolute inset-0 flex flex-col items-center justify-center pt-6 pb-6 z-20 text-center font-['Fredoka'] overflow-hidden">
 
       {/* Animated Background Blobs */}
       <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] pointer-events-none">
@@ -37,7 +37,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
       </div>
 
       {/* High-Opacity Glass Card */}
-      <div className="relative bg-white/95 backdrop-blur-2xl border border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[3rem] p-8 w-full max-w-lg max-h-[85vh] flex flex-col items-center min-h-0">
+      <div className="relative bg-white/95 backdrop-blur-2xl border border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.15)] rounded-[3rem] p-8 w-full max-w-lg max-h-[100vh] flex flex-col items-center min-h-0">
 
         {/* Header */}
         <div className="mb-6 relative shrink-0">

@@ -45,146 +45,116 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
             const gameFloorOffset = 60; // Distance from bottom of game area
             const gameFloorY = containerTop + gameAreaHeight - gameFloorOffset;
 
-            // Wall dimensions - with margins from top and bottom
-            const wallWidth = 40; // Width of each wall
+            // Wall dimensions - Updated for new design
+            const wallWidth = 80; // Width from SVG
             const topMargin = 60; // Space from top of screen
-            const extendBelowGround = 50; // Extend footer below the ground for better visual foundation
-            const wallTop = topMargin; // Start with margin from top
+            const extendBelowGround = 50; // Extend footer below the ground
+            const wallTop = topMargin;
             const wallHeight = gameFloorY - wallTop + extendBelowGround;
-            const cornerRadius = 15; // Rounded corner radius
-            const footerHeight = 25; // Height of the decorative footer
-            const footerWidth = wallWidth + 20; // Footer is wider than the wall
 
-            // Draw stone wall with footer function
-            const drawStoneWall = (x: number, y: number, width: number, height: number, side: 'left' | 'right') => {
-                const stoneHeight = 20;
-                const stoneWidth = 35;
-                const mortarThickness = 3;
-
-                // Save context for clipping
+            // Draw grass wall function (SVG based)
+            const drawGrassWall = (x: number, y: number, height: number, side: 'left' | 'right') => {
                 ctx.save();
 
-                // Create rounded rectangle path for clipping (main wall)
-                ctx.beginPath();
-                ctx.moveTo(x + cornerRadius, y);
-                ctx.lineTo(x + width - cornerRadius, y);
-                ctx.arcTo(x + width, y, x + width, y + cornerRadius, cornerRadius);
-                ctx.lineTo(x + width, y + height - footerHeight);
-                ctx.lineTo(x, y + height - footerHeight);
-                ctx.lineTo(x, y + cornerRadius);
-                ctx.arcTo(x, y, x + cornerRadius, y, cornerRadius);
-                ctx.closePath();
-                ctx.clip();
-
-                // Background (mortar color - gray)
-                ctx.fillStyle = '#5A5A5A'; // Gray mortar
-                ctx.fillRect(x, y, width, height - footerHeight);
-
-                // Draw stones
-                let offsetToggle = false;
-                for (let row = 0; row < Math.ceil((height - footerHeight) / stoneHeight); row++) {
-                    const rowY = y + row * stoneHeight;
-                    const offset = offsetToggle ? stoneWidth / 2 : 0;
-                    offsetToggle = !offsetToggle;
-
-                    for (let col = -1; col < Math.ceil((width + offset) / stoneWidth) + 1; col++) {
-                        const stoneX = x + col * stoneWidth + offset;
-                        const stoneY = rowY;
-
-                        // Skip if stone is completely outside the wall
-                        if (stoneX + stoneWidth < x || stoneX > x + width) continue;
-
-                        // Clip stone to wall boundaries
-                        const clippedX = Math.max(stoneX, x);
-                        const clippedWidth = Math.min(stoneX + stoneWidth, x + width) - clippedX;
-                        const clippedHeight = Math.min(stoneHeight - mortarThickness, (height - footerHeight) - (stoneY - y));
-
-                        if (clippedWidth <= 0 || clippedHeight <= 0) continue;
-
-                        // Randomize stone color for variation (gray tones)
-                        const colorVariation = Math.floor(Math.random() * 30) - 15;
-                        const grayValue = Math.min(255, Math.max(0, 140 + colorVariation));
-
-                        // Main stone color (gray)
-                        ctx.fillStyle = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
-                        ctx.fillRect(clippedX, stoneY, clippedWidth, clippedHeight);
-
-                        // Add highlight for 3D effect
-                        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-                        ctx.fillRect(clippedX, stoneY, clippedWidth, 4);
-
-                        // Add shadow for 3D effect
-                        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-                        ctx.fillRect(clippedX, stoneY + clippedHeight - 4, clippedWidth, 4);
-                    }
+                // Position the wall
+                if (side === 'left') {
+                    ctx.translate(x, y);
+                } else {
+                    // Mirror for right side so the "flat" side faces the game area
+                    ctx.translate(x + wallWidth, y);
+                    ctx.scale(-1, 1);
                 }
+
+                // 1. Main Wall Body (Green Fill)
+                ctx.fillStyle = '#4CAF50';
+                ctx.strokeStyle = '#1f6b23';
+                ctx.lineWidth = 2.5;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                ctx.beginPath();
+                ctx.moveTo(10, 35);
+                ctx.lineTo(10, height - 10);
+                ctx.quadraticCurveTo(10, height, 20, height);
+                ctx.lineTo(60, height);
+                ctx.quadraticCurveTo(70, height, 70, height - 10);
+                ctx.lineTo(70, 35);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // 2. Shadow under Grass Cap
+                ctx.fillStyle = 'rgba(46, 125, 50, 0.4)'; // #2E7D32 with 0.4 opacity
+                ctx.beginPath();
+                ctx.moveTo(10, 35);
+                ctx.lineTo(70, 35);
+                ctx.lineTo(70, 50);
+                ctx.quadraticCurveTo(50, 55, 40, 50);
+                ctx.quadraticCurveTo(30, 55, 10, 50);
+                ctx.closePath();
+                ctx.fill();
+
+                // 3. Grass Cap (Complex Bezier)
+                ctx.fillStyle = '#8BC34A';
+                // Stroke style inherited from above (width 2.5, color #1f6b23)
+
+                ctx.beginPath();
+                ctx.moveTo(5, 35);
+                ctx.bezierCurveTo(2, 25, 8, 18, 15, 22);
+                ctx.bezierCurveTo(18, 12, 28, 8, 35, 18);
+                ctx.bezierCurveTo(40, 5, 52, 5, 58, 18);
+                ctx.bezierCurveTo(65, 10, 78, 15, 75, 35);
+                ctx.quadraticCurveTo(65, 42, 55, 38);
+                ctx.quadraticCurveTo(45, 45, 35, 38);
+                ctx.quadraticCurveTo(25, 42, 15, 38);
+                ctx.quadraticCurveTo(8, 40, 5, 35);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // 4. Decorative Tufts ("M" shapes)
+                ctx.strokeStyle = '#1f6b23';
+                ctx.lineWidth = 2.5;
+                ctx.globalAlpha = 0.6;
+                ctx.lineCap = 'round';
+
+                // Tuft data from SVG
+                const tufts = [
+                    // Left Column
+                    { x: 20, y: 95, cp1x: 22, cp1y: 85, cp2x: 26, cp2y: 85, ex: 28, ey: 95 },
+                    { x: 15, y: 200, cp1x: 17, cp1y: 190, cp2x: 21, cp2y: 190, ex: 23, ey: 200 },
+                    { x: 22, y: 340, cp1x: 24, cp1y: 330, cp2x: 28, cp2y: 330, ex: 30, ey: 340 },
+                    { x: 16, y: 470, cp1x: 18, cp1y: 460, cp2x: 22, cp2y: 460, ex: 24, ey: 470 },
+                    // Right Column
+                    { x: 45, y: 120, cp1x: 47, cp1y: 110, cp2x: 51, cp2y: 110, ex: 53, ey: 120 },
+                    { x: 55, y: 230, cp1x: 57, cp1y: 220, cp2x: 61, cp2y: 220, ex: 63, ey: 230 },
+                    { x: 42, y: 360, cp1x: 44, cp1y: 350, cp2x: 48, cp2y: 350, ex: 50, ey: 360 },
+                    { x: 58, y: 490, cp1x: 60, cp1y: 480, cp2x: 64, cp2y: 480, ex: 66, ey: 490 }
+                ];
+
+                tufts.forEach(tuft => {
+                    // Only draw if within current wall height
+                    if (tuft.y < height) {
+                        ctx.beginPath();
+                        ctx.moveTo(tuft.x, tuft.y);
+                        ctx.bezierCurveTo(tuft.cp1x, tuft.cp1y, tuft.cp2x, tuft.cp2y, tuft.ex, tuft.ey);
+                        ctx.stroke();
+                    }
+                });
 
                 ctx.restore();
-
-                // Draw rounded border for main wall
-                ctx.beginPath();
-                ctx.moveTo(x + cornerRadius, y);
-                ctx.lineTo(x + width - cornerRadius, y);
-                ctx.arcTo(x + width, y, x + width, y + cornerRadius, cornerRadius);
-                ctx.lineTo(x + width, y + height - footerHeight);
-                ctx.lineTo(x, y + height - footerHeight);
-                ctx.lineTo(x, y + cornerRadius);
-                ctx.arcTo(x, y, x + cornerRadius, y, cornerRadius);
-                ctx.closePath();
-                ctx.strokeStyle = '#3A3A3A'; // Dark gray border
-                ctx.lineWidth = 3;
-                ctx.stroke();
-
-                // Draw decorative footer/base aligned with inner edge
-                const footerY = y + height - footerHeight;
-                let footerX: number;
-
-                // Align footer based on wall side
-                if (side === 'left') {
-                    // Left wall: inner edge is on the right, expand left
-                    footerX = x - (footerWidth - width);
-                } else {
-                    // Right wall: inner edge is on the left, expand right
-                    footerX = x;
-                }
-
-                // Footer shadow for depth
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.fillRect(footerX + 2, footerY + 2, footerWidth, footerHeight);
-
-                // Footer main body (darker stone)
-                const footerGradient = ctx.createLinearGradient(footerX, footerY, footerX, footerY + footerHeight);
-                footerGradient.addColorStop(0, '#6A6A6A');
-                footerGradient.addColorStop(0.5, '#5A5A5A');
-                footerGradient.addColorStop(1, '#4A4A4A');
-                ctx.fillStyle = footerGradient;
-                ctx.fillRect(footerX, footerY, footerWidth, footerHeight);
-
-                // Footer top highlight
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-                ctx.fillRect(footerX, footerY, footerWidth, 3);
-
-                // Footer decorative lines (like molding)
-                ctx.strokeStyle = '#3A3A3A';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(footerX, footerY + 5);
-                ctx.lineTo(footerX + footerWidth, footerY + 5);
-                ctx.stroke();
-
-                // Footer border
-                ctx.strokeStyle = '#2A2A2A';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(footerX, footerY, footerWidth, footerHeight);
             };
 
-            // Left wall - always render even if partially off-screen
-            const leftWallX = containerLeft - wallWidth;
-            drawStoneWall(leftWallX, wallTop, wallWidth, wallHeight, 'left');
+            // Calculate Positions
+            const overlap = 17; // Slight overlap over the game area (12 + 5)
 
-            // Right wall - always render even if partially off-screen
-            const rightWallX = containerLeft + gameAreaWidth;
-            drawStoneWall(rightWallX, wallTop, wallWidth, wallHeight, 'right');
+            // Left wall: to the left of container + overlap
+            const leftWallX = containerLeft - wallWidth + overlap;
+            drawGrassWall(leftWallX, wallTop, wallHeight, 'left');
+
+            // Right wall: to the right of container - overlap
+            const rightWallX = containerLeft + gameAreaWidth - overlap;
+            drawGrassWall(rightWallX, wallTop, wallHeight, 'right');
         };
 
         // Initial render
@@ -202,7 +172,7 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
         <canvas
             ref={canvasRef}
             className="fixed inset-0 pointer-events-none"
-            style={{ zIndex: 6 }}
+            style={{ zIndex: 20 }}
         />
     );
 };

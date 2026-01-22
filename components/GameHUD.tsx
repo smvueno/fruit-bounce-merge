@@ -54,7 +54,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ score, playTime, maxTier, next
                 </div>
 
                 {/* RIGHT SIDE: Next & Save */}
-                <div className="flex flex-col gap-6 pointer-events-auto items-end pt-2">
+                <div className="flex flex-col gap-4 pointer-events-auto items-center pt-2">
 
                     {/* NEXT FRUIT */}
                     <div className="flex flex-col items-center">
@@ -77,10 +77,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({ score, playTime, maxTier, next
                         <div className="text-gray-800 text-sm font-bold tracking-widest uppercase mb-2">SAVE</div>
 
                         {/* THE BOX - White bg, thick border radius, thick border */}
-                        <div className="w-[70px] h-[70px] bg-[#FFFBE6] rounded-2xl border-4 border-[#1a1a1a] flex items-center justify-center relative overflow-hidden shadow-sm">
+                        <div className="w-[55px] h-[55px] bg-[#FFFBE6] rounded-2xl border-4 border-[#1a1a1a] flex items-center justify-center relative overflow-hidden shadow-sm">
                             {savedFruit !== null ? (
                                 <div className="animate-pop">
-                                    <FruitSVG tier={savedFruit} size={45} />
+                                    <FruitSVG tier={savedFruit} size={40} />
                                 </div>
                             ) : (
                                 <div className="text-gray-300 text-xs font-bold uppercase">EMPTY</div>

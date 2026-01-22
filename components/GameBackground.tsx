@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { FRUIT_DEFS, FruitTier } from '../services/fruitConfig';
 
 interface GameBackgroundProps {
@@ -16,32 +16,179 @@ const BACKGROUND_PATTERNS = [
 ];
 
 export const GameBackground: React.FC<GameBackgroundProps> = ({ patternIndex, bgColor, fever, juice }) => {
-    // Current Pattern URL
-    const patternUrl = BACKGROUND_PATTERNS[patternIndex % BACKGROUND_PATTERNS.length];
+    // We use refs for animation state to avoid re-renders on every frame
+    const scrollPosRef = useRef(0);
+    const lastTimeRef = useRef<number>(0);
+    const animationFrameRef = useRef<number>(0);
+
+    // Transitions state
+    const [activePatternIdx, setActivePatternIdx] = React.useState(patternIndex);
+    const [incomingPatternIdx, setIncomingPatternIdx] = React.useState<number | null>(null);
+    const [crossFadeAlpha, setCrossFadeAlpha] = React.useState(0);
+
+    // Speed constants (pixels per second)
+    const BASE_SPEED = 20; // Slower base speed
+    const FEVER_SPEED = 100; // 5x speed
+    const currentSpeedRef = useRef(BASE_SPEED);
+
+    // Handle pattern changes
+    useEffect(() => {
+        if (patternIndex !== activePatternIdx && incomingPatternIdx === null) {
+            // Start transition
+            setIncomingPatternIdx(patternIndex);
+            setCrossFadeAlpha(0);
+        }
+    }, [patternIndex, activePatternIdx, incomingPatternIdx]);
+
+    // Animation Loop
+    useEffect(() => {
+        const animate = (time: number) => {
+            if (lastTimeRef.current === 0) {
+                lastTimeRef.current = time;
+            }
+            const deltaTime = (time - lastTimeRef.current) / 1000; // in seconds
+            lastTimeRef.current = time;
+
+            // 1. Update Scroll Position
+            // Helper: Lerp speed
+            const targetSpeed = fever ? FEVER_SPEED : BASE_SPEED;
+            // Smooth speed transition: move 5% towards target per frame (approx)
+            // Adjust factor for desired responsiveness
+            currentSpeedRef.current += (targetSpeed - currentSpeedRef.current) * 5 * deltaTime;
+
+            // Move background left (scrollPos increases)
+            scrollPosRef.current += currentSpeedRef.current * deltaTime;
+
+            // 2. Handle Crossfade Logic
+            // We can do this in the loop or separate, but loop is fine for simple alpha lerp
+            // However, React state updates in RAF can be heavy if too frequent.
+            // Let's use a ref for alpha if we want purely smooth JS animation without re-renders,
+            // BUT for opacity we need to update DOM.
+            // A better approach for React is to update CSS variables OR use a ref to the DOM element.
+            // For simplicity in this codebase, let's keep React state for "pattern index" logic 
+            // but maybe we should try to animate the crossfade in valid React ways.
+            // Actually, for a simple crossfade that takes e.g. 1 second, standard React state update is "okay" 
+            // but might be jittery. Let's try requestAnimationFrame updates to ref-bound styles if possible.
+            // 
+            // Given the component structure, let's stick to updating the SCROLL via Ref directly to DOM if possible?
+            // "data-scroll-x" or direct style manipulation.
+        };
+
+        // We will implement the loop properly below with direct DOM manipulation for performance
+        // and standard state for logic where acceptable.
+    }, [fever]);
+
+
+    // Refined Implementation:
+    // We need refs to the DOM elements to update backgroundPosition without triggering React Renders
+    const activeLayerRef = useRef<HTMLDivElement>(null);
+    const incomingLayerRef = useRef<HTMLDivElement>(null);
+
+    // Crossfade Logic state
+    const fadeStartTimeRef = useRef<number | null>(null);
+    const FADE_DURATION = 1500; // ms
+
+    useEffect(() => {
+        const loop = (time: number) => {
+            if (lastTimeRef.current === 0) lastTimeRef.current = time;
+            const dt = (time - lastTimeRef.current) / 1000;
+            lastTimeRef.current = time;
+
+            // --- SPEED & SCROLL ---
+            const targetSpeed = fever ? FEVER_SPEED : BASE_SPEED;
+            // Smooth lerp for speed (frame-rate independent-ish)
+            const speedDiff = targetSpeed - currentSpeedRef.current;
+            currentSpeedRef.current += speedDiff * 3.0 * dt; // 3.0 is interpolation speed
+
+            scrollPosRef.current += currentSpeedRef.current * dt;
+
+            // Constrain scrollPos to avoid huge numbers (wrap around based on pattern size)
+            // Pattern size is 80px, but since we just translating visual pattern, 
+            // we can reset modulus 80.
+            // Actually, background-position repeats, so we can just let it grow or mod it.
+            // Modulo 80 is safer to prevent float precision issues over long runs.
+            const wrappedScroll = scrollPosRef.current % 80;
+
+            // Apply scroll to DOM
+            if (activeLayerRef.current) {
+                activeLayerRef.current.style.backgroundPosition = `-${wrappedScroll}px 0px`;
+            }
+            if (incomingLayerRef.current) {
+                incomingLayerRef.current.style.backgroundPosition = `-${wrappedScroll}px 0px`;
+                // Incoming layer is visible during fade
+            }
+
+            // --- CROSSFADE LOGIC ---
+            if (incomingPatternIdx !== null) {
+                if (fadeStartTimeRef.current === null) {
+                    fadeStartTimeRef.current = time;
+                }
+                const progress = (time - fadeStartTimeRef.current) / FADE_DURATION;
+
+                if (progress >= 1) {
+                    // Transition Complete
+                    setActivePatternIdx(incomingPatternIdx);
+                    setIncomingPatternIdx(null);
+                    setCrossFadeAlpha(0); // Reset
+                    fadeStartTimeRef.current = null;
+                } else {
+                    setCrossFadeAlpha(progress);
+                }
+            }
+
+            animationFrameRef.current = requestAnimationFrame(loop);
+        };
+
+        animationFrameRef.current = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(animationFrameRef.current);
+    }, [fever, incomingPatternIdx]); // Re-bind when state critical to logic changes (like incoming ptr)
+
+    // Trigger Pattern Switch
+    useEffect(() => {
+        if (patternIndex !== activePatternIdx && incomingPatternIdx === null) {
+            setIncomingPatternIdx(patternIndex);
+            fadeStartTimeRef.current = null; // Reset fade timer start
+        }
+    }, [patternIndex, activePatternIdx, incomingPatternIdx]);
 
     return (
         <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#FFF8E1]">
 
-            {/* SCROLLING PATTERN LAYER */}
-            {/* We use a simple repeating background image on a div that is 200% size and animates move */}
+            {/* SCROLLING PATTERN LAYERS */}
             <div
                 className="absolute inset-0 opacity-10"
                 style={{
                     backgroundColor: bgColor,
                     maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
-                    WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)'
+                    WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
+                    transition: 'background-color 2s ease'
                 }}
             >
-                {/* The Moving Pattern */}
+                {/* Layer 1: Active Pattern */}
                 <div
-                    className="absolute top-0 left-0 w-[200%] h-[200%] animate-bg-scroll"
+                    ref={activeLayerRef}
+                    className="absolute top-0 left-0 w-full h-full"
                     style={{
-                        backgroundImage: `url("${patternUrl}")`,
-                        backgroundSize: '80px 80px', // Consistent size
+                        backgroundImage: `url("${BACKGROUND_PATTERNS[activePatternIdx % BACKGROUND_PATTERNS.length]}")`,
+                        backgroundSize: '80px 80px',
                         backgroundRepeat: 'repeat',
-                        animationDuration: fever ? '30s' : '60s', // Faster in fever
+                        opacity: 1 // Always fully opaque base, overlay handles transition
                     }}
                 />
+
+                {/* Layer 2: Incoming Pattern (Cross-fading in) */}
+                {incomingPatternIdx !== null && (
+                    <div
+                        ref={incomingLayerRef}
+                        className="absolute top-0 left-0 w-full h-full"
+                        style={{
+                            backgroundImage: `url("${BACKGROUND_PATTERNS[incomingPatternIdx % BACKGROUND_PATTERNS.length]}")`,
+                            backgroundSize: '80px 80px',
+                            backgroundRepeat: 'repeat',
+                            opacity: crossFadeAlpha
+                        }}
+                    />
+                )}
             </div>
 
             {/* JUICE / WATER LEVEL */}

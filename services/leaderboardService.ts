@@ -215,3 +215,66 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
   }
 
 };
+
+/**
+ * Supabase Realtime subscription for live leaderboard updates
+ */
+let realtimeChannel: any = null;
+let lastRealtimeFetch = 0; // Timestamp of last fetch triggered by Realtime
+
+/**
+ * Subscribe to live leaderboard updates via Supabase Realtime
+ * This reduces the need for polling and provides instant updates
+ * @param callback Function to call when leaderboard updates
+ */
+export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[]) => void): void => {
+  if (realtimeChannel) {
+    console.log('Already subscribed to leaderboard updates');
+    return;
+  }
+
+  console.log('Subscribing to leaderboard Realtime updates...');
+
+  realtimeChannel = supabase
+    .channel('leaderboard-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'leaderboard'
+      },
+      (payload) => {
+        console.log('New score detected via Realtime:', payload);
+
+        // Throttle fetches to once every 10 seconds max, even if multiple INSERTs occur
+        const now = Date.now();
+        if (now - lastRealtimeFetch > 10000) { // 10 second throttle
+          lastRealtimeFetch = now;
+          // Fetch updated leaderboard and call callback
+          getGlobalLeaderboard(50, true).then(scores => {
+            callback(scores);
+          }).catch(err => {
+            console.error('Failed to fetch leaderboard after Realtime event:', err);
+          });
+        } else {
+          console.log('Throttling Realtime fetch - too soon since last fetch');
+        }
+      }
+    )
+    .subscribe((status) => {
+      console.log('Realtime subscription status:', status);
+    });
+};
+
+/**
+ * Unsubscribe from leaderboard Realtime updates
+ */
+export const unsubscribeFromLeaderboard = (): void => {
+  if (realtimeChannel) {
+    console.log('Unsubscribing from leaderboard Realtime updates...');
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+};
+
