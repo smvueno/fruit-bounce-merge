@@ -427,11 +427,12 @@ export class MusicEngine {
         if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
         const now = this.ctx.currentTime;
 
-        // Positive Chime (Major Triad)
+        // Positive Chime (Major Triad) - Tamed Volume/Duration
         const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
         notes.forEach((freq, i) => {
-            const t = now + (i * 0.05);
-            this.playTone(freq, 'sine', 0.4, t, 0.3);
+            const t = now + (i * 0.04);
+            // Reduced volume (0.2) and duration (0.2)
+            this.playTone(freq, 'sine', 0.2, t, 0.2);
         });
     }
 
@@ -462,7 +463,7 @@ export class MusicEngine {
         if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
         const now = this.ctx.currentTime;
 
-        // Negative Slide
+        // Negative Slide - Faster, shorter "Power Down"
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.connect(gain);
@@ -470,13 +471,13 @@ export class MusicEngine {
 
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(400, now);
-        osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.2); // Faster drop
 
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); // Short tail
 
         osc.start(now);
-        osc.stop(now + 0.5);
+        osc.stop(now + 0.2);
     }
 
     // --- MUSIC PROCESSING ---
