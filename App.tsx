@@ -306,13 +306,26 @@ const App: React.FC = () => {
 
       const newPending = [...(data.pendingScores || [])];
 
-      // Optimistic Update: Update global state immediately so user sees it in the list
-      setGlobalLeaderboard(prev => [...prev, newEntry].sort((a, b) => b.score - a.score));
+      // 3. Conditional Global Upload
+      // Only attempt to upload if it qualifies for the global leaderboard (Top 50)
+      // If global list is empty (e.g. offline/first load), we assume it qualifies.
+      const lowestGlobalScore = globalLeaderboard.length < 50
+        ? 0
+        : globalLeaderboard[globalLeaderboard.length - 1].score;
 
-      // 2. Try Global Submit
-      const uploaded = await submitScore(newEntry);
-      if (!uploaded) {
-        newPending.push(newEntry);
+      const qualifiesForGlobal = globalLeaderboard.length === 0 || newEntry.score > lowestGlobalScore;
+
+      if (qualifiesForGlobal) {
+        // Optimistic Update: Update global state immediately so user sees it in the list
+        setGlobalLeaderboard(prev => [...prev, newEntry].sort((a, b) => b.score - a.score));
+
+        // Try Global Submit
+        const uploaded = await submitScore(newEntry);
+        if (!uploaded) {
+          newPending.push(newEntry);
+        }
+      } else {
+        console.log('Score does not qualify for global leaderboard - skipping upload');
       }
 
       // Always update local storage first so we don't lose the record
@@ -322,7 +335,9 @@ const App: React.FC = () => {
       // If uploaded successfully OR if we just added to pending, trigger a full sync/refresh
       // This ensures we get the latest global state (including our own new score if uploaded)
       // and ensures pending queue is processed if connection flickered back on
-      await handleSync();
+      if (qualifiesForGlobal) {
+        await handleSync();
+      }
     } finally {
       // Always clear the saving flag, even if an error occurred
       offlineManager.setSavingInProgress(false);
