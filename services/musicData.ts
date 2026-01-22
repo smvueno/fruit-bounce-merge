@@ -104,7 +104,7 @@ const chorus = [
     { freq: N.E5, duration: D4 }, { freq: N.G5, duration: D4 }, { freq: N.E5, duration: D4 }, { freq: N.C5, duration: D4 }, // C
     { freq: N.D5, duration: D8 }, { freq: N.C5, duration: D8 }, { freq: N.B4, duration: D4 }, { freq: N.A4, duration: D4 }, { freq: N.G4, duration: D4 }, // G
     { freq: N.A4, duration: D4 }, { freq: N.C5, duration: D4 }, { freq: N.E5, duration: D4 }, { freq: N.A5, duration: D4 }, // Am
-    { freq: N.G5, duration: D4 }, { freq: N.F5, duration: D8 }, { freq: N.E5, duration: D8 }, { freq: N.D5, duration: D4 }, { freq: N.G4, duration: D4 }  // G (Turnaround)
+    { freq: N.G5, duration: D4 }, { freq: N.F5, duration: D8 }, { freq: N.E5, duration: D8 }, { freq: N.D5, duration: D4 }, { freq: N.B4, duration: D4 }  // G (Turnaround) - Changed G4 to B4 to resolve up to C5/E5 at start
 ];
 const loopLead = [...verse, ...verse, ...chorus, ...chorus];
 const loopDrum = [...createDrumBeat(32, 'verse'), ...createDrumBeat(32, 'chorus')];
