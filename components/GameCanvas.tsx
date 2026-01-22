@@ -223,18 +223,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                     </GameArea>
                 </div>
 
-                {/* BOTTOM UI - Play Area Floor / Pause Button */}
-                <div className="w-full flex items-start justify-center pt-2 pb-2 relative z-30">
-                    <button
-                        onClick={handlePauseToggle}
-                        className="w-16 h-16 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-                        aria-label="Pause Game"
-                    >
-                        <Pause size={32} fill="currentColor" />
-                    </button>
-                </div>
+                {/* BOTTOM UI - REMOVED (Pause Button moved to absolute) */}
 
             </LayoutContainer>
+
+            {/* ABSOLUTE PAUSE BUTTON - Bottom Center */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
+                <button
+                    onClick={handlePauseToggle}
+                    className="w-16 h-16 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                    aria-label="Pause Game"
+                >
+                    <Pause size={32} fill="currentColor" />
+                </button>
+            </div>
 
             {/* 5. Modals/Menus */}
             <PauseMenu
