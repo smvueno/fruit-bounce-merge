@@ -402,6 +402,16 @@ export class GameEngine {
         // Tomato Timer
         for (let i = this.activeTomatoes.length - 1; i >= 0; i--) {
             const t = this.activeTomatoes[i];
+
+            // Loop Swoosh Sound
+            // Trigger every 0.3 seconds roughly
+            const prevTimer = t.timer + (dtMs / 1000);
+            if (Math.floor(prevTimer / 0.3) > Math.floor(t.timer / 0.3)) {
+                // Play Swoosh
+                const intensity = 1.0 - (t.timer / t.maxTime); // 0 to 1
+                this.audio.playTomatoSuck(intensity);
+            }
+
             t.timer -= dtMs / 1000;
             // Visual Update for captured fruit (Scaling/Alpha) handled by Rendering/Physics now?
             // Actually PhysicsSystem only updates P position/velocity.
@@ -476,9 +486,20 @@ export class GameEngine {
         // Fever Logic
         if (this.feverActive) {
             this.feverTimer -= dtMs;
+
+            // Frenzy Ticking SFX
+            // Calculate beat (every 0.5s approx)
+            const prevTick = Math.floor((this.feverTimer + dtMs) / 500);
+            const currTick = Math.floor(this.feverTimer / 500);
+            if (currTick < prevTick) {
+                const progress = 1.0 - (this.feverTimer / FEVER_DURATION_MS);
+                this.audio.playFrenzyTick(progress);
+            }
+
             if (this.feverTimer <= 0) {
                 this.feverActive = false;
                 this.audio.setFrenzy(false);
+                this.audio.playFrenzyEnd(); // End Sound
                 this.juice = 0;
                 this.onJuiceUpdate(0, JUICE_MAX);
                 this.onFeverEnd();
@@ -487,6 +508,7 @@ export class GameEngine {
             if (this.juice >= JUICE_MAX && !this.feverActive) {
                 this.feverActive = true;
                 this.audio.setFrenzy(true);
+                this.audio.playFrenzyStart(); // Start Sound
                 this.feverTimer = FEVER_DURATION_MS;
                 this.stats.feverCount++;
                 const mult = this.stats.feverCount + 1;
@@ -643,9 +665,6 @@ export class GameEngine {
         tomato.vx = 0;
         tomato.vy = 0;
         tomato.y = Math.max(tomato.radius, tomato.y - 50);
-
-        // Trigger Tomato Sound
-        this.audio.playTomatoSuck();
     }
 
     handleBombExplosion(bomb: Particle) {
@@ -688,6 +707,10 @@ export class GameEngine {
         }
         this.effectSystem.createMergeEffect(releaseX, releaseY, "#FF4444");
         this.applyShockwave(releaseX, releaseY, 600, 40);
+
+        // Play Bomb Sound (Watermelon tier + extra bass)
+        this.audio.playMergeSound(FruitTier.WATERMELON);
+
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([50, 50]);
     }
 

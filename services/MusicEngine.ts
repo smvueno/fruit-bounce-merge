@@ -181,6 +181,9 @@ export class MusicEngine {
         src = this.currentSection === 'intro' ? this.intro : (this.currentSection === 'frenzy' ? this.frenzy : this.loop);
 
         // Volumes
+        // Fixed weird tone by ensuring we check bounds before processing
+        // If cursor is 0 and we just looped, ensure we don't play a ghost note from previous state
+
         this.processTrack(src.lead, 'lead', 'square', 0.04, time);
         this.processTrack(src.bass, 'bass', 'triangle', 0.15, time);
         this.processTrack(src.harmony, 'harmony', 'square', 0.02, time);
@@ -244,6 +247,19 @@ export class MusicEngine {
             duration = 0.4;
             volume = 0.6;
 
+            // Sub-Bass Oomph for Bomb/Special
+            const sub = this.ctx.createOscillator();
+            const subGain = this.ctx.createGain();
+            sub.type = 'sine';
+            sub.frequency.setValueAtTime(50, time);
+            sub.frequency.exponentialRampToValueAtTime(30, time + 0.4);
+            sub.connect(subGain);
+            subGain.connect(this.masterGain);
+            subGain.gain.setValueAtTime(0.5, time);
+            subGain.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
+            sub.start(time);
+            sub.stop(time + 0.4);
+
             const lfo = this.ctx.createOscillator();
             lfo.frequency.value = 20;
             const lfoGain = this.ctx.createGain();
@@ -273,6 +289,21 @@ export class MusicEngine {
 
              duration = 0.3;
              volume = 0.85; // Boosted volume
+
+             // Add Sub-Bass for Large Fruits too (Watermelon etc)
+             if (tier === 10) {
+                 const sub = this.ctx.createOscillator();
+                 const subGain = this.ctx.createGain();
+                 sub.type = 'sine';
+                 sub.frequency.setValueAtTime(60, time);
+                 sub.frequency.exponentialRampToValueAtTime(40, time + 0.3);
+                 sub.connect(subGain);
+                 subGain.connect(this.masterGain);
+                 subGain.gain.setValueAtTime(0.4, time);
+                 subGain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                 sub.start(time);
+                 sub.stop(time + 0.3);
+             }
         }
         // --- MEDIUM (4, 5, 6, 7) ---
         else if (tier >= 4) {
@@ -328,7 +359,8 @@ export class MusicEngine {
         osc.stop(now + 0.05);
     }
 
-    playTomatoSuck() {
+    playTomatoSuck(intensity: number) {
+        // intensity 0.0 to 1.0
         if (!this.sfxEnabled || !this.ctx || !this.masterGain || !this.noiseBuffer) return;
         const now = this.ctx.currentTime;
 
@@ -338,20 +370,27 @@ export class MusicEngine {
         const filter = this.ctx.createBiquadFilter();
 
         filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(200, now);
-        filter.frequency.exponentialRampToValueAtTime(1500, now + 1.0); // Swoosh up
+        // Higher intensity = higher frequency sweep
+        const startFreq = 200 + (intensity * 400);
+        const endFreq = 1500 + (intensity * 1000);
+
+        filter.frequency.setValueAtTime(startFreq, now);
+        filter.frequency.exponentialRampToValueAtTime(endFreq, now + 0.5); // Faster swoosh for loop
         filter.Q.value = 2;
 
         src.connect(filter);
         filter.connect(gain);
         gain.connect(this.masterGain);
 
+        // Louder with intensity
+        const vol = 0.2 + (intensity * 0.3);
+
         gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.2, now + 0.5);
-        gain.gain.linearRampToValueAtTime(0, now + 1.2);
+        gain.gain.linearRampToValueAtTime(vol, now + 0.1);
+        gain.gain.linearRampToValueAtTime(0, now + 0.5);
 
         src.start(now);
-        src.stop(now + 1.2);
+        src.stop(now + 0.5);
     }
 
     playBombShrapnel() {
@@ -380,6 +419,64 @@ export class MusicEngine {
             osc.start(t);
             osc.stop(t + 0.05);
         }
+    }
+
+    // --- FRENZY SFX ---
+
+    playFrenzyStart() {
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        // Positive Chime (Major Triad)
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C
+        notes.forEach((freq, i) => {
+            const t = now + (i * 0.05);
+            this.playTone(freq, 'sine', 0.4, t, 0.3);
+        });
+    }
+
+    playFrenzyTick(progress: number) {
+        // Ticking clock sound
+        // progress 0.0 (start) to 1.0 (end)
+        // Tick gets higher pitch and sharper as it ends
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.type = 'square'; // Tick tock style
+        const freq = 800 + (progress * 400);
+        osc.frequency.setValueAtTime(freq, now);
+
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+        osc.start(now);
+        osc.stop(now + 0.03);
+    }
+
+    playFrenzyEnd() {
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        // Negative Slide
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+
+        osc.start(now);
+        osc.stop(now + 0.5);
     }
 
     // --- MUSIC PROCESSING ---
