@@ -40,14 +40,16 @@ export const GameOverlays: React.FC<GameOverlaysProps> = ({ dangerTime, showCele
             )}
 
             {/* Graffiti Combo / Fever Text */}
-            <div className="absolute top-[35%] left-[15%] right-[15%] w-[70%] flex justify-center items-center pointer-events-none z-30 opacity-60">
+            <div className="absolute inset-0 flex justify-center items-center pointer-events-none z-30">
                 {(fever || combo > 1) && (
-                    <div className="transform -rotate-6 transition-all duration-200 select-none flex flex-col items-center animate-pop">
-                        {fever ? (
-                            <span className="text-8xl font-bold text-[#1a1a1a] leading-tight" style={{ textShadow: '4px 4px 0px #FFD700', WebkitTextStroke: '0px transparent' }}>FRENZY!! x{currentFeverMult}</span>
-                        ) : (
-                            <span className="text-7xl font-bold text-[#1a1a1a] leading-tight" style={{ textShadow: '4px 4px 0px #F97316', WebkitTextStroke: '0px transparent' }}>{combo} CHAIN!</span>
-                        )}
+                    <div className="animate-pop-settle">
+                        <div className="transform -rotate-6 transition-all duration-200 select-none flex flex-col items-center animate-bob">
+                            {fever ? (
+                                <span className="text-8xl font-bold text-[#1a1a1a] leading-tight" style={{ textShadow: '4px 4px 0px #FFD700', WebkitTextStroke: '0px transparent' }}>FRENZY!! x{currentFeverMult}</span>
+                            ) : (
+                                <span className="text-7xl font-bold text-[#1a1a1a] leading-tight" style={{ textShadow: '4px 4px 0px #F97316', WebkitTextStroke: '0px transparent' }}>{combo} CHAIN!</span>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
