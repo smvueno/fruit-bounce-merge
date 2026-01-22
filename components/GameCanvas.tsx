@@ -213,13 +213,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                 {/* 3. Game Area (4:5 Aspect Ratio) */}
                 <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-0 z-10">
                     <GameArea canvasRef={canvasRef}>
-                        <GameOverlays
-                            dangerTime={limitTime}
-                            showCelebration={showCelebration}
-                            fever={fever}
-                            combo={combo}
-                            currentFeverMult={currentFeverMult}
-                        />
+                        {/* Overlays moved to root level for correct z-index stacking */}
                     </GameArea>
                 </div>
 
@@ -237,6 +231,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                     <Pause size={32} fill="currentColor" />
                 </button>
             </div>
+
+            {/* 4. Global Overlays (Fixed z-50) */}
+            <GameOverlays
+                dangerTime={limitTime}
+                showCelebration={showCelebration}
+                fever={fever}
+                combo={combo}
+                currentFeverMult={currentFeverMult}
+            />
 
             {/* 5. Modals/Menus */}
             <PauseMenu
