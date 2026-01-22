@@ -306,6 +306,9 @@ const App: React.FC = () => {
 
       const newPending = [...(data.pendingScores || [])];
 
+      // Optimistic Update: Update global state immediately so user sees it in the list
+      setGlobalLeaderboard(prev => [...prev, newEntry].sort((a, b) => b.score - a.score));
+
       // 2. Try Global Submit
       const uploaded = await submitScore(newEntry);
       if (!uploaded) {
