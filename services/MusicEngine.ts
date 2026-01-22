@@ -383,7 +383,7 @@ export class MusicEngine {
         gain.connect(this.masterGain);
 
         // Louder with intensity
-        const vol = 0.2 + (intensity * 0.3);
+        const vol = 0.4 + (intensity * 0.4);
 
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(vol, now + 0.1);
