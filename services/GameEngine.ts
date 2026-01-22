@@ -427,7 +427,23 @@ export class GameEngine {
         // Bomb Timer
         for (let i = this.activeBombs.length - 1; i >= 0; i--) {
             const b = this.activeBombs[i];
+
+            // Logic to play tick sound every second or faster as time decreases
+            // Previous second integer
+            const prevSec = Math.ceil(b.timer);
             b.timer -= dtMs / 1000;
+            const currentSec = Math.ceil(b.timer);
+
+            // Tick logic: If second changed, or if last 3 seconds play on half seconds
+            if (currentSec < prevSec) {
+                this.audio.playBombTick(1.0 - (b.timer / b.maxTime)); // Pitch up as it gets closer
+            } else if (b.timer < 1.5 && b.timer > 0) {
+                // play extra tick at .5
+                if ((b.timer + (dtMs/1000)) >= (currentSec - 0.5) && b.timer < (currentSec - 0.5)) {
+                    this.audio.playBombTick(1.0);
+                }
+            }
+
             const bombParticle = this.fruits.find(p => p.id === b.bombId);
             if (bombParticle) {
                 const flashTiming = b.timer % 1.0;
@@ -627,8 +643,9 @@ export class GameEngine {
         tomato.vx = 0;
         tomato.vy = 0;
         tomato.y = Math.max(tomato.radius, tomato.y - 50);
-        // Sprite update? RenderSystem handles syncing, but alpha change for active tomato?
-        // Original code: sprite.alpha = 1.
+
+        // Trigger Tomato Sound
+        this.audio.playTomatoSuck();
     }
 
     handleBombExplosion(bomb: Particle) {
@@ -737,6 +754,10 @@ export class GameEngine {
         this.effectSystem.createMergeEffect(releaseX, releaseY, "#212121");
         this.applyShockwave(releaseX, releaseY, 600, 40);
         this.audio.playMergeSound(FruitTier.WATERMELON);
+
+        // Play Shrapnel Sound
+        this.audio.playBombShrapnel();
+
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
 
