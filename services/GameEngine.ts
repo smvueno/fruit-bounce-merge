@@ -87,6 +87,10 @@ export class GameEngine {
     dangerAccumulator: number = 0;
     readonly DANGER_TRIGGER_DELAY: number = 3000;
 
+    // Spawn Logic State
+    consecutiveNonSpecialCount: number = 0;
+    generatedFruitCount: number = 0;
+
     constructor(
         canvas: HTMLCanvasElement,
         difficulty: Difficulty,
@@ -242,6 +246,8 @@ export class GameEngine {
         this.dangerAccumulator = 0;
         this.nextId = 0;
         this.canDrop = true;
+        this.consecutiveNonSpecialCount = 0;
+        this.generatedFruitCount = 0;
 
         // 3. Update UI
         this.onScore(0, 0);
@@ -891,16 +897,48 @@ export class GameEngine {
             possibleTiers.push(i);
         }
 
+        const pickNormal = () => possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
+
+        const pickSpecial = () => {
+            const r = Math.random();
+            if (r < 0.333) return FruitTier.RAINBOW;
+            if (r < 0.666) return FruitTier.TOMATO;
+            return FruitTier.BOMB;
+        };
+
+        // 1. Game Start Phase: First 9 fruits must be normal
+        // "First 9 are not allowed to be a special"
+        if (this.generatedFruitCount < 9) {
+            this.generatedFruitCount++;
+            this.consecutiveNonSpecialCount++;
+            return pickNormal();
+        }
+
+        // 2. Pity Timer: If 9 consecutive non-specials, force special on the 10th
+        // "no special is spawning within 9 spawns, on 10 th there will be a random spawn of a special"
+        if (this.consecutiveNonSpecialCount >= 9) {
+            this.generatedFruitCount++;
+            this.consecutiveNonSpecialCount = 0;
+            return pickSpecial();
+        }
+
+        // 3. Standard Random Logic
+        this.generatedFruitCount++;
         const rand = Math.random();
 
-        if (rand < 0.015) {
-            return FruitTier.RAINBOW;
-        } else if (rand < 0.030) {
-            return FruitTier.TOMATO;
-        } else if (rand < 0.045) {
-            return FruitTier.BOMB;
+        // 4.5% chance for special (1.5% each)
+        if (rand < 0.045) {
+            this.consecutiveNonSpecialCount = 0;
+            if (rand < 0.015) {
+                return FruitTier.RAINBOW;
+            } else if (rand < 0.030) {
+                return FruitTier.TOMATO;
+            } else {
+                return FruitTier.BOMB;
+            }
         } else {
-            return possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
+            this.consecutiveNonSpecialCount++;
+            return pickNormal();
         }
     }
 
