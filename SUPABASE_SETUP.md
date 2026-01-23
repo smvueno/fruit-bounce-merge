@@ -43,7 +43,17 @@ with check (true);
 
 -- Note: We intentionally do NOT add Update or Delete policies.
 -- This prevents users from modifying or deleting existing scores via the API.
+
+-- 5. Enable Realtime
+-- Critical: This allows the game to receive live updates
+alter publication supabase_realtime add table leaderboard;
 ```
+
+## 3. Enable Realtime (Double Check)
+If the SQL command above (Step 5) didn't work or you prefer the UI:
+1. Go to **Database** -> **Replication** in the Supabase Dashboard.
+2. Look for the `supabase_realtime` publication.
+3. Toggle the switch for the `leaderboard` table to **ON**.
 
 ## 3. Restart the Dev Server
 After adding the `.env.local` file, make sure to restart your development server so the environment variables are loaded.
