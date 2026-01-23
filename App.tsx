@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Difficulty, GameStats, SavedData, LeaderboardEntry } from './types';
 import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
@@ -22,6 +22,9 @@ const App: React.FC = () => {
   const [finalStats, setFinalStats] = useState<GameStats | null>(null);
   const [isNewHigh, setIsNewHigh] = useState(false);
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
+
+  // Ref to track current game state for event listeners
+  const gameStateRef = useRef(gameState);
 
   // Service Worker Update State
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -86,6 +89,11 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Update ref when state changes
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
   useEffect(() => {
     // Load initial data
     setData(loadData());
@@ -138,7 +146,7 @@ const App: React.FC = () => {
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);
           // Only show modal if not saving and on start screen
-          if (gameState === GameState.START && !offlineManager.isSavingInProgress()) {
+          if (gameStateRef.current === GameState.START && !offlineManager.isSavingInProgress()) {
             setShowUpdateModal(true);
           }
         }
@@ -158,7 +166,7 @@ const App: React.FC = () => {
 
                 // New update available and installed
                 setWaitingWorker(newWorker);
-                if (gameState === GameState.START) setShowUpdateModal(true);
+                if (gameStateRef.current === GameState.START) setShowUpdateModal(true);
               }
             });
           }
