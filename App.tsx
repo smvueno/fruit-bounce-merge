@@ -107,7 +107,10 @@ const App: React.FC = () => {
     // Subscribe to Realtime updates for live leaderboard (if online)
     if (offlineManager.isOnline()) {
       subscribeToLeaderboard((newScores) => {
-        console.log('Leaderboard updated via Realtime');
+        console.log(`[APP DEBUG] Leaderboard updated via Realtime. Records: ${newScores.length}`);
+        if (newScores.length > 0) {
+          console.log(`[APP DEBUG] Top Leader: ${newScores[0].name} - ${newScores[0].score}`);
+        }
         setGlobalLeaderboard(newScores);
       });
     }
@@ -380,6 +383,15 @@ const App: React.FC = () => {
   };
 
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
+
+  // Debug Log for active source
+  // Use a ref to prevent spamming console on every frame/render unless changed
+  const lastSourceRef = useRef<string>('');
+  const currentSource = data.settings.showLocalOnly ? 'LOCAL' : 'GLOBAL';
+  if (lastSourceRef.current !== currentSource) {
+    console.log(`[APP DEBUG] Active Leaderboard Source: ${currentSource} (LocalOnly=${data.settings.showLocalOnly})`);
+    lastSourceRef.current = currentSource;
+  }
 
   return (
     <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">

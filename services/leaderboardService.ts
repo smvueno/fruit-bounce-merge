@@ -22,7 +22,10 @@ export const shouldRefreshLeaderboard = (): boolean => {
 export const getGlobalLeaderboard = async (limit = 50, force = false): Promise<LeaderboardEntry[]> => {
   // Return cached data if fresh and not forced
   if (!force && !shouldRefreshLeaderboard() && cachedLeaderboard.length > 0) {
+    console.log('[DEBUG LEADERBOARD] Returning cached data');
     return cachedLeaderboard;
+  } else {
+    console.log(`[DEBUG LEADERBOARD] Fetching fresh data (Force=${force})`);
   }
 
   try {
@@ -245,6 +248,7 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
         table: 'leaderboard'
       },
       (payload) => {
+        console.log('[REALTIME DEBUG] ⚡ Packet received!', payload);
         console.log('Leaderboard change detected via Realtime:', payload);
 
         // Debounce fetches to prevent flooding
@@ -264,7 +268,16 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
       }
     )
     .subscribe((status) => {
-      console.log('Realtime subscription status:', status);
+      console.log(`[REALTIME DEBUG] Subscription Status: ${status}`);
+      if (status === 'SUBSCRIBED') {
+        console.log('[REALTIME DEBUG] ✅ Successfully connected to Supabase Realtime.');
+      }
+      if (status === 'CHANNEL_ERROR') {
+        console.error('[REALTIME DEBUG] ❌ Channel Error! Check browser console for network errors.');
+      }
+      if (status === 'TIMED_OUT') {
+        console.warn('[REALTIME DEBUG] ⚠️ Connection timed out. Retrying...');
+      }
     });
 };
 
