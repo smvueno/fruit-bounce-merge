@@ -12,7 +12,7 @@ export const LayoutContainer: React.FC<LayoutContainerProps> = ({ children }) =>
                 On Desktop: It will be a centered column.
                 On Mobile: It will fill the screen but respect safe areas.
             */}
-            <div className="relative w-full max-w-[50svh] aspect-[9/20] max-h-[100svh] flex flex-col items-center gap-0">
+            <div className="relative w-full max-w-[50svh] max-h-[100svh] flex flex-col items-center gap-0">
                 {children}
             </div>
         </div>
