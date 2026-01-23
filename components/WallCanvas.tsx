@@ -48,9 +48,8 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
             // Wall dimensions - Updated for new design
             const wallWidth = 80; // Width from SVG
             const topMargin = 60; // Space from top of screen
-            const extendBelowGround = 50; // Extend footer below the ground
             const wallTop = topMargin;
-            const wallHeight = gameFloorY - wallTop + extendBelowGround;
+            const wallHeight = height - wallTop; // Extend to bottom of viewport
 
             // Draw grass wall function (SVG based)
             const drawGrassWall = (x: number, y: number, height: number, side: 'left' | 'right') => {

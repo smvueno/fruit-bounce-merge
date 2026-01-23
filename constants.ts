@@ -44,8 +44,9 @@ export const FRICTION_SLIDE = 0.99;
 export const FRICTION_LOCK = 0.5; // Multiplier per substep. 0.5^10 is effectively 0.
 
 export const DANGER_TIME_MS = 5000;
-export const DANGER_Y_PERCENT = 0.15;
-export const SPAWN_Y_PERCENT = 0.08;
+export const DANGER_Y_PERCENT = 0.13;
+export const SPAWN_Y_PERCENT = 0.06;
+export const FLOOR_OFFSET = 15;
 
 // Scoring
 export const SCORE_BASE_MERGE = 2; // Exponential base multiplier

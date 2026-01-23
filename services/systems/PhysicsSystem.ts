@@ -1,6 +1,6 @@
 import { FruitTier, Difficulty } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
-import { DIFFICULTY_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK } from '../../constants';
+import { DIFFICULTY_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET } from '../../constants';
 
 export interface PhysicsContext {
     fruits: Particle[];
@@ -103,7 +103,7 @@ export class PhysicsSystem {
     }
 
     getFloorY(x: number, height: number): number {
-        const baseY = height - 60;
+        const baseY = height - FLOOR_OFFSET;
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 

@@ -198,8 +198,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             {/* 2. Main Layout Container */}
             <LayoutContainer>
 
-                {/* TOP UI (HUD) - Occupies top section of 9:20 Container */}
-                <div className="w-full flex flex-col justify-end pb-2 relative z-30">
+                {/* TOP UI (HUD) - Flexible spacer with 20px top padding as requested */}
+                <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1">
                     <GameHUD
                         score={currentStateScore}
                         playTime={playTime}
@@ -210,27 +210,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                     />
                 </div>
 
-                {/* 3. Game Area (4:5 Aspect Ratio) */}
-                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-0 z-10">
+                {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
+                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
                     <GameArea canvasRef={canvasRef}>
                         {/* Overlays moved to root level for correct z-index stacking */}
                     </GameArea>
                 </div>
 
-                {/* BOTTOM UI - REMOVED (Pause Button moved to absolute) */}
+                {/* BOTTOM UI - Fixed height spacer.
+                    Floor is internal ~15px. We want 20px total from floor.
+                    So we need ~5px external gap.
+                    Height = 5 (gap) + 48 (btn) + 20 (bottom) ~= 73px. Round to 75px.
+                */}
+                <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
+                    <button
+                        onClick={handlePauseToggle}
+                        className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                        aria-label="Pause Game"
+                    >
+                        <Pause size={24} fill="currentColor" />
+                    </button>
+                </div>
 
             </LayoutContainer>
 
-            {/* ABSOLUTE PAUSE BUTTON - Bottom Center */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
-                <button
-                    onClick={handlePauseToggle}
-                    className="w-16 h-16 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-                    aria-label="Pause Game"
-                >
-                    <Pause size={32} fill="currentColor" />
-                </button>
-            </div>
+            {/* ABSOLUTE PAUSE BUTTON - REMOVED (integrated above) */}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
