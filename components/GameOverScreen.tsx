@@ -19,9 +19,17 @@ interface GameOverScreenProps {
 export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh, leaderboard, isLocalOnly, onRestart, onMenu, onSaveScore, onSync }) => {
   const [name, setName] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
+  const [isCoolingDown, setIsCoolingDown] = useState(true);
 
   React.useEffect(() => {
     if (onSync) onSync();
+
+    // Cooldown timer
+    const timer = setTimeout(() => {
+      setIsCoolingDown(false);
+    }, 2000);
+
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -122,14 +130,23 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
         <div className="w-full space-y-3 shrink-0">
           <button
             onClick={onRestart}
-            className="w-full bg-amber-500 hover:bg-amber-400 text-white font-bold text-xl py-4 rounded-2xl shadow-[0_8px_16px_rgba(245,158,11,0.3)] active:scale-95 transition-all flex items-center justify-center gap-2"
+            disabled={isCoolingDown}
+            className={`w-full font-bold text-xl py-4 rounded-2xl shadow-[0_8px_16px_rgba(245,158,11,0.3)] transition-all flex items-center justify-center gap-2 ${isCoolingDown
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+                : 'bg-amber-500 hover:bg-amber-400 text-white active:scale-95'
+              }`}
           >
-            <RotateCcw size={24} strokeWidth={3} /> PLAY AGAIN
+            <RotateCcw size={24} strokeWidth={3} />
+            {isCoolingDown ? 'WAIT...' : 'PLAY AGAIN'}
           </button>
 
           <button
             onClick={onMenu}
-            className="w-full bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold text-lg py-4 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2"
+            disabled={isCoolingDown}
+            className={`w-full font-bold text-lg py-4 rounded-2xl transition-all flex items-center justify-center gap-2 ${isCoolingDown
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-slate-200 hover:bg-slate-300 text-slate-600 active:scale-95'
+              }`}
           >
             <Home size={22} /> MENU
           </button>

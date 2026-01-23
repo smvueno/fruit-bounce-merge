@@ -220,7 +220,7 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
  * Supabase Realtime subscription for live leaderboard updates
  */
 let realtimeChannel: any = null;
-let lastRealtimeFetch = 0; // Timestamp of last fetch triggered by Realtime
+let realtimeDebounceTimer: any = null;
 
 /**
  * Subscribe to live leaderboard updates via Supabase Realtime
@@ -240,26 +240,27 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
     .on(
       'postgres_changes',
       {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'leaderboard'
       },
       (payload) => {
-        console.log('New score detected via Realtime:', payload);
+        console.log('Leaderboard change detected via Realtime:', payload);
 
-        // Throttle fetches to once every 10 seconds max, even if multiple INSERTs occur
-        const now = Date.now();
-        if (now - lastRealtimeFetch > 10000) { // 10 second throttle
-          lastRealtimeFetch = now;
-          // Fetch updated leaderboard and call callback
+        // Debounce fetches to prevent flooding
+        // If a fetch is already scheduled, clear it and restart timer
+        if (realtimeDebounceTimer) {
+          clearTimeout(realtimeDebounceTimer);
+        }
+
+        realtimeDebounceTimer = setTimeout(() => {
+          console.log('Fetching leaderboard after debounce...');
           getGlobalLeaderboard(50, true).then(scores => {
             callback(scores);
           }).catch(err => {
             console.error('Failed to fetch leaderboard after Realtime event:', err);
           });
-        } else {
-          console.log('Throttling Realtime fetch - too soon since last fetch');
-        }
+        }, 1000); // 1 second debounce
       }
     )
     .subscribe((status) => {
