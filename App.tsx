@@ -292,8 +292,8 @@ const App: React.FC = () => {
     try {
       const newEntry: LeaderboardEntry = {
         name,
-        score: finalStats.score,
-        timePlayed: finalStats.timePlayed,
+        score: Math.floor(finalStats.score),
+        timePlayed: Math.floor(finalStats.timePlayed),
         maxTier: finalStats.maxTier,
         date: new Date().toISOString()
       };
@@ -336,7 +336,29 @@ const App: React.FC = () => {
       // This ensures we get the latest global state (including our own new score if uploaded)
       // and ensures pending queue is processed if connection flickered back on
       if (qualifiesForGlobal) {
-        await handleSync();
+        // Manual Sync with checks to prevent race condition where immediate fetch misses the new score
+        const globalData = await performFullSync();
+        if (globalData) {
+          // Check if newEntry is in globalData
+          const exists = globalData.some(e =>
+            e.name === newEntry.name &&
+            e.score === newEntry.score &&
+            e.date === newEntry.date
+          );
+
+          let finalData = globalData;
+          if (!exists) {
+            console.log('New score missing from sync - manually adding to UI');
+            // If missing, append ours (and re-sort) to ensure it doesn't disappear
+            finalData = [...globalData, newEntry].sort((a, b) => b.score - a.score);
+          }
+
+          setGlobalLeaderboard(finalData);
+
+          // Also refresh local pending scores view (performFullSync updates storage)
+          const reloaded = loadData();
+          setData(prev => ({ ...prev, pendingScores: reloaded.pendingScores }));
+        }
       }
     } finally {
       // Always clear the saving flag, even if an error occurred
