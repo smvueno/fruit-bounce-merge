@@ -107,10 +107,7 @@ const App: React.FC = () => {
     // Subscribe to Realtime updates for live leaderboard (if online)
     if (offlineManager.isOnline()) {
       subscribeToLeaderboard((newScores) => {
-        console.log(`[APP DEBUG] Leaderboard updated via Realtime. Records: ${newScores.length}`);
-        if (newScores.length > 0) {
-          console.log(`[APP DEBUG] Top Leader: ${newScores[0].name} - ${newScores[0].score}`);
-        }
+        console.log('Leaderboard updated via Realtime');
         setGlobalLeaderboard(newScores);
       });
     }
@@ -266,7 +263,7 @@ const App: React.FC = () => {
 
     const activeList = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
     const sortedLeaderboard = [...activeList].sort((a, b) => b.score - a.score);
-    const LIMIT = 10; // Badge usually relevant for top 10
+    const LIMIT = 100; // Expanded to Top 100
 
     let qualifies = false;
     if (stats.score > 0) {
@@ -318,9 +315,9 @@ const App: React.FC = () => {
       const newPending = [...(data.pendingScores || [])];
 
       // 3. Conditional Global Upload
-      // Only attempt to upload if it qualifies for the global leaderboard (Top 50)
+      // Only attempt to upload if it qualifies for the global leaderboard (Top 100)
       // If global list is empty (e.g. offline/first load), we assume it qualifies.
-      const lowestGlobalScore = globalLeaderboard.length < 50
+      const lowestGlobalScore = globalLeaderboard.length < 100
         ? 0
         : globalLeaderboard[globalLeaderboard.length - 1].score;
 
@@ -383,15 +380,6 @@ const App: React.FC = () => {
   };
 
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
-
-  // Debug Log for active source
-  // Use a ref to prevent spamming console on every frame/render unless changed
-  const lastSourceRef = useRef<string>('');
-  const currentSource = data.settings.showLocalOnly ? 'LOCAL' : 'GLOBAL';
-  if (lastSourceRef.current !== currentSource) {
-    console.log(`[APP DEBUG] Active Leaderboard Source: ${currentSource} (LocalOnly=${data.settings.showLocalOnly})`);
-    lastSourceRef.current = currentSource;
-  }
 
   return (
     <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">

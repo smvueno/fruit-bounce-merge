@@ -25,7 +25,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({
     };
 
     // Ensure entries are sorted
-    const sortedLeaderboard = [...entries].sort((a, b) => b.score - a.score).slice(0, 10); // always top 10 max
+    const sortedLeaderboard = [...entries].sort((a, b) => b.score - a.score).slice(0, 100); // always top 100 max
 
     return (
         <div className={`w-full bg-slate-50 border border-slate-200 rounded-2xl shadow-inner flex flex-col overflow-hidden min-h-0 ${maxHeight}`}>

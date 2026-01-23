@@ -19,13 +19,10 @@ export const shouldRefreshLeaderboard = (): boolean => {
   return Date.now() - lastFetchTime > CACHE_DURATION;
 };
 
-export const getGlobalLeaderboard = async (limit = 50, force = false): Promise<LeaderboardEntry[]> => {
+export const getGlobalLeaderboard = async (limit = 100, force = false): Promise<LeaderboardEntry[]> => {
   // Return cached data if fresh and not forced
   if (!force && !shouldRefreshLeaderboard() && cachedLeaderboard.length > 0) {
-    console.log('[DEBUG LEADERBOARD] Returning cached data');
     return cachedLeaderboard;
-  } else {
-    console.log(`[DEBUG LEADERBOARD] Fetching fresh data (Force=${force})`);
   }
 
   try {
@@ -208,7 +205,7 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
     }
 
     // 4. Fetch Global (force refresh)
-    const global = await getGlobalLeaderboard(50, true);
+    const global = await getGlobalLeaderboard(100, true);
     return global;
   } catch (e) {
     console.error('Error during sync:', e);
@@ -248,7 +245,6 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
         table: 'leaderboard'
       },
       (payload) => {
-        console.log('[REALTIME DEBUG] ⚡ Packet received!', payload);
         console.log('Leaderboard change detected via Realtime:', payload);
 
         // Debounce fetches to prevent flooding
@@ -259,7 +255,7 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
 
         realtimeDebounceTimer = setTimeout(() => {
           console.log('Fetching leaderboard after debounce...');
-          getGlobalLeaderboard(50, true).then(scores => {
+          getGlobalLeaderboard(100, true).then(scores => {
             callback(scores);
           }).catch(err => {
             console.error('Failed to fetch leaderboard after Realtime event:', err);
@@ -268,16 +264,7 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
       }
     )
     .subscribe((status) => {
-      console.log(`[REALTIME DEBUG] Subscription Status: ${status}`);
-      if (status === 'SUBSCRIBED') {
-        console.log('[REALTIME DEBUG] ✅ Successfully connected to Supabase Realtime.');
-      }
-      if (status === 'CHANNEL_ERROR') {
-        console.error('[REALTIME DEBUG] ❌ Channel Error! Check browser console for network errors.');
-      }
-      if (status === 'TIMED_OUT') {
-        console.warn('[REALTIME DEBUG] ⚠️ Connection timed out. Retrying...');
-      }
+      console.log('Realtime subscription status:', status);
     });
 };
 
