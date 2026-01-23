@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { Plugin } from 'vite';
+import { fileURLToPath } from 'url';
+
+// Define __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Vite plugin to inject build timestamp into service worker
