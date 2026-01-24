@@ -47,7 +47,7 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
 
                 {/* Main Text */}
                 <h1
-                    className="text-4xl md:text-6xl font-black tracking-tight mb-2 leading-none"
+                    className="text-4xl md:text-6xl font-black tracking-wide mb-2 leading-none"
                     style={commonStyle}
                 >
                     {mainText}
@@ -57,7 +57,7 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
                 <div className="flex items-baseline justify-center gap-2">
                     {/* Main Score (Big) */}
                     <div
-                        className="text-5xl md:text-7xl font-black leading-none"
+                        className="text-5xl md:text-7xl font-black leading-none tracking-wide"
                         style={commonStyle}
                     >
                         {data.runningTotal.toLocaleString()}
@@ -66,7 +66,7 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
                     {/* Multiplier (Smaller, behind) */}
                     {showMultiplier && data.multiplier > 1 && (
                         <div
-                            className="text-3xl md:text-5xl font-black opacity-90"
+                            className="text-3xl md:text-5xl font-black opacity-90 tracking-widest"
                             style={commonStyle}
                         >
                             x{data.multiplier}

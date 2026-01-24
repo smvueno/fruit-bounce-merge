@@ -76,7 +76,7 @@ export const PointTicker: React.FC<PointTickerProps> = ({ latestEvent, settings 
                         }}
                     >
                         <span
-                            className="font-black tracking-tighter"
+                            className="font-black tracking-widest"
                             style={{
                                 color: textColor,
                                 WebkitTextStroke: '6px #000000', // Thick black outline
