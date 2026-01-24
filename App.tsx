@@ -371,14 +371,14 @@ const App: React.FC = () => {
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
 
   return (
-    <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
+    <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none px-3 md:px-0">
       {/* Background decoration */}
       <div className="absolute inset-0 bg-yellow-100 opacity-5">
         <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       </div>
 
       {/* Responsive Game Container - Constrained for Mobile Feel on Desktop */}
-      <div className="relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] bg-white shadow-2xl rounded-xl ring-8 ring-black/10 flex flex-col overflow-hidden">
+      <div className="relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] bg-white shadow-2xl rounded-xl flex flex-col overflow-hidden">
 
         {gameState === GameState.START && (
           <>

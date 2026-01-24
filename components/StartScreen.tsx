@@ -56,11 +56,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         {/* Header */}
         <div className="mb-4 md:mb-6 relative shrink-0">
           <h1 className="text-5xl md:text-6xl font-bold text-gray-900 drop-shadow-sm tracking-tight leading-none">
-            FRUIT<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">BOUNCE</span>
+            FRUITY<br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">FUSE</span>
           </h1>
-          <div className="absolute -right-4 -top-3 md:-right-6 md:-top-4 rotate-12 bg-white border border-gray-100 px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-xs font-bold text-orange-500 shadow-lg">
-            MERGE!
+          <div className="text-lg md:text-xl font-bold text-orange-400 mt-2 tracking-wider">
+            Flick & Bounce
           </div>
         </div>
 
