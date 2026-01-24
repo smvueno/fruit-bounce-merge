@@ -222,11 +222,12 @@ export class PhysicsSystem {
                 (p, bomb) => {
                     const dx = p.x - bomb.x;
                     const dy = p.y - bomb.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const distSq = dx * dx + dy * dy;
                     const radSum = p.radius + bomb.radius;
+                    const threshold = radSum + 5;
 
                     // If touching and not already tracked, add to list
-                    if (dist < radSum + 5) { // 5px buffer for detection
+                    if (distSq < threshold * threshold) { // 5px buffer for detection
                         if (!b.capturedIds.includes(p.id)) {
                             b.capturedIds.push(p.id);
                         }

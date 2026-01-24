@@ -1029,11 +1029,13 @@ export class GameEngine {
     }
 
     applyShockwave(x: number, y: number, radius: number, force: number) {
+        const radiusSq = radius * radius;
         for (const p of this.fruits) {
             const dx = p.x - x;
             const dy = p.y - y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < radius && d > 0) {
+            const distSq = dx * dx + dy * dy;
+            if (distSq < radiusSq && distSq > 0) {
+                const d = Math.sqrt(distSq);
                 const factor = 1 - d / radius;
                 p.vx += (dx / d) * force * factor;
                 p.vy += (dy / d) * force * factor;
