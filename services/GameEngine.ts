@@ -20,7 +20,6 @@ export class GameEngine {
     // PIXI references (Managed by RenderSystem mainly, but Engine holds App for Lifecycle)
     app: PIXI.Application | undefined;
     container: PIXI.Container;
-    effectContainer: PIXI.Container;
 
     // Systems
     physicsSystem: PhysicsSystem;
@@ -105,7 +104,6 @@ export class GameEngine {
 
         // Core PIXI Containers
         this.container = new PIXI.Container();
-        this.effectContainer = new PIXI.Container();
 
         // Initialize Systems
         this.physicsSystem = new PhysicsSystem();
@@ -167,11 +165,10 @@ export class GameEngine {
         // Initial Resize
         this.handleResize();
 
-        this.app.stage.addChild(this.effectContainer);
         this.app.stage.addChild(this.container);
 
         // Initialize Render System
-        this.renderSystem.initialize(this.app, this.container, this.effectContainer);
+        this.renderSystem.initialize(this.app, this.container);
         const containerY = this.container.position.y || 0;
 
         // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
@@ -209,7 +206,6 @@ export class GameEngine {
 
         this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
         this.container.scale.set(this.scaleFactor);
-        this.effectContainer.scale.set(this.scaleFactor);
 
         // Center the container in the canvas
         const logicalW = V_WIDTH * this.scaleFactor;
@@ -219,7 +215,6 @@ export class GameEngine {
         const yOffset = (actualH - logicalH) / 2;
 
         this.container.position.set(xOffset, yOffset);
-        this.effectContainer.position.set(xOffset, yOffset);
     }
 
     reset() {
@@ -395,8 +390,8 @@ export class GameEngine {
         };
         this.renderSystem.renderSync(renderCtx);
 
-        // Draw Effects
-        this.renderSystem.renderEffects(this.effectSystem.visualParticles, this.height);
+        // Draw Effects - Moved to React EffectCanvas
+        // this.renderSystem.renderEffects(this.effectSystem.visualParticles, this.height);
     }
 
     // --- Game Logic Methods ---
