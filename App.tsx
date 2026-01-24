@@ -377,8 +377,8 @@ const App: React.FC = () => {
         <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
       </div>
 
-      {/* Responsive Game Container - Fixed Aspect Ratio 2:3 (Portrait) */}
-      <div className="relative w-full h-full max-h-[100svh] bg-white shadow-2xl rounded-xl ring-8 ring-black/10 flex flex-col">
+      {/* Responsive Game Container - Constrained for Mobile Feel on Desktop */}
+      <div className="relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] bg-white shadow-2xl rounded-xl ring-8 ring-black/10 flex flex-col overflow-hidden">
 
         {gameState === GameState.START && (
           <>
