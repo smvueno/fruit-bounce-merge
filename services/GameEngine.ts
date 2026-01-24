@@ -85,6 +85,7 @@ export class GameEngine {
     dangerTimer: number = 0;
     dangerActive: boolean = false;
     dangerAccumulator: number = 0;
+    isOverLimit: boolean = false;
     readonly DANGER_TRIGGER_DELAY: number = 3000;
 
     // Spawn Logic State
@@ -383,7 +384,7 @@ export class GameEngine {
         this.audio.update();
 
         // 5. Render
-        this.renderSystem.drawDangerLine(this.width, this.height, this.dangerActive);
+        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
 
         // Sync Render State
         const renderCtx = {
@@ -455,7 +456,7 @@ export class GameEngine {
                 this.audio.playBombTick(1.0 - (b.timer / b.maxTime)); // Pitch up as it gets closer
             } else if (b.timer < 1.5 && b.timer > 0) {
                 // play extra tick at .5
-                if ((b.timer + (dtMs/1000)) >= (currentSec - 0.5) && b.timer < (currentSec - 0.5)) {
+                if ((b.timer + (dtMs / 1000)) >= (currentSec - 0.5) && b.timer < (currentSec - 0.5)) {
                     this.audio.playBombTick(1.0);
                 }
             }
@@ -526,11 +527,12 @@ export class GameEngine {
         const dangerY = this.height * DANGER_Y_PERCENT;
         let inDangerZone = false;
         for (const f of this.fruits) {
-            if (!f.isStatic && f.y - f.radius < dangerY) {
+            if (!f.isStatic && !f.isCaught && f.y - f.radius < dangerY) {
                 inDangerZone = true;
                 break;
             }
         }
+        this.isOverLimit = inDangerZone;
         if (inDangerZone) {
             this.dangerAccumulator += dtMs;
             if (this.dangerAccumulator > this.DANGER_TRIGGER_DELAY) {
@@ -805,7 +807,7 @@ export class GameEngine {
 
         const capturedIds: number[] = [];
         for (const p of this.fruits) {
-            if (p.isStatic || p.tier > FruitTier.GRAPE) continue;
+            if (p.isStatic) continue;
 
             p.isCaught = true;
             p.ignoreCollisions = true;
@@ -845,34 +847,46 @@ export class GameEngine {
             }
 
             if (allArrived || state.timer > 3000) {
-                state.phase = 'hold';
+                state.phase = 'pop'; // Go to POP phase instead of HOLD/EXPLODE
                 state.timer = 0;
+                state.popTimer = 0;
+                state.popIndex = 0;
             }
-        } else if (state.phase === 'hold') {
-            if (state.timer > 500) {
-                state.phase = 'explode';
+        } else if (state.phase === 'pop') {
+            const POP_INTERVAL = 100; // ms between pops
+            state.popTimer += dtMs;
 
-                const targetX = this.width / 2;
-                const targetY = this.height * SPAWN_Y_PERCENT;
+            if (state.popTimer >= POP_INTERVAL) {
+                state.popTimer -= POP_INTERVAL;
 
-                this.effectSystem.createMergeEffect(targetX, targetY, "#FFD700");
-                this.audio.playMergeSound(FruitTier.RAINBOW);
+                if (state.popIndex < state.capturedIds.length) {
+                    const id = state.capturedIds[state.popIndex];
+                    state.popIndex++;
 
-                for (const id of state.capturedIds) {
                     const p = this.fruits.find(f => f.id === id);
-                    if (!p) continue;
+                    if (p) {
+                        const tier = p.tier;
+                        // Calculate Points (Base merge points for that tier)
+                        // Formula: BASE * 2^tier
+                        const points = SCORE_BASE_MERGE * Math.pow(2, tier) * 2; // Double points for clearing!
+                        this.addScore(points);
 
-                    p.isCaught = false;
-                    p.ignoreCollisions = false;
+                        // Visual & Audio
+                        this.effectSystem.createMergeEffect(p.x, p.y, FRUIT_DEFS[tier].color);
+                        this.audio.playMergeSound(tier);
+                        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(10);
 
-                    const angle = Math.random() * Math.PI * 2;
-                    const force = 10 + Math.random() * 15;
-                    p.vx = Math.cos(angle) * force;
-                    p.vy = Math.sin(angle) * force + 5;
-                    p.cooldownTimer = 1.0;
+                        this.removeParticle(p);
+                    }
+
+                    // If we just popped the last one, end logic
+                    if (state.popIndex >= state.capturedIds.length) {
+                        this.celebrationEffect = null;
+                        this.audio.playBombShrapnel(); // Final sound
+                    }
+                } else {
+                    this.celebrationEffect = null;
                 }
-
-                this.celebrationEffect = null;
             }
         }
     }

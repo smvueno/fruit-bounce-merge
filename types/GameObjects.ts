@@ -80,10 +80,12 @@ export class BombEffect {
 
 export class CelebrationState {
     timer: number = 0;
-    phase: 'suck' | 'hold' | 'explode' = 'suck';
+    phase: 'suck' | 'hold' | 'pop' | 'explode' = 'suck'; // Kept explode for type safety if needed, but logic changes to pop
     capturedIds: number[] = [];
     startX: number;
     startY: number;
+    popTimer: number = 0;
+    popIndex: number = 0;
 
     constructor(x: number, y: number, ids: number[]) {
         this.startX = x;

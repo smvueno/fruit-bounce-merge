@@ -219,7 +219,7 @@ export class PhysicsSystem {
 
         if (state.phase === 'suck') {
             const targetX = ctx.width / 2;
-            const targetY = ctx.height * 0.15; // SPAWN_Y_PERCENT is approx 0.15, passing it or hardcoding? 
+            const targetY = ctx.height / 2;
             // Better to hardcode or pass config. Let's use hardcoded approx for now or add to context if critical.
             // GameEngine said `this.height * SPAWN_Y_PERCENT`. 
             // Let's assume SPAWN_Y_PERCENT is 0.15 as per constants usually. 
@@ -242,7 +242,7 @@ export class PhysicsSystem {
                 p.rotation += 0.2;
                 p.angularVelocity = 0.2;
             }
-        } else if (state.phase === 'hold') {
+        } else if (state.phase === 'hold' || state.phase === 'pop') {
             for (const id of state.capturedIds) {
                 const p = ctx.fruits.find(f => f.id === id);
                 if (!p) continue;
@@ -358,7 +358,7 @@ export class PhysicsSystem {
                     // --- RESTORED TOMATO LOGIC ---
                     if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
                         callbacks.onTomatoCollision(p1, p2);
-                        return; // Original has return? Yes "return;" - ends this function call? Or just the pair?
+                        continue;
                         // In `resolveCollisions`, it was a void function. `return` would skip ALL other collisions for ALL fruits.
                         // That seems buggy in original code or I misread context.
                         // Looking at original line 1130: `return;` inside proper logic.
