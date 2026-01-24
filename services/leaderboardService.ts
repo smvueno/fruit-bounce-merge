@@ -144,13 +144,14 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
       // Keep track of which specific entries (by unique props) succeeded
       const successIndices: number[] = [];
 
-      for (let i = 0; i < pendingToUpload.length; i++) {
-        const entry = pendingToUpload[i];
-        const success = await submitScore(entry);
+      // Parallelize uploads for performance
+      const results = await Promise.all(pendingToUpload.map(entry => submitScore(entry)));
+
+      results.forEach((success, i) => {
         if (success) {
           successIndices.push(i);
         }
-      }
+      });
 
       if (successIndices.length > 0) {
         // Critical: Re-load data to ensure we don't overwrite any NEW pending scores 
