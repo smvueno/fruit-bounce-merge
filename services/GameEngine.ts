@@ -5,7 +5,7 @@ import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
 
 // Systems
-import { PhysicsSystem, PhysicsCallbacks } from './systems/PhysicsSystem';
+import { PhysicsSystem, PhysicsCallbacks, PhysicsContext } from './systems/PhysicsSystem';
 import { InputSystem } from './systems/InputSystem';
 import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
@@ -102,6 +102,10 @@ export class GameEngine {
     preFrenzyChain: number = 0;
     preFrenzyStreak: number = 0;
 
+    // Optimization: Reused Objects
+    private _physicsContext: PhysicsContext;
+    private _physicsCallbacks: PhysicsCallbacks;
+
     constructor(
         canvas: HTMLCanvasElement,
         settings: GameSettings,
@@ -121,6 +125,27 @@ export class GameEngine {
         this.renderSystem = new RenderSystem();
 
         this.audio = new MusicEngine(this.settings.musicEnabled, this.settings.sfxEnabled);
+
+        // Optimization: Initialize reusable objects
+        this._physicsContext = {
+            fruits: [],
+            activeTomatoes: [],
+            activeBombs: [],
+            celebrationEffect: null,
+            currentFruit: null,
+            isAiming: false,
+            dragAnchorX: 0,
+            dragAnchorY: 0,
+            width: this.width,
+            height: this.height
+        };
+
+        this._physicsCallbacks = {
+            onMerge: (p1, p2) => this.merge(p1, p2),
+            onBombExplosion: (bomb) => this.handleBombExplosion(bomb),
+            onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
+            onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
+        };
     }
 
     setPaused(paused: boolean) {
@@ -362,27 +387,19 @@ export class GameEngine {
         this.updateGameLogic(dtMs);
 
         // 2. Update Physics
-        const physicsContext = {
-            fruits: this.fruits,
-            activeTomatoes: this.activeTomatoes,
-            activeBombs: this.activeBombs,
-            celebrationEffect: this.celebrationEffect,
-            currentFruit: this.currentFruit,
-            isAiming: this.inputSystem.isAiming,
-            dragAnchorX: this.inputSystem.dragAnchorX,
-            dragAnchorY: this.inputSystem.dragAnchorY,
-            width: this.width,
-            height: this.height
-        };
+        // Optimization: Reuse object to reduce GC
+        this._physicsContext.fruits = this.fruits;
+        this._physicsContext.activeTomatoes = this.activeTomatoes;
+        this._physicsContext.activeBombs = this.activeBombs;
+        this._physicsContext.celebrationEffect = this.celebrationEffect;
+        this._physicsContext.currentFruit = this.currentFruit;
+        this._physicsContext.isAiming = this.inputSystem.isAiming;
+        this._physicsContext.dragAnchorX = this.inputSystem.dragAnchorX;
+        this._physicsContext.dragAnchorY = this.inputSystem.dragAnchorY;
+        this._physicsContext.width = this.width;
+        this._physicsContext.height = this.height;
 
-        const callbacks: PhysicsCallbacks = {
-            onMerge: (p1, p2) => this.merge(p1, p2),
-            onBombExplosion: (bomb) => this.handleBombExplosion(bomb),
-            onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
-            onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
-        };
-
-        this.physicsSystem.update(dt, physicsContext, callbacks);
+        this.physicsSystem.update(dt, this._physicsContext, this._physicsCallbacks);
 
         // 3. Update Effects
         const effectContext = {
