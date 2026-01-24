@@ -52,17 +52,18 @@ const useNumberTicker = (targetValue: number, duration: number = 500) => {
 };
 
 export const GameHUD: React.FC<GameHUDProps> = ({ score, playTime, maxTier, nextFruit, savedFruit, onSwap }) => {
+
     // We use the ticker hook for smooth score updates
     const animatedScore = useNumberTicker(score, 1000);
 
     return (
         <div className="w-full h-full flex flex-col justify-end px-8 md:px-10 z-30 pointer-events-none font-['Fredoka'] pb-2">
             <div className="flex justify-between items-end w-full">
-                <div className="flex flex-col gap-1 items-start">
+                <div className="flex flex-col gap-1 items-start relative">
                     <div className="text-gray-800 text-xs md:text-sm font-bold tracking-widest uppercase mb-0 opacity-90">SCORE</div>
                     <div
                         id="hud-score-display"
-                        className="text-4xl md:text-6xl font-bold text-[#1a1a1a] leading-none drop-shadow-sm transition-transform duration-100 placeholder-opacity-100 origin-left"
+                        className="text-4xl md:text-6xl font-bold text-[#1a1a1a] leading-none drop-shadow-sm transition-transform duration-300 placeholder-opacity-100 origin-left scale-100"
                         style={{ WebkitTextStroke: '0px transparent' }}
                     >
                         {animatedScore.toLocaleString()}

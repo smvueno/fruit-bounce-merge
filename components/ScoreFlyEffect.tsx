@@ -37,15 +37,15 @@ export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, tar
         position: 'fixed',
         left: '50%',
         top: '50%',
-        transform: 'translate(-50%, -50%) scale(1)', // Initial state
+        transform: 'translate(-50%, -50%) scale(1)',
         opacity: 1,
         pointerEvents: 'none',
         zIndex: 100,
         color: color,
         fontWeight: 900,
         fontSize: '3rem',
-        WebkitTextStroke: '6px #1a1a1a', // Outline
-        textShadow: '3px 3px 0px #1a1a1a', // Shift
+        WebkitTextStroke: '6px #1a1a1a',
+        textShadow: '3px 3px 0px #1a1a1a',
         paintOrder: 'stroke fill',
         fontFamily: 'Fredoka, sans-serif'
     });
@@ -61,36 +61,77 @@ export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, tar
         }
 
         const targetRect = target.getBoundingClientRect();
+        // Target is the center of the HUD element
         const tx = targetRect.left + targetRect.width / 2;
         const ty = targetRect.top + targetRect.height / 2;
 
         const sx = window.innerWidth / 2;
         const sy = window.innerHeight / 2;
 
-        // Target Color (HUD Black)
+        // Quadratic Bezier Control Point
+        // We want a nice curve. Let's pull it "out" relative to the movement.
+        // If moving Top-Left, pull it Top (y diff) or Left (x diff).
+        // Let's use a control point that creates an arc.
+        // P0=(sx,sy), P2=(tx,ty).
+        // Control Point P1:
+        // Let's go 20% "out" perpendicular to the line?
+        // Simpler: Just bias it.
+        // If going up-left, control point at (sx, ty) [Straight up then left]
+        // or (tx, sy) [Left then up]. 
+        // Let's try (sx - 100, ty + 100) -> A bit chaotic.
+        // Let's use (sx, ty) but slightly offset towards center for a "Swoop"
+        const cx = sx + (tx - sx) * 0.1;
+        const cy = ty + (sy - ty) * 0.1;
+        // Actually (sx, ty) is the corner "Top-Right" of the bounding box if HUD is Top-Left and Start is Center.
+        // Wait, Center to Top-Left. 
+        // sx > tx, sy > ty.
+        // Corner is (sx, ty) which is Center-X, Top-Y.
+        // Or (tx, sy) which is Left-X, Center-Y.
+        // Let's use (tx, sy) -- go LEFT then UP. (swoop side)
+        // Or (sx, ty) -- go UP then LEFT.
+        // Let's try (sx, ty) for "Up then over".
+
+        // Let's refine: A curve that goes slightly right then loops left looks cool ("Suck up").
+        // But for speed, a clean arc is better.
+        // Let's use (sx + 50, ty + 100) to create a slight "wind up".
+
+        const cpX = sx;
+        const cpY = ty; // "Square" corner.
+
         const targetColor = '#1a1a1a';
+        const duration = 1000; // 1s total
 
         const animate = (time: number) => {
             if (!startTimeRef.current) startTimeRef.current = time;
-            const progress = Math.min((time - startTimeRef.current) / 800, 1);
+            const progress = Math.min((time - startTimeRef.current) / duration, 1);
 
-            const ease = progress * progress * progress; // EaseInCubic
+            // Custom Easing: Start slow (glow), accelerate fast (suck), impact.
+            // easeInBack or easeInExpo.
+            // Let's use cubic ease-in for the "Suck" feel.
+            const ease = Math.pow(progress, 3);
 
-            const currentX = sx + (tx - sx) * ease;
-            const currentY = sy + (ty - sy) * ease;
-            const scale = 1 - (0.6 * ease); // Down to 0.4 instead of 0.2 (better visibility)
+            // Bezier Formula: (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+            const t = ease;
+            const invT = 1 - t;
 
-            // Interpolate Color
-            // Tailwind colors like 'text-green-500' pass through? No, we need explicit hex for this logic.
-            // Component calls will need to pass hex.
-            const currentColor = interpolateColor(color, targetColor, ease);
+            const currentX = (invT * invT * sx) + (2 * invT * t * cpX) + (t * t * tx);
+            const currentY = (invT * invT * sy) + (2 * invT * t * cpY) + (t * t * ty);
+
+            // Rotation effect: Spin as it flies?
+            const rotation = t * 360;
+
+            // Scale: Start 1.2 (Pop), then shrink to 0.4
+            const scale = 1.2 - (0.8 * t);
+
+            const currentColor = interpolateColor(color, targetColor, t);
 
             setStyle(prev => ({
                 ...prev,
                 left: `${currentX}px`,
                 top: `${currentY}px`,
-                transform: `translate(-50%, -50%) scale(${scale})`,
-                color: currentColor
+                transform: `translate(-50%, -50%) scale(${scale}) rotate(${rotation}deg)`,
+                color: currentColor,
+                opacity: 1 // Keep fully visible until poof
             }));
 
             if (progress < 1) {

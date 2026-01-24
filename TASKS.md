@@ -222,12 +222,12 @@ This is a comprehensive blueprint for the complete redesign of the game's reward
 **Intent**: The bridge between the "Real" hidden score and the "Display" HUD score.
 
 ### Requirements:
-- [ ] **The "Suck Up" Sequence**:
+- [x] **The "Suck Up" Sequence**:
   1. Event Finalizes (Frenzy ends or Chain reset).
   2. The central total (e.g., "12,500") glows.
   3. **Suck Animation**: The text scales down and flies in a curved Bezier path toward the HUD score position.
   4. **The "Poof"**: Upon hitting the HUD, trigger a small sparkle effect and increment the HUD display score.
-- [ ] **Spring-Animated HUD**: Use `react-spring` or similar to make the HUD score "tick up" rapidly when the points arrive.
+- [x] **Spring-Animated HUD**: Use `react-spring` or similar to make the HUD score "tick up" rapidly when the points arrive.
 
 **Clearance Test**:
 1. Perform a merge during Frenzy.
@@ -236,9 +236,10 @@ This is a comprehensive blueprint for the complete redesign of the game's reward
   4. **Verify**: Visual points fly to HUD, THEN HUD increments.
 
 ### 📝 Notes for Next Agent
-- **Logic Implemented**: `GameCanvas.tsx` now manages `popupData` and `suckUpPayload`.
-- **Components**: `TextPopup` displays the central score. `ScoreFlyEffect` flies the score to the HUD. `GameHUD` uses `useNumberTicker` for smooth updates.
-- **Sync**: Score is now synchronized via `onPopupUpdate` -> `TextPopup` -> `ScoreFlyEffect` -> `setScore`.
+- **Logic Implemented**: `GameCanvas.tsx` manages `popupData` and `suckUpPayload`. `GameEngine` triggers suckup by emitting `runningTotal: 0`.
+- **Components**: `ScoreFlyEffect` uses **Quadratic Bezier Curve** for smooth arc. Sparkle/Bloom effects were removed for a cleaner look.
+- **HUD**: `GameHUD` uses `useNumberTicker` for smooth updates (no extra pop/color).
+- **Sync**: Score is synchronized via `onPopupUpdate` -> `TextPopup` -> `ScoreFlyEffect` -> `setScore`.
 - **Status**: Build verified. Ready for Task 6.
 
 ---
