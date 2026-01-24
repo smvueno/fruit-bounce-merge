@@ -156,10 +156,17 @@ const App: React.FC = () => {
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New update available and installed - save it to state
-                // The useEffect hook below will handle when to show the modal
-                console.log('Update installed and ready');
+                // Check if currently saving before showing update modal
+                if (offlineManager.isSavingInProgress()) {
+                  console.log('Update available but saving in progress - will retry...');
+                  // Retry after a short delay
+                  setTimeout(() => handleUpdateFound(), 2000);
+                  return;
+                }
+
+                // New update available and installed
                 setWaitingWorker(newWorker);
+                if (gameStateRef.current === GameState.START) setShowUpdateModal(true);
               }
             });
           }
@@ -211,25 +218,6 @@ const App: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount - removed gameState dependency
-
-  // Effect to handle showing update modal when safe
-  useEffect(() => {
-    if (waitingWorker && gameState === GameState.START && !showUpdateModal) {
-      // Check if saving is in progress using the non-reactive global manager
-      // We can poll briefly if we think it might be saving, or just check once
-      if (!offlineManager.isSavingInProgress()) {
-        setShowUpdateModal(true);
-      } else {
-        // If saving, check again soon
-        const id = setTimeout(() => {
-          if (!offlineManager.isSavingInProgress()) {
-            setShowUpdateModal(true);
-          }
-        }, 1000);
-        return () => clearTimeout(id);
-      }
-    }
-  }, [waitingWorker, gameState, showUpdateModal]);
 
   // Periodic Leaderboard Polling (Fallback for Realtime)
   // Since Realtime handles live updates, we only need occasional polling as a fallback
