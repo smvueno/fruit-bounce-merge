@@ -115,11 +115,12 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
       </div>
 
       <div className="mt-8 flex flex-col items-center gap-2">
-        <div className="text-gray-500/60 text-sm font-bold">
-          v2026.2 Jens Madsen
-        </div>
         <div className="text-gray-400 text-xs font-medium max-w-[250px] leading-tight">
           For my bro who's also called Jens, you're fkn awesome!
+        </div>
+        <div className="text-gray-500/60 text-xs font-bold flex flex-col items-center">
+          <span>Build Date: 2026.01.24 11:51</span>
+          <span>Jens Madsen</span>
         </div>
       </div>
     </div>
