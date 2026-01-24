@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { FruitTier, FRUIT_DEFS } from '../services/fruitConfig';
 import { FruitSVG } from './FruitSVG';
 import { Clock } from 'lucide-react';
@@ -19,14 +19,53 @@ const formatTime = (ms: number) => {
     return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
+// Number Ticker Hook
+const useNumberTicker = (targetValue: number, duration: number = 500) => {
+    const [displayValue, setDisplayValue] = useState(targetValue);
+
+    useEffect(() => {
+        let startTime: number | null = null;
+        const startValue = displayValue;
+        const change = targetValue - startValue;
+
+        if (change === 0) return;
+
+        const animate = (currentTime: number) => {
+            if (!startTime) startTime = currentTime;
+            const progress = Math.min((currentTime - startTime) / duration, 1);
+
+            // EaseOutExpo
+            const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+
+            const nextVal = Math.floor(startValue + (change * ease));
+            setDisplayValue(nextVal);
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        };
+
+        requestAnimationFrame(animate);
+    }, [targetValue]);
+
+    return displayValue;
+};
+
 export const GameHUD: React.FC<GameHUDProps> = ({ score, playTime, maxTier, nextFruit, savedFruit, onSwap }) => {
+    // We use the ticker hook for smooth score updates
+    const animatedScore = useNumberTicker(score, 1000);
+
     return (
         <div className="w-full h-full flex flex-col justify-end px-8 md:px-10 z-30 pointer-events-none font-['Fredoka'] pb-2">
             <div className="flex justify-between items-end w-full">
                 <div className="flex flex-col gap-1 items-start">
                     <div className="text-gray-800 text-xs md:text-sm font-bold tracking-widest uppercase mb-0 opacity-90">SCORE</div>
-                    <div className="text-4xl md:text-6xl font-bold text-[#1a1a1a] leading-none drop-shadow-sm" style={{ WebkitTextStroke: '0px transparent' }}>
-                        {score.toLocaleString()}
+                    <div
+                        id="hud-score-display"
+                        className="text-4xl md:text-6xl font-bold text-[#1a1a1a] leading-none drop-shadow-sm transition-transform duration-100 placeholder-opacity-100 origin-left"
+                        style={{ WebkitTextStroke: '0px transparent' }}
+                    >
+                        {animatedScore.toLocaleString()}
                     </div>
                     <div className="flex items-center gap-2 text-xl md:text-2xl font-bold text-gray-800 mt-1 md:mt-2">
                         <Clock size={20} className="text-gray-900" strokeWidth={3} />
@@ -63,3 +102,4 @@ export const GameHUD: React.FC<GameHUDProps> = ({ score, playTime, maxTier, next
         </div>
     );
 };
+

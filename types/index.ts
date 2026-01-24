@@ -41,3 +41,22 @@ export interface GameStats {
   timePlayed: number; // ms
   maxTier: FruitTier;
 }
+
+export interface PointEvent {
+  x: number;
+  y: number;
+  points: number;
+  tier: number;
+}
+
+export enum PopUpType {
+  WATERMELON_CRUSH,
+  FRENZY,
+  CHAIN
+}
+
+export interface PopupData {
+  runningTotal: number;
+  multiplier: number;
+  type: PopUpType;
+}

@@ -1,6 +1,7 @@
 
+// ... imports
 import React, { useEffect, useRef, useState } from 'react';
-import { GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
+import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { FRUIT_DEFS } from '../constants';
 import { DebugMenu } from './DebugMenu';
@@ -15,6 +16,9 @@ import { PauseMenu } from './PauseMenu';
 import { GroundCanvas } from './GroundCanvas';
 import { WallCanvas } from './WallCanvas';
 import { EffectCanvas } from './EffectCanvas';
+import { PointTicker } from './PointTicker';
+import { TextPopup } from './TextPopup';
+import { ScoreFlyEffect } from './ScoreFlyEffect';
 import { DangerOverlay } from './DangerOverlay';
 import { Pause } from 'lucide-react';
 
@@ -36,7 +40,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     // Game State
     const [combo, setCombo] = useState(0);
     const [fever, setFever] = useState(false);
-    const [limitTime, setLimitTime] = useState(0); // Using limitTime instead of dangerTime for generic name if desired, keeping logic exact
+    const [limitTime, setLimitTime] = useState(0);
     const [juice, setJuice] = useState(0);
     const [nextFruit, setNextFruit] = useState<FruitTier>(FruitTier.CHERRY);
     const [savedFruit, setSavedFruit] = useState<FruitTier | null>(null);
@@ -48,6 +52,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
     const [currentStateScore, setCurrentStateScore] = useState(0);
+    const [latestPointEvent, setLatestPointEvent] = useState<PointEvent | null>(null);
+
+    // New Popup Sync State
+    const [popupData, setPopupData] = useState<PopupData | null>(null);
+    const lastPopupTotalRef = useRef(0);
+    const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
+    const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
     // Visual State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
@@ -61,10 +72,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         left: 0
     });
 
+    // --- Helper to Trigger Suck Up ---
+    const triggerSuckUp = () => {
+        const val = lastPopupTotalRef.current;
+        if (val > 0) {
+            setSuckUpPayload(val);
+            engineRef.current?.audio.playScoreFlyUp();
+            setPopupData(null); // Clear central popup
+            lastPopupTotalRef.current = 0; // Reset accumulator
+        }
+    };
+
+    const handleSuckUpComplete = () => {
+        if (suckUpPayload !== null) {
+            // Now we finally add the batched score to the visible HUD score
+            const newTotal = currentStateScore + suckUpPayload;
+            setCurrentStateScore(newTotal);
+            setScore(newTotal); // Notify App
+            setSuckUpPayload(null);
+        }
+    };
+
     // --- Background Cycle Effect ---
     useEffect(() => {
         const interval = setInterval(() => {
-            setBgPatternIndex(prev => (prev + 1) % 4); // 4 patterns hardcoded in Background
+            setBgPatternIndex(prev => (prev + 1) % 4);
         }, 25000);
         return () => clearInterval(interval);
     }, []);
@@ -95,17 +127,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
         const engine = new GameEngine(canvasRef.current, settings, {
             onScore: (amt: number, total: number) => {
-                setScore(total); // Parent update
-                setCurrentStateScore(total); // Local update
+                // Legacy
+                if (total > currentStateScore + (lastPopupTotalRef.current || 0)) {
+                    setScore(total);
+                    setCurrentStateScore(total);
+                }
             },
             onGameOver: onGameOver,
-            onCombo: (c: number) => setCombo(c),
+            onCombo: (c: number) => {
+                setCombo(c);
+                if (c === 0) {
+                    triggerSuckUp();
+                }
+            },
             onFeverStart: (mult: number) => {
                 setFever(true);
                 setCurrentFeverMult(mult);
             },
-            onFeverEnd: () => setFever(false),
-            // Map "Danger" callback to state
+            onFeverEnd: () => {
+                setFever(false);
+                triggerSuckUp();
+            },
             onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
@@ -118,6 +160,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             onCelebration: () => {
                 setShowCelebration(true);
                 setTimeout(() => setShowCelebration(false), 4000);
+            },
+            onPointEvent: (event: PointEvent) => {
+                setLatestPointEvent(event);
+            },
+            onPopupUpdate: (data: PopupData) => {
+                if (data.runningTotal > 0) {
+                    setPopupData(data);
+                    lastPopupTotalRef.current = data.runningTotal;
+
+                    // Determine Color based on Type
+                    // PopUpType is enum: 0=WATERMELON, 1=FRENZY, 2=CHAIN
+                    let c = '#fbbf24'; // Default Yellow
+                    if (data.type === 0) c = '#22c55e'; // Green-500
+                    else if (data.type === 1) c = '#facc15'; // Yellow-400
+                    else if (data.type === 2) c = '#f97316'; // Orange-500
+                    setPopupColor(c);
+
+                } else if (data.runningTotal === 0) {
+                    triggerSuckUp();
+                }
             }
         });
 
@@ -149,6 +211,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         setIsPaused(false);
         if (onPauseChange) onPauseChange(false);
         setScore(0);
+        setCurrentStateScore(0);
         setCombo(0);
         setFever(false);
         setJuice(0);
@@ -156,6 +219,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         setSavedFruit(null);
         setMaxTier(FruitTier.CHERRY);
         setShowCelebration(false);
+        setPopupData(null);
+        lastPopupTotalRef.current = 0;
+        setSuckUpPayload(null);
     };
 
     const handleSecretTap = () => {
@@ -207,6 +273,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 />
             )}
 
+            {/* 1.8. Point Ticker - Overlay for score popups */}
+            {gameAreaDimensions.width > 0 && (
+                <div
+                    className="absolute z-20 pointer-events-none"
+                    style={{
+                        width: gameAreaDimensions.width,
+                        height: gameAreaDimensions.height,
+                        top: gameAreaDimensions.top,
+                        left: gameAreaDimensions.left
+                    }}
+                >
+                    <PointTicker latestEvent={latestPointEvent} settings={settings} />
+                </div>
+            )}
+
+            {/* 1.9 Text Popup (Master Popup) */}
+            <TextPopup data={popupData} />
+
+            {/* 1.95 Score Fly Effect (Suck Up) */}
+            {suckUpPayload !== null && (
+                <div className="fixed z-[100]">
+                    <ScoreFlyEffect
+                        startAmount={suckUpPayload}
+                        targetElementId="hud-score-display"
+                        onComplete={handleSuckUpComplete}
+                        color={popupColor}
+                    />
+                </div>
+            )}
+
             {/* 2. Main Layout Container */}
             <LayoutContainer>
 
@@ -231,11 +327,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     </GameArea>
                 </div>
 
-                {/* BOTTOM UI - Fixed height spacer.
-                    Floor is internal ~15px. We want 20px total from floor.
-                    So we need ~5px external gap.
-                    Height = 5 (gap) + 48 (btn) + 20 (bottom) ~= 73px. Round to 75px.
-                */}
+                {/* BOTTOM UI - Fixed height spacer. */}
                 <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
                     <button
                         onClick={handlePauseToggle}
@@ -247,8 +339,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
 
             </LayoutContainer>
-
-            {/* ABSOLUTE PAUSE BUTTON - REMOVED (integrated above) */}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
@@ -279,3 +369,4 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         </>
     );
 };
+

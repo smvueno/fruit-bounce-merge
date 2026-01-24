@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { GameEngine } from '../services/GameEngine';
-import { FruitTier } from '../types';
+import { FruitTier, PopUpType } from '../types';
 import { FruitSVG } from './FruitSVG';
 import { X } from 'lucide-react';
 
@@ -56,6 +56,55 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({ engine, onClose }) => {
                 title="Close Cheat Menu"
             >
                 <X size={24} className="text-white" strokeWidth={3} />
+            </button>
+
+            <div className="w-14 h-0.5 bg-gray-500/30 my-1"></div>
+
+            {/* Test Triggers */}
+            <button
+                onClick={() => {
+                    if (engine) {
+                        engine.onPopupUpdate({
+                            type: PopUpType.WATERMELON_CRUSH,
+                            runningTotal: 5000,
+                            multiplier: 1
+                        });
+                    }
+                }}
+                className="w-14 h-14 bg-green-500/50 backdrop-blur-sm hover:bg-green-600/50 rounded-full flex items-center justify-center shadow-lg border-2 border-green-700 active:scale-95 transition-all text-white font-black text-xs"
+                title="Test Watermelon Crush"
+            >
+                WC
+            </button>
+            <button
+                onClick={() => {
+                    if (engine) {
+                        engine.onPopupUpdate({
+                            type: PopUpType.FRENZY,
+                            runningTotal: 12500,
+                            multiplier: 3
+                        });
+                    }
+                }}
+                className="w-14 h-14 bg-yellow-400/50 backdrop-blur-sm hover:bg-yellow-500/50 rounded-full flex items-center justify-center shadow-lg border-2 border-yellow-600 active:scale-95 transition-all text-black font-black text-xs"
+                title="Test Frenzy"
+            >
+                XZY
+            </button>
+            <button
+                onClick={() => {
+                    if (engine) {
+                        engine.onPopupUpdate({
+                            type: PopUpType.CHAIN,
+                            runningTotal: 2400,
+                            multiplier: 12
+                        });
+                    }
+                }}
+                className="w-14 h-14 bg-orange-500/50 backdrop-blur-sm hover:bg-orange-600/50 rounded-full flex items-center justify-center shadow-lg border-2 border-orange-700 active:scale-95 transition-all text-white font-black text-xs"
+                title="Test Chain"
+            >
+                CHN
             </button>
         </div>
     );

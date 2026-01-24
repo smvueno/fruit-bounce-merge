@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GameState, Difficulty, GameStats, SavedData, LeaderboardEntry } from './types';
+import { GameState, Difficulty, GameStats, SavedData, LeaderboardEntry, PopUpType, PopupData } from './types';
 import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';

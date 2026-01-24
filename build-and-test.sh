@@ -21,7 +21,7 @@ echo ""
 echo "========================================"
 echo "    Starting Local Preview Server       "
 echo "========================================"
-echo "ℹ️  The app will be served at: http://localhost:4173/fruit-bounce-merge/"
+echo "ℹ️  The app will be served at: http://localhost:4173/"
 echo "ℹ️  Press Ctrl+C to stop the server"
 echo ""
 

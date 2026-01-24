@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { FruitDef, FruitTier, GameSettings, GameStats } from '../types';
+import { FruitDef, FruitTier, GameSettings, GameStats, PointEvent, PopupData, PopUpType } from '../types';
 import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
 import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
@@ -66,12 +66,20 @@ export class GameEngine {
     onTimeUpdate: (ms: number) => void = () => { };
     onSaveUpdate: (tier: FruitTier | null) => void = () => { };
     onCelebration: () => void = () => { };
+    onPointEvent: (event: PointEvent) => void = () => { };
+    onPopupUpdate: (data: PopupData) => void = () => { };
 
     score: number = 0;
     stats: GameStats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
 
     comboChain: number = 0;
+    streakScore: number = 0;
+    celebrationScore: number = 0; // Separate tracker for WC event
     didMergeThisTurn: boolean = false;
+
+    // Batching State
+    scoreBatch: number = 0;
+    scoreBatchTimer: number = 0;
 
     feverActive: boolean = false;
     feverTimer: number = 0;
@@ -308,6 +316,16 @@ export class GameEngine {
             if (!this.didMergeThisTurn) {
                 this.comboChain = 0;
                 this.onCombo(0);
+                // Reset streak if not in fever
+                if (!this.feverActive) {
+                    this.streakScore = 0;
+                    this.onPopupUpdate({
+                        runningTotal: 0,
+                        multiplier: 1,
+                        type: PopUpType.CHAIN // Value doesn't matter for reset, just need clean state? specific type?
+                        // Actually, just sending 0 might be enough for UI to close
+                    });
+                }
             }
             this.didMergeThisTurn = false;
 
@@ -394,6 +412,29 @@ export class GameEngine {
     updateGameLogic(dtMs: number) {
         this.stats.timePlayed += dtMs;
         this.onTimeUpdate(this.stats.timePlayed);
+
+        // Score Batching Logic (100ms)
+        this.scoreBatchTimer += dtMs;
+        if (this.scoreBatchTimer >= 100) {
+            this.scoreBatchTimer = 0;
+            // Only emit if we have value or are in a streak
+            // AND we are not in a celebration (which handles its own popups)
+            if (!this.celebrationEffect && (this.streakScore > 0 || this.feverActive || this.comboChain > 0)) {
+                const comboMult = 1 + Math.min(this.comboChain, 10);
+                const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
+                const multiplier = comboMult * feverMult;
+
+                this.onPopupUpdate({
+                    runningTotal: this.streakScore,
+                    multiplier: multiplier,
+                    type: this.feverActive ? PopUpType.FRENZY : PopUpType.CHAIN
+                });
+
+                // If we had a batch, clear it (if we were accumulating batch for something else, 
+                // but here we are using streakScore for the running total)
+                this.scoreBatch = 0;
+            }
+        }
 
         // Update Timers for Active Effects
         // Tomato Timer
@@ -500,6 +541,9 @@ export class GameEngine {
                 this.juice = 0;
                 this.onJuiceUpdate(0, JUICE_MAX);
                 this.onFeverEnd();
+
+                // Fever ended - reset streak
+                this.streakScore = 0;
             }
         } else {
             if (this.juice >= JUICE_MAX && !this.feverActive) {
@@ -618,6 +662,10 @@ export class GameEngine {
         if (nextTier > FruitTier.WATERMELON) nextTier = FruitTier.WATERMELON;
 
         const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
+        // Calculate midX/midY early for message
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
         this.comboChain++;
         this.didMergeThisTurn = true;
         this.onCombo(this.comboChain);
@@ -625,6 +673,18 @@ export class GameEngine {
         const comboMult = 1 + Math.min(this.comboChain, 10);
         const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
         const totalPoints = basePoints * comboMult * feverMult;
+
+        // Emit immediate local event
+        this.onPointEvent({
+            x: midX,
+            y: midY,
+            points: totalPoints,
+            tier: nextTier
+        });
+
+        // Accumulate Score
+        this.streakScore += totalPoints;
+        this.scoreBatch += totalPoints;
 
         this.addScore(totalPoints);
         this.stats.bestCombo = Math.max(this.stats.bestCombo, this.comboChain);
@@ -635,9 +695,6 @@ export class GameEngine {
 
         this.removeParticle(p1);
         this.removeParticle(p2);
-
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
 
         const nextDef = FRUIT_DEFS[nextTier as FruitTier];
         const newP = new Particle(midX, midY, nextDef, this.nextId++);
@@ -836,7 +893,17 @@ export class GameEngine {
             this.onMaxFruit(this.stats.maxTier);
         }
 
+        // Initialize score sequence (Use separate tracker to avoid collision with Chain/Frenzy batcher)
+        this.celebrationScore = 5000;
+        this.streakScore = 0; // Clear any pending main game streak
         this.addScore(5000);
+
+        // Trigger Popup
+        this.onPopupUpdate({
+            type: PopUpType.WATERMELON_CRUSH,
+            runningTotal: this.celebrationScore,
+            multiplier: 1
+        });
     }
 
     updateCelebrationLogic(dtMs: number) {
@@ -881,6 +948,7 @@ export class GameEngine {
                         // Formula: BASE * 2^tier
                         const points = SCORE_BASE_MERGE * Math.pow(2, tier) * 2; // Double points for clearing!
                         this.addScore(points);
+                        this.celebrationScore += points;
 
                         // Visual & Audio
                         this.effectSystem.createMergeEffect(p.x, p.y, FRUIT_DEFS[tier].color);
@@ -888,12 +956,27 @@ export class GameEngine {
                         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(10);
 
                         this.removeParticle(p);
+
+                        // Update Popup
+                        this.onPopupUpdate({
+                            type: PopUpType.WATERMELON_CRUSH,
+                            runningTotal: this.celebrationScore,
+                            multiplier: 1
+                        });
                     }
 
                     // If we just popped the last one, end logic
                     if (state.popIndex >= state.capturedIds.length) {
                         this.celebrationEffect = null;
                         this.audio.playBombShrapnel(); // Final sound
+
+                        // Finish: Trigger Suck Up logic (sending 0 resets and sucks)
+                        this.onPopupUpdate({
+                            type: PopUpType.WATERMELON_CRUSH,
+                            runningTotal: 0,
+                            multiplier: 1
+                        });
+                        this.celebrationScore = 0;
                     }
                 } else {
                     this.celebrationEffect = null;
@@ -998,7 +1081,8 @@ export class GameEngine {
     addScore(amt: number) {
         this.score += Math.floor(amt);
         this.stats.score = this.score;
-        this.onScore(Math.floor(amt), this.score);
+        // DISABLED for now to decouple Real score from Display score (per Task 2 requirements)
+        // this.onScore(Math.floor(amt), this.score); 
     }
 
     gameOver() {

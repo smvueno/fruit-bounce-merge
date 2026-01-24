@@ -121,6 +121,17 @@ self.addEventListener('fetch', (event) => {
                         return response;
                     }
 
+                    // SAFETY CHECK: In SPA mode, 404s often return index.html (text/html).
+                    // We must NOT cache index.html as a script or css file!
+                    const contentType = response.headers.get('content-type');
+                    const isHTML = contentType && contentType.includes('text/html');
+                    const isAsset = request.url.match(/\.(js|css|png|jpg|jpeg|svg|json)$/i);
+
+                    if (isAsset && isHTML) {
+                        console.warn('⚠️ Preventing caching of HTML response for asset:', request.url);
+                        return response;
+                    }
+
                     // Clone the response
                     const responseToCache = response.clone();
 
