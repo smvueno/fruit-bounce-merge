@@ -1,14 +1,13 @@
 import React from 'react';
 
 interface GameOverlaysProps {
-    dangerTime: number;
     showCelebration: boolean;
     fever: boolean;
     combo: number;
     currentFeverMult: number;
 }
 
-export const GameOverlays: React.FC<GameOverlaysProps> = ({ dangerTime, showCelebration, fever, combo, currentFeverMult }) => {
+export const GameOverlays: React.FC<GameOverlaysProps> = ({ showCelebration, fever, combo, currentFeverMult }) => {
     return (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden font-['Fredoka']">
 
@@ -25,17 +24,6 @@ export const GameOverlays: React.FC<GameOverlaysProps> = ({ dangerTime, showCele
                             LEVEL 11 REACHED!
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* Danger Overlay */}
-            {dangerTime > 0 && (
-                <div className="absolute inset-0 flex flex-col items-center pt-32 animate-pulse-danger z-30">
-                    <div className="w-full h-1 bg-red-600 shadow-[0_0_20px_rgba(255,0,0,0.8)]"></div>
-                    <div className="mt-4 text-5xl md:text-6xl font-bold text-red-600 drop-shadow-lg" style={{ WebkitTextStroke: '2px white' }}>
-                        {(dangerTime / 1000).toFixed(1)}
-                    </div>
-                    <div className="text-red-500 font-bold uppercase tracking-widest text-xl md:text-2xl drop-shadow-md">DANGER!</div>
                 </div>
             )}
 

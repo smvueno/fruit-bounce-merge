@@ -15,6 +15,7 @@ import { PauseMenu } from './PauseMenu';
 import { GroundCanvas } from './GroundCanvas';
 import { WallCanvas } from './WallCanvas';
 import { EffectCanvas } from './EffectCanvas';
+import { DangerOverlay } from './DangerOverlay';
 import { Pause } from 'lucide-react';
 
 interface GameCanvasProps {
@@ -226,6 +227,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                 <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
                     <GameArea canvasRef={canvasRef}>
                         {/* Overlays moved to root level for correct z-index stacking */}
+                        {/* New Danger Overlay sits INSIDE the game area scaling context */}
+                        <DangerOverlay dangerTime={limitTime} />
                     </GameArea>
                 </div>
 
@@ -250,7 +253,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
-                dangerTime={limitTime}
                 showCelebration={showCelebration}
                 fever={fever}
                 combo={combo}

@@ -73,8 +73,17 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = ({
             const offsetX = engine.container.position.x;
             const offsetY = engine.container.position.y;
 
-            const globalOffsetX = containerLeft + offsetX;
-            const globalOffsetY = containerTop + offsetY;
+            // CSS Offset Correction:
+            // The canvas is styled with width/height: 140% and top/left: -20% of the game area.
+            // gameAreaWidth/Height represents the 100% (Viewport).
+            // So the canvas physically starts at: containerLeft - 0.2 * gameAreaWidth.
+            // We need to pass the Top-Left of the CANVAS to this calc, because 'offsetX/Y' are valid relative to that.
+
+            const canvasLeft = containerLeft - (gameAreaWidth * 0.2);
+            const canvasTop = containerTop - (gameAreaHeight * 0.2);
+
+            const globalOffsetX = canvasLeft + offsetX;
+            const globalOffsetY = canvasTop + offsetY;
 
             // 3. Render Particles
             for (const p of particles) {

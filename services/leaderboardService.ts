@@ -6,10 +6,7 @@ let cachedLeaderboard: LeaderboardEntry[] = [];
 let lastFetchTime: number | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-/**
- * Get when leaderboard was last fetched
- */
-export const getLastFetchTime = (): number | null => lastFetchTime;
+
 
 /**
  * Check if leaderboard cache is stale
@@ -111,25 +108,7 @@ export const submitScore = async (entry: LeaderboardEntry): Promise<boolean> => 
   }
 };
 
-/**
- * Tries to upload pending scores.
- * Returns the list of scores that STILL failed to upload (or all of them if offline).
- */
-export const uploadPendingScores = async (pending: LeaderboardEntry[]): Promise<LeaderboardEntry[]> => {
-  if (pending.length === 0) return [];
 
-  const remaining: LeaderboardEntry[] = [];
-
-  // Try to process them one by one (or Promise.all, but one by one is safer for rate limits/errors)
-  for (const entry of pending) {
-    const success = await submitScore(entry);
-    if (!success) {
-      remaining.push(entry);
-    }
-  }
-
-  return remaining;
-};
 
 import { loadData, saveData } from '../utils/storage';
 import { offlineManager } from './offlineManager';
