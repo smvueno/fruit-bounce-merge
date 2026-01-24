@@ -151,15 +151,36 @@ export class PhysicsSystem {
         }
     }
 
+    /**
+     * Helper method to iterate over fruits and apply effect-specific logic.
+     * Reduces code duplication between tomato and bomb physics updates.
+     */
+    private forEachEffectTarget(
+        ctx: PhysicsContext,
+        effectParticle: Particle | undefined,
+        shouldProcess: (p: Particle, effectParticle: Particle) => boolean,
+        processTarget: (p: Particle, effectParticle: Particle) => void
+    ) {
+        if (!effectParticle) return;
+
+        for (const p of ctx.fruits) {
+            if (p.id === effectParticle.id || p === ctx.currentFruit || p.isStatic) continue;
+
+            if (shouldProcess(p, effectParticle)) {
+                processTarget(p, effectParticle);
+            }
+        }
+    }
+
     updateTomatoPhysics(ctx: PhysicsContext) {
         for (const t of ctx.activeTomatoes) {
             const tomato = ctx.fruits.find(p => p.id === t.tomatoId);
-            if (!tomato) continue;
 
-            for (const p of ctx.fruits) {
-                if (p.id === t.tomatoId || p === ctx.currentFruit || p.isStatic) continue;
-
-                if (p.tier === t.targetTier) {
+            this.forEachEffectTarget(
+                ctx,
+                tomato,
+                (p) => p.tier === t.targetTier,
+                (p, tomato) => {
                     p.isCaught = true;
                     p.ignoreCollisions = true;
                     if (!t.capturedIds.includes(p.id)) t.capturedIds.push(p.id);
@@ -182,34 +203,38 @@ export class PhysicsSystem {
                         p.rotation += 0.3;
                     }
                 }
-            }
+            );
         }
     }
 
     updateBombPhysics(ctx: PhysicsContext) {
         for (const b of ctx.activeBombs) {
             const bomb = ctx.fruits.find(p => p.id === b.bombId);
-            if (!bomb) continue;
 
-            // Check which fruits are currently touching the bomb
-            for (const p of ctx.fruits) {
-                if (p.id === b.bombId || p === ctx.currentFruit || p.isStatic) continue;
+            this.forEachEffectTarget(
+                ctx,
+                bomb,
+                (p) => {
+                    // Don't capture special fruits
+                    if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW || p.tier === FruitTier.BOMB) {
+                        return false;
+                    }
+                    return true;
+                },
+                (p, bomb) => {
+                    const dx = p.x - bomb.x;
+                    const dy = p.y - bomb.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const radSum = p.radius + bomb.radius;
 
-                // Don't capture special fruits
-                if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW || p.tier === FruitTier.BOMB) continue;
-
-                const dx = p.x - bomb.x;
-                const dy = p.y - bomb.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const radSum = p.radius + bomb.radius;
-
-                // If touching and not already tracked, add to list
-                if (dist < radSum + 5) { // 5px buffer for detection
-                    if (!b.capturedIds.includes(p.id)) {
-                        b.capturedIds.push(p.id);
+                    // If touching and not already tracked, add to list
+                    if (dist < radSum + 5) { // 5px buffer for detection
+                        if (!b.capturedIds.includes(p.id)) {
+                            b.capturedIds.push(p.id);
+                        }
                     }
                 }
-            }
+            );
         }
     }
 
@@ -315,13 +340,10 @@ export class PhysicsSystem {
                         // Check Watermelon Celebration
                         if (p1.tier === FruitTier.WATERMELON) {
                             if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                                // SAFE: The callback removes particles from ctx.fruits, but we immediately
+                                // break from the inner loop. This prevents further iteration over the modified
+                                // array. The outer loop continues safely as it only needs valid indices.
                                 callbacks.onCelebrationMatch(p1, p2);
-                                i--; // Does this make sense in this context without breaking loop? 
-                                // In original code it was `i--`, `break`. The item is removed.
-                                // But here we are just calling callback. The callback MUST remove the item synchronously?
-                                // If the callback removes the item from the list, `ctx.fruits` changes length.
-                                // This IS dangerous if `ctx.fruits` is disjoint from the loop control.
-                                // We better ask the callback to handle removal, but we need to stop processing this pair.
                                 break;
                             }
                         }

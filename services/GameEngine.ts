@@ -681,16 +681,40 @@ export class GameEngine {
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(30);
     }
 
+    /**
+     * Helper method to handle common effect conclusion logic.
+     * Reduces code duplication between tomato and bomb effects.
+     * Returns the release position where particles should be spawned.
+     */
+    private prepareEffectConclusion(
+        effectParticle: Particle | undefined,
+        fallbackX: number,
+        fallbackY: number,
+        onRemove?: () => void
+    ): { releaseX: number; releaseY: number } {
+        let releaseX = fallbackX;
+        let releaseY = fallbackY;
+
+        if (effectParticle) {
+            releaseX = effectParticle.x;
+            releaseY = effectParticle.y;
+            this.removeParticle(effectParticle);
+            if (onRemove) onRemove();
+        }
+
+        return { releaseX, releaseY };
+    }
+
     concludeTomatoEffect(effect: TomatoEffect) {
         const tomato = this.fruits.find(p => p.id === effect.tomatoId);
-        let releaseX = effect.x;
-        let releaseY = effect.y;
-        if (tomato) {
-            releaseX = tomato.x;
-            releaseY = tomato.y;
-            this.removeParticle(tomato);
-            this.stats.tomatoUses++;
-        }
+        const { releaseX, releaseY } = this.prepareEffectConclusion(
+            tomato,
+            effect.x,
+            effect.y,
+            () => this.stats.tomatoUses++
+        );
+
+        // Release captured fruits with restored properties
         for (const id of effect.capturedIds) {
             const p = this.fruits.find(f => f.id === id);
             if (p) {
@@ -708,10 +732,10 @@ export class GameEngine {
                 p.vy = Math.sin(angle) * force - 3;
             }
         }
+
+        // Visual and audio effects
         this.effectSystem.createMergeEffect(releaseX, releaseY, "#FF4444");
         this.applyShockwave(releaseX, releaseY, 600, 40);
-
-        // Play Bomb Sound (Watermelon tier + extra bass)
         this.audio.playMergeSound(FruitTier.WATERMELON);
 
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([50, 50]);
@@ -719,17 +743,15 @@ export class GameEngine {
 
     concludeBombEffect(effect: BombEffect) {
         const bomb = this.fruits.find(p => p.id === effect.bombId);
-        let releaseX = effect.x;
-        let releaseY = effect.y;
-
-        if (bomb) {
-            releaseX = bomb.x;
-            releaseY = bomb.y;
-            this.removeParticle(bomb);
-        }
+        const { releaseX, releaseY } = this.prepareEffectConclusion(
+            bomb,
+            effect.x,
+            effect.y
+        );
 
         this.effectSystem.createGhostEffect(releaseX, releaseY, 28);
 
+        // Process each captured fruit - split into smaller fruits
         for (const id of effect.capturedIds) {
             const p = this.fruits.find(f => f.id === id);
             if (!p) continue;
@@ -777,11 +799,10 @@ export class GameEngine {
             this.effectSystem.createMergeEffect(fruitX, fruitY, fruitColor);
         }
 
+        // Visual and audio effects
         this.effectSystem.createMergeEffect(releaseX, releaseY, "#212121");
         this.applyShockwave(releaseX, releaseY, 600, 40);
         this.audio.playMergeSound(FruitTier.WATERMELON);
-
-        // Play Shrapnel Sound
         this.audio.playBombShrapnel();
 
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
