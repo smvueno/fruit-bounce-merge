@@ -1,8 +1,9 @@
-
 import React from 'react';
 import { GameSettings, LeaderboardEntry } from '../types';
 import { RankingTable } from './RankingTable';
-import { Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Play, Trophy, Globe, User } from 'lucide-react';
+import { Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Play, Trophy, Globe, User, Download } from 'lucide-react';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import { InstallPromptModal } from './InstallPromptModal';
 
 interface StartScreenProps {
   onStart: () => void;
@@ -13,6 +14,9 @@ interface StartScreenProps {
 }
 
 export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, settings, onUpdateSettings, onSync }) => {
+  const { isInstallable, promptInstall } = usePWAInstall();
+  const [showIOSPrompt, setShowIOSPrompt] = React.useState(false);
+
   React.useEffect(() => {
     if (onSync) onSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -23,11 +27,21 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
   const toggleHaptics = () => onUpdateSettings({ ...settings, hapticsEnabled: !settings.hapticsEnabled });
   const toggleLeaderboardMode = () => onUpdateSettings({ ...settings, showLocalOnly: !settings.showLocalOnly });
 
+  const handleInstallClick = async () => {
+    const result = await promptInstall();
+    if (result === 'iOS') {
+      setShowIOSPrompt(true);
+    }
+  };
 
   const leaderboardTitle = settings.showLocalOnly ? "Local Best" : "Global Ranking";
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center pt-6 pb-6 z-20 text-center font-['Fredoka'] overflow-hidden">
+
+      {showIOSPrompt && (
+        <InstallPromptModal onClose={() => setShowIOSPrompt(false)} />
+      )}
 
       {/* Animated Background Blobs */}
       <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] pointer-events-none">
@@ -57,17 +71,31 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
           maxHeight="max-h-[30vh] mb-4 overflow-hidden"
         />
 
-        {/* Main Action - Solid Green Button */}
-        <button
-          onClick={() => onStart()}
-          className="group relative w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-bold text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden mb-6 shrink-0"
-        >
-          <span className="relative z-10 flex items-center justify-center gap-3 drop-shadow-md">
-            <Play size={32} fill="currentColor" /> PLAY
-          </span>
-          {/* Shine Effect */}
-          <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
-        </button>
+        {/* Main Actions Area */}
+        <div className="w-full mb-6 shrink-0 flex gap-3">
+            {isInstallable && (
+                <button
+                    onClick={handleInstallClick}
+                    className="group relative bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-300 hover:to-blue-400 text-white font-bold p-6 rounded-3xl shadow-[0_10px_20px_rgba(59,130,246,0.4)] transition-all transform active:scale-95 active:shadow-inner flex items-center justify-center shrink-0 aspect-square h-auto"
+                    aria-label="Install App"
+                >
+                    <Download size={32} strokeWidth={3} />
+                    {/* Shine Effect */}
+                    <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
+                </button>
+            )}
+
+            <button
+                onClick={() => onStart()}
+                className="group relative flex-grow bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-bold text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden"
+            >
+                <span className="relative z-10 flex items-center justify-center gap-3 drop-shadow-md">
+                    <Play size={32} fill="currentColor" /> PLAY
+                </span>
+                {/* Shine Effect */}
+                <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
+            </button>
+        </div>
 
         {/* Settings Toggles - Solid Backgrounds */}
         <div className="flex gap-3 w-full justify-center shrink-0">
