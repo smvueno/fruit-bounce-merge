@@ -98,6 +98,10 @@ export class GameEngine {
     consecutiveNonSpecialCount: number = 0;
     generatedFruitCount: number = 0;
 
+    // Frenzy-Chain Suspension Logic
+    preFrenzyChain: number = 0;
+    preFrenzyStreak: number = 0;
+
     constructor(
         canvas: HTMLCanvasElement,
         settings: GameSettings,
@@ -249,6 +253,9 @@ export class GameEngine {
         this.canDrop = true;
         this.consecutiveNonSpecialCount = 0;
         this.generatedFruitCount = 0;
+
+        this.preFrenzyChain = 0;
+        this.preFrenzyStreak = 0;
 
         // 3. Update UI
         this.onScore(0, 0);
@@ -542,11 +549,30 @@ export class GameEngine {
                 this.onJuiceUpdate(0, JUICE_MAX);
                 this.onFeverEnd();
 
-                // Fever ended - reset streak
-                this.streakScore = 0;
+                // Fever ended - Restore previous Chain State
+                this.comboChain = this.preFrenzyChain;
+                this.streakScore = this.preFrenzyStreak;
+
+                // Resume Chain Visual if it existed
+                if (this.streakScore > 0) {
+                    const comboMult = 1 + Math.min(this.comboChain, 10);
+                    this.onPopupUpdate({
+                        runningTotal: this.streakScore,
+                        multiplier: comboMult,
+                        type: PopUpType.CHAIN
+                    });
+                }
             }
         } else {
             if (this.juice >= JUICE_MAX && !this.feverActive) {
+                // Save Chain State before starting Frenzy
+                this.preFrenzyChain = this.comboChain;
+                this.preFrenzyStreak = this.streakScore;
+
+                // Reset Chain for Frenzy Session (start fresh 0 multiplier)
+                this.comboChain = 0;
+                this.streakScore = 0;
+
                 this.feverActive = true;
                 this.audio.setFrenzy(true);
                 this.audio.playFrenzyStart(); // Start Sound

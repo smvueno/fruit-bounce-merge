@@ -60,6 +60,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
+    // Track fever state for closure access
+    const feverRef = useRef(false);
+
     // Visual State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
     const [bgColor, setBgColor] = useState(FRUIT_DEFS[FruitTier.CHERRY].color);
@@ -74,6 +77,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
     // --- Helper to Trigger Suck Up ---
     const triggerSuckUp = () => {
+        // Prevent suck up during fever - score should accumulate
+        if (feverRef.current) return;
+
         const val = lastPopupTotalRef.current;
         if (val > 0) {
             setSuckUpPayload(val);
@@ -142,10 +148,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             },
             onFeverStart: (mult: number) => {
                 setFever(true);
+                feverRef.current = true;
                 setCurrentFeverMult(mult);
             },
             onFeverEnd: () => {
                 setFever(false);
+                feverRef.current = false;
                 triggerSuckUp();
             },
             onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
