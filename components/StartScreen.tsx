@@ -1,11 +1,11 @@
 
 import React from 'react';
-import { Difficulty, GameSettings, LeaderboardEntry } from '../types';
+import { GameSettings, LeaderboardEntry } from '../types';
 import { RankingTable } from './RankingTable';
 import { Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Play, Trophy, Globe, User } from 'lucide-react';
 
 interface StartScreenProps {
-  onStart: (diff: Difficulty) => void;
+  onStart: () => void;
   leaderboard: LeaderboardEntry[];
   settings: GameSettings;
   onUpdateSettings: (s: GameSettings) => void;
@@ -59,7 +59,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
 
         {/* Main Action - Solid Green Button */}
         <button
-          onClick={() => onStart(Difficulty.HARD)}
+          onClick={() => onStart()}
           className="group relative w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-bold text-2xl py-6 rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden mb-6 shrink-0"
         >
           <span className="relative z-10 flex items-center justify-center gap-3 drop-shadow-md">

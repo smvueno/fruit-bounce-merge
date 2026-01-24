@@ -237,7 +237,7 @@ const App: React.FC = () => {
     return () => clearInterval(pollId);
   }, [gameState, isPaused]); // Add dependencies so interval closure sees current state
 
-  const handleStart = (diff: Difficulty) => {
+  const handleStart = () => {
     // Check for update before starting - prevent game start if update available
     if (waitingWorker) {
       // Navigate to START screen so the modal can be shown
@@ -246,8 +246,6 @@ const App: React.FC = () => {
       return; // Don't start the game
     }
 
-    saveData({ lastDifficulty: diff });
-    setData(prev => ({ ...prev, lastDifficulty: diff }));
     setCurrentScore(0);
     setIsPaused(false); // Reset pause state on start
     setGameState(GameState.PLAYING);
@@ -275,15 +273,6 @@ const App: React.FC = () => {
           qualifies = true;
         }
       }
-    }
-
-    // Also track legacy per-difficulty high score (internal use)
-    const diff = data.lastDifficulty;
-    const oldHigh = data.highScores[diff] || 0;
-    if (stats.score > oldHigh) {
-      const newHighScores = { ...data.highScores, [diff]: stats.score };
-      saveData({ highScores: newHighScores });
-      setData(prev => ({ ...prev, highScores: newHighScores }));
     }
 
     setIsNewHigh(qualifies);
@@ -418,7 +407,6 @@ const App: React.FC = () => {
         {gameState === GameState.PLAYING && (
           <>
             <GameCanvas
-              difficulty={data.lastDifficulty}
               settings={data.settings}
               onUpdateSettings={updateSettings}
               leaderboard={activeLeaderboard}
@@ -434,7 +422,7 @@ const App: React.FC = () => {
             isNewHigh={isNewHigh}
             leaderboard={activeLeaderboard}
             isLocalOnly={data.settings.showLocalOnly}
-            onRestart={() => handleStart(data.lastDifficulty)}
+            onRestart={() => handleStart()}
             onMenu={() => {
               setGameState(GameState.START);
               // Check for update after transitioning to menu

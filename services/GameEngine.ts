@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
-import { FruitDef, FruitTier, Difficulty, GameSettings, GameStats } from '../types';
-import { FRUIT_DEFS, DIFFICULTY_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { FruitDef, FruitTier, GameSettings, GameStats } from '../types';
+import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
 import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
 
@@ -36,7 +36,6 @@ export class GameEngine {
     height: number = V_HEIGHT;
     scaleFactor: number = 1;
 
-    difficulty: Difficulty;
     settings: GameSettings;
     destroyed: boolean = false;
     initializing: boolean = false;
@@ -93,12 +92,10 @@ export class GameEngine {
 
     constructor(
         canvas: HTMLCanvasElement,
-        difficulty: Difficulty,
         settings: GameSettings,
         callbacks: any
     ) {
         this.canvasElement = canvas;
-        this.difficulty = difficulty;
         this.settings = settings;
         Object.assign(this, callbacks);
 
@@ -322,11 +319,10 @@ export class GameEngine {
             this.currentFruit = null;
             this.canDrop = false;
 
-            const config = DIFFICULTY_CONFIG[this.difficulty];
             setTimeout(() => {
                 this.canDrop = true;
                 this.spawnNextFruit();
-            }, config.spawnDelay);
+            }, GAME_CONFIG.spawnDelay);
         }
     }
 
@@ -351,8 +347,7 @@ export class GameEngine {
             dragAnchorX: this.inputSystem.dragAnchorX,
             dragAnchorY: this.inputSystem.dragAnchorY,
             width: this.width,
-            height: this.height,
-            difficulty: this.difficulty
+            height: this.height
         };
 
         const callbacks: PhysicsCallbacks = {

@@ -1,6 +1,6 @@
-import { FruitTier, Difficulty } from '../../types';
+import { FruitTier } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
-import { DIFFICULTY_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET } from '../../constants';
+import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET } from '../../constants';
 
 export interface PhysicsContext {
     fruits: Particle[];
@@ -13,7 +13,6 @@ export interface PhysicsContext {
     dragAnchorY: number;
     width: number;
     height: number;
-    difficulty: Difficulty; // Difficulty enum value
 }
 
 export interface PhysicsCallbacks {
@@ -26,9 +25,8 @@ export interface PhysicsCallbacks {
 export class PhysicsSystem {
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
-        const config = DIFFICULTY_CONFIG[ctx.difficulty];
-        const gravity = config.gravity;
-        const friction = config.friction;
+        const gravity = GAME_CONFIG.gravity;
+        const friction = GAME_CONFIG.friction;
 
         // 1. Reset Collision Flags
         for (const p of ctx.fruits) {

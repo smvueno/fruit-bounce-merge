@@ -1,14 +1,9 @@
 
-import { SavedData, Difficulty, GameSettings } from "../types";
+import { SavedData, GameSettings } from "../types";
 import { STORAGE_KEY } from "../constants";
 import { offlineManager } from "../services/offlineManager";
 
 const DEFAULT_DATA: SavedData = {
-  highScores: {
-    [Difficulty.EASY]: 0,
-    [Difficulty.NORMAL]: 0,
-    [Difficulty.HARD]: 0,
-  },
   leaderboard: [],
   pendingScores: [],
   settings: {
@@ -18,7 +13,6 @@ const DEFAULT_DATA: SavedData = {
     reducedParticles: false,
     showLocalOnly: false,
   },
-  lastDifficulty: Difficulty.NORMAL,
   tutorialSeen: false,
 };
 

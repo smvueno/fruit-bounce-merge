@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Difficulty, GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
+import { GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { FRUIT_DEFS } from '../constants';
 import { DebugMenu } from './DebugMenu';
@@ -19,7 +19,6 @@ import { DangerOverlay } from './DangerOverlay';
 import { Pause } from 'lucide-react';
 
 interface GameCanvasProps {
-    difficulty: Difficulty;
     settings: GameSettings;
     onUpdateSettings: (s: GameSettings) => void;
     leaderboard: LeaderboardEntry[];
@@ -29,7 +28,7 @@ interface GameCanvasProps {
     onPauseChange?: (paused: boolean) => void;
 }
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<GameEngine | null>(null);
     const gameAreaRef = useRef<HTMLDivElement>(null);
@@ -94,7 +93,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     useEffect(() => {
         if (!canvasRef.current) return;
 
-        const engine = new GameEngine(canvasRef.current, difficulty, settings, {
+        const engine = new GameEngine(canvasRef.current, settings, {
             onScore: (amt: number, total: number) => {
                 setScore(total); // Parent update
                 setCurrentStateScore(total); // Local update

@@ -7,12 +7,6 @@ export enum GameState {
   GAME_OVER
 }
 
-export enum Difficulty {
-  EASY = 'EASY',
-  NORMAL = 'NORMAL',
-  HARD = 'HARD'
-}
-
 export { FruitTier, type FruitDef };
 
 export interface GameSettings {
@@ -32,11 +26,9 @@ export interface LeaderboardEntry {
 }
 
 export interface SavedData {
-  highScores: Record<Difficulty, number>; // Kept for legacy/difficulty tracking
   leaderboard: LeaderboardEntry[]; // Local leaderboard history
   pendingScores: LeaderboardEntry[]; // Scores waiting to be uploaded to Supabase
   settings: GameSettings;
-  lastDifficulty: Difficulty;
   tutorialSeen: boolean;
 }
 
