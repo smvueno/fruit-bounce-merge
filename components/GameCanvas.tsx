@@ -1,7 +1,7 @@
 
 // ... imports
 import React, { useEffect, useRef, useState } from 'react';
-import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent } from '../types';
+import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { FRUIT_DEFS } from '../constants';
 import { DebugMenu } from './DebugMenu';
@@ -170,11 +170,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     lastPopupTotalRef.current = data.runningTotal;
 
                     // Determine Color based on Type
-                    // PopUpType is enum: 0=WATERMELON, 1=FRENZY, 2=CHAIN
                     let c = '#fbbf24'; // Default Yellow
-                    if (data.type === 0) c = '#22c55e'; // Green-500
-                    else if (data.type === 1) c = '#facc15'; // Yellow-400
-                    else if (data.type === 2) c = '#f97316'; // Orange-500
+                    if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80'; // Green-400 (Matches TextPopup.tsx)
+                    else if (data.type === PopUpType.FRENZY) c = '#facc15'; // Yellow-400
+                    else if (data.type === PopUpType.CHAIN) c = '#fb923c'; // Orange-400 (Matches TextPopup.tsx)
                     setPopupColor(c);
 
                 } else if (data.runningTotal === 0) {

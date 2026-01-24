@@ -1,6 +1,6 @@
 import { FruitTier } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
-import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET } from '../../constants';
+import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET, SPAWN_Y_PERCENT } from '../../constants';
 
 export interface PhysicsContext {
     fruits: Particle[];
@@ -242,13 +242,10 @@ export class PhysicsSystem {
 
         if (state.phase === 'suck') {
             const targetX = ctx.width / 2;
-            const targetY = ctx.height / 2;
-            // Better to hardcode or pass config. Let's use hardcoded approx for now or add to context if critical.
-            // GameEngine said `this.height * SPAWN_Y_PERCENT`. 
-            // Let's assume SPAWN_Y_PERCENT is 0.15 as per constants usually. 
-            // Wait, I should import SPAWN_Y_PERCENT.
+            const targetY = ctx.height * SPAWN_Y_PERCENT;
 
             for (const id of state.capturedIds) {
+
                 const p = ctx.fruits.find(f => f.id === id);
                 if (!p) continue;
 

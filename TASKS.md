@@ -248,7 +248,7 @@ This is a comprehensive blueprint for the complete redesign of the game's reward
 **Intent**: A rewarding "Level Clear" experience that feels like a Jackpot.
 
 ### Requirements:
-- [ ] **3-Phase Sequence**:
+- [x] **3-Phase Sequence**:
   1. **Phase 1 (The Vortex)**: All fruits on the board suck toward the merge center using a spatial pull.
   2. **Phase 2 (The Jackpot)**: Fruits pop sequentially (100ms interval). Each pop triggers:
      - A loud "Pop" sound.
@@ -264,6 +264,7 @@ This is a comprehensive blueprint for the complete redesign of the game's reward
 ### 📝 Notes for Next Agent
 - **Logic Implemented**: `GameEngine.ts` uses `celebrationScore` to independently track and emit Watermelon Crush points.
 - **Interference Fixed**: `updateGameLogic` now explicitly checks `!this.celebrationEffect` before emitting generic batch updates, preventing the Watermelon UI from being overwritten.
+- **Physics Fix**: `PhysicsSystem.ts` now correctly imports `SPAWN_Y_PERCENT` to ensure the vortex phase sucks fruits to the top spawn area where `GameEngine` expects them, resolving a previous stall issue.
 - **Visuals**: `TextPopup` is fully styled (Green, Thick Outline, Shadow) and "Poppy".
 - **Status**: Verified. Task 6 Complete.
 
@@ -280,10 +281,14 @@ This is a comprehensive blueprint for the complete redesign of the game's reward
 - [x] **Debug Matrix**:
   - Added buttons `WC`, `XZY`, `CHN` to `DebugMenu.tsx`.
   - These simulate the popup events for rapid testing.
+- [x] **Point Ticker Polish**:
+  - Dynamic colors matching the fruit tier.
+  - White text with thick black outline (`WebkitTextStroke`) for readability.
 
-**Status**: Mostly complete. Just need to ensure `TASKS.md` is fully updated and perhaps do a final sweep of code organization if needed.
+**Status**: Complete. 
 
 ### 📝 Notes for Next Agent
-- **Debug Buttons**: Already implemented in `DebugMenu.tsx`.
-- **Themes**: Already integrated into `TextPopup.tsx` and `onPopupUpdate`.
-- **Review**: You may want to double check if any other "Debug" features were requested, but the core "Force Event" buttons are there.
+- **Debug Buttons**: Fully implemented in `DebugMenu.tsx`. (Secret tap on Pause button 10 times to unlock).
+- **Themes**: Consistent colors across `TextPopup`, `GameCanvas` (SuckUp), and `PointTicker`.
+- **Refactor**: `GameCanvas.tsx` now uses `PopUpType` enum instead of magic numbers.
+- **PointTicker**: Now displays individual score popups in the color of the fruit tier with a high-contrast black outline.
