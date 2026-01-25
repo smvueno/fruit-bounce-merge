@@ -37,21 +37,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
   const leaderboardTitle = settings.showLocalOnly ? "Local Best" : "Global Ranking";
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center pt-4 pb-4 md:pt-6 md:pb-6 z-20 text-center font-['Fredoka'] overflow-hidden">
+    <div className="absolute inset-0 flex flex-col items-center justify-center pt-4 pb-4 md:pt-6 md:pb-6 z-20 text-center font-['Fredoka']">
 
       {showIOSPrompt && (
         <InstallPromptModal onClose={() => setShowIOSPrompt(false)} />
       )}
 
-      {/* Animated Background Blobs */}
-      <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] pointer-events-none">
-        <div className="absolute top-[20%] left-[20%] w-64 h-64 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '8s' }}></div>
-        <div className="absolute top-[30%] right-[20%] w-72 h-72 bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '10s', animationDelay: '2s' }}></div>
-        <div className="absolute bottom-[20%] left-[30%] w-80 h-80 bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '12s', animationDelay: '4s' }}></div>
-      </div>
-
-      {/* Main Glass Card - Updated for lighter glassmorphism and responsiveness */}
-      <div className="relative bg-white/60 md:bg-white/70 backdrop-blur-xl border border-white/40 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2rem] md:rounded-[3rem] p-5 md:p-8 w-full max-w-lg max-h-[100vh] flex flex-col items-center min-h-0 mx-4">
+      {/* Main Container - Removed heavy card styling to blend with global background */}
+      <div className="relative w-full max-w-lg max-h-[100vh] flex flex-col items-center min-h-0 mx-4">
 
         {/* Header */}
         <div className="mb-4 md:mb-6 relative shrink-0">

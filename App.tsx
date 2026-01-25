@@ -370,15 +370,31 @@ const App: React.FC = () => {
 
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
 
+  // Conditional styles for the game container
+  const containerClasses = gameState === GameState.START
+    ? "relative w-full h-full max-w-[500px] md:h-auto md:aspect-[9/16] flex flex-col overflow-visible" // Transparent on Start, visible overflow for floating elements if any
+    : "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] bg-white shadow-2xl rounded-xl flex flex-col overflow-hidden"; // Card style on Game
+
   return (
-    <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none px-3 md:px-0">
-      {/* Background decoration */}
-      <div className="absolute inset-0 bg-yellow-100 opacity-5">
-        <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+    <div className="relative w-full h-[100svh] bg-orange-50 flex items-center justify-center overflow-hidden font-sans select-none px-3 md:px-0">
+      {/* Global Background Blobs & Glass Effect */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Animated Blobs */}
+        <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%]">
+          <div className="absolute top-[20%] left-[20%] w-64 h-64 md:w-96 md:h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '8s' }}></div>
+          <div className="absolute top-[30%] right-[20%] w-72 h-72 md:w-[30rem] md:h-[30rem] bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '10s', animationDelay: '2s' }}></div>
+          <div className="absolute bottom-[20%] left-[30%] w-80 h-80 md:w-[32rem] md:h-[32rem] bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '12s', animationDelay: '4s' }}></div>
+        </div>
+
+        {/* Global Frosted Glass Overlay */}
+        <div className="absolute inset-0 bg-white/30 backdrop-blur-2xl"></div>
+
+        {/* Subtle Texture */}
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#000 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
       </div>
 
-      {/* Responsive Game Container - Constrained for Mobile Feel on Desktop */}
-      <div className="relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] bg-white shadow-2xl rounded-xl flex flex-col overflow-hidden">
+      {/* Responsive Game Container */}
+      <div className={containerClasses}>
 
         {gameState === GameState.START && (
           <>
