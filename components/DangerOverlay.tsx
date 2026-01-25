@@ -4,7 +4,7 @@ interface DangerOverlayProps {
     dangerTime: number;
 }
 
-export const DangerOverlay: React.FC<DangerOverlayProps> = ({ dangerTime }) => {
+export const DangerOverlay: React.FC<DangerOverlayProps> = React.memo(({ dangerTime }) => {
     if (dangerTime <= 0) return null;
 
     return (
@@ -15,21 +15,7 @@ export const DangerOverlay: React.FC<DangerOverlayProps> = ({ dangerTime }) => {
                 style={{ top: '13%', transform: 'translateY(-50%)' }}
             ></div>
 
-            {/* The Text - Positioned just below the line */}
-            <div
-                className="absolute w-full flex flex-col items-center animate-pulse-danger"
-                style={{ top: '14%' }}
-            >
-                <div
-                    className="text-5xl md:text-6xl font-bold text-red-600 drop-shadow-lg"
-                    style={{ WebkitTextStroke: '2px white' }}
-                >
-                    {(dangerTime / 1000).toFixed(1)}
-                </div>
-                <div className="text-red-500 font-bold uppercase tracking-widest text-xl md:text-2xl drop-shadow-md">
-                    DANGER!
-                </div>
-            </div>
+
         </div>
     );
-};
+});

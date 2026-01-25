@@ -9,7 +9,7 @@ interface GroundCanvasProps {
 
 const V_WIDTH = 600; // Virtual width from GameEngine (must match!)
 
-export const GroundCanvas: React.FC<GroundCanvasProps> = ({
+export const GroundCanvas: React.FC<GroundCanvasProps> = React.memo(({
     gameAreaWidth,
     gameAreaHeight,
     containerTop,
@@ -164,4 +164,4 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = ({
             style={{ zIndex: 5 }}
         />
     );
-};
+});

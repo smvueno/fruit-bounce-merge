@@ -1,20 +1,32 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { PopupData, PopUpType } from '../types';
+import { DANGER_Y_PERCENT } from '../constants';
 
 interface TextPopupProps {
     data: PopupData | null;
+    gameAreaTop: number;
+    gameAreaHeight: number;
+    gameAreaWidth: number;
 }
 
 type VisualState = 'HIDDEN' | 'ENTERING' | 'ACTIVE' | 'IDLE' | 'EXITING';
 
-export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
+export const TextPopup: React.FC<TextPopupProps> = React.memo(({ data, gameAreaTop, gameAreaHeight, gameAreaWidth }) => {
     // We cache the data so we can display it while "EXITING" even after prop is null
     const [cachedData, setCachedData] = useState<PopupData | null>(data);
     const [visualState, setVisualState] = useState<VisualState>('HIDDEN');
 
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
     const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Calculate popup position based on danger line
+    // Calculate popup position based on danger line
+    const canvasHeightRatio = 1.4;
+    const canvasTopOffsetRatio = -0.2;
+    const dangerYInScreen = gameAreaTop + gameAreaHeight * (canvasTopOffsetRatio + canvasHeightRatio * DANGER_Y_PERCENT);
+    const popupTopPosition = dangerYInScreen + 90; // 90px below danger line for better clearance
+    const popupWidth = gameAreaWidth * 0.95; // Use 95% of game area width
 
     // Main Logic: Watch for Data Changes
     useEffect(() => {
@@ -57,12 +69,18 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
                     }, 300); // 300ms exit anim
                 } else {
                     // SAME TYPE UPDATE (Just score updating)
-                    // Wake up to ACTIVE if IDLE
-                    // Update content immediately
-                    clearTimers();
+                    // Don't clear timers here! That prevents IDLE state from ever being reached.
                     setCachedData(data);
-                    setVisualState('ACTIVE');
-                    startIdleTimer();
+
+                    // Only force to ACTIVE if we were in a transition
+                    if (visualState === 'ENTERING' || visualState === 'EXITING') {
+                        setVisualState('ACTIVE');
+                    }
+
+                    // Ensure timer is running if checking for idle, but don't reset it if already running
+                    if (visualState !== 'IDLE' && !idleTimerRef.current) {
+                        startIdleTimer();
+                    }
                 }
             }
         } else {
@@ -116,6 +134,11 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
             showMultiplier = true;
             textColor = '#fb923c'; // Orange-400
             break;
+
+        case PopUpType.DANGER:
+            mainText = 'DANGER!';
+            textColor = '#ef4444'; // Red-500
+            break;
     }
 
     const commonStyle: React.CSSProperties = {
@@ -127,15 +150,21 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
 
     // Dynamic Classes based on State
     const getContainerClasses = () => {
-        const base = "w-[95%] max-w-[600px] flex flex-col items-center justify-center text-center transform transition-all duration-300 ";
+        const base = "flex flex-col items-center justify-center text-center transform transition-all duration-300 ";
 
         switch (visualState) {
             case 'ENTERING':
                 return base + "animate-pop-enter opacity-100";
             case 'ACTIVE':
-                return base + "animate-bob opacity-85 scale-100";
+                if (cachedData.type === PopUpType.DANGER) {
+                    return base + "animate-pulse-danger opacity-100 scale-110";
+                }
+                return base + "animate-bob opacity-80 scale-100";
             case 'IDLE':
                 // Keeping animate-bob in IDLE looks nice (gentle breathing), just faded
+                if (cachedData.type === PopUpType.DANGER) {
+                    return base + "animate-pulse-danger opacity-100 scale-110";
+                }
                 return base + "animate-bob opacity-60 scale-95";
             case 'EXITING':
                 return base + "opacity-0 scale-75";
@@ -143,13 +172,23 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
                 return base;
         }
     };
+    // ... (render logic continues)
 
     return (
-        <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center overflow-hidden font-['Fredoka']">
+        <div
+            className="fixed left-1/2 pointer-events-none z-50 font-['Fredoka']"
+            style={{
+                top: `${popupTopPosition}px`,
+                transform: 'translateX(-50%)',
+                width: `${popupWidth}px`,
+                paddingTop: '20px',
+                paddingBottom: '20px'
+            }}
+        >
             <div className={getContainerClasses()}>
 
                 {/* Multiplier (Top) */}
-                {showMultiplier && cachedData.multiplier > 1 && (
+                {showMultiplier && cachedData.multiplier > 1 && cachedData.type !== PopUpType.DANGER && (
                     <div
                         className="text-2xl md:text-4xl font-black opacity-90 tracking-widest mb-1 transition-all duration-300"
                         style={commonStyle}
@@ -159,20 +198,50 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
                 )}
 
                 {/* Main Text (Middle) */}
-                <h1
-                    className="text-4xl md:text-6xl font-black tracking-wide mb-2 leading-none transition-all duration-300"
-                    style={commonStyle}
-                >
-                    {mainText}
-                </h1>
+                {/* For Danger, we swap order: Countdown on top (big), Text on bottom (smaller) like original DangerOverlay? 
+                    User said: "move the danger notification with countdown into the middle screen popup"
+                    Original Popup: Multiplier -> Text -> Score
+                    DangerOverlay: Countdown -> "DANGER!"
+                    Let's adapt Popup slot:
+                    If Danger:
+                    Top (Multiplier slot): Countdown (Big)
+                    Middle (Text slot): "DANGER!"
+                    Bottom (Score slot): Empty
+                */}
 
-                {/* Main Score (Bottom) */}
-                <div
-                    className="text-5xl md:text-7xl font-black leading-none tracking-wide transition-all duration-300"
-                    style={commonStyle}
-                >
-                    {cachedData.runningTotal.toLocaleString()}
-                </div>
+                {cachedData.type === PopUpType.DANGER ? (
+                    <>
+                        <div
+                            className="text-5xl md:text-7xl font-black mb-2 leading-none transition-all duration-300"
+                            style={commonStyle}
+                        >
+                            {cachedData.dangerTime ? (cachedData.dangerTime / 1000).toFixed(1) : "0.0"}
+                        </div>
+                        <h1
+                            className="text-4xl md:text-6xl font-black tracking-wide leading-none transition-all duration-300"
+                            style={commonStyle}
+                        >
+                            {mainText}
+                        </h1>
+                    </>
+                ) : (
+                    <>
+                        <h1
+                            className="text-4xl md:text-6xl font-black tracking-wide mb-2 leading-none transition-all duration-300"
+                            style={commonStyle}
+                        >
+                            {mainText}
+                        </h1>
+
+                        {/* Main Score (Bottom) */}
+                        <div
+                            className="text-5xl md:text-7xl font-black leading-none tracking-wide transition-all duration-300"
+                            style={commonStyle}
+                        >
+                            {cachedData.runningTotal.toLocaleString()}
+                        </div>
+                    </>
+                )}
 
                 {/* Optional "Clearing board..." text for Watermelon Crush */}
                 {cachedData.type === PopUpType.WATERMELON_CRUSH && (
@@ -185,4 +254,4 @@ export const TextPopup: React.FC<TextPopupProps> = ({ data }) => {
             </div>
         </div>
     );
-};
+});

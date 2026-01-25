@@ -146,6 +146,8 @@
 
   .animate-pop-perfect {
     animation: pop-perfect 3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
 
   @keyframes pop-enter {
@@ -167,6 +169,8 @@
 
   .animate-pop-enter {
     animation: pop-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
 
   .animate-bounce-custom {
@@ -196,6 +200,8 @@
 
   .animate-float-fade {
     animation: float-fade 0.8s ease-out forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
 
   @keyframes pop-in-settle {
@@ -243,6 +249,8 @@
 
   .animate-bob {
     animation: bob 2s ease-in-out infinite;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   @keyframes pop-in {
@@ -264,6 +272,8 @@
 
   .animate-pop-in {
     animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
 
   @keyframes breathe {
@@ -280,5 +290,7 @@
 
   .animate-breathe {
     animation: breathe 1.5s ease-in-out infinite;
+    will-change: transform;
+    transform: translateZ(0);
   }
 }

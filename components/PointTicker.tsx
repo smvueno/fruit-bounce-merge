@@ -16,7 +16,7 @@ interface PopupInstance {
     createdAt: number;
 }
 
-export const PointTicker: React.FC<PointTickerProps> = ({ latestEvent, settings }) => {
+export const PointTicker: React.FC<PointTickerProps> = React.memo(({ latestEvent, settings }) => {
     const [popups, setPopups] = useState<PopupInstance[]>([]);
     const nextId = useRef(0);
 
@@ -91,4 +91,4 @@ export const PointTicker: React.FC<PointTickerProps> = ({ latestEvent, settings 
             })}
         </div>
     );
-};
+});

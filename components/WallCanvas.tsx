@@ -7,7 +7,7 @@ interface WallCanvasProps {
     containerLeft: number;
 }
 
-export const WallCanvas: React.FC<WallCanvasProps> = ({
+export const WallCanvas: React.FC<WallCanvasProps> = React.memo(({
     gameAreaWidth,
     gameAreaHeight,
     containerTop,
@@ -174,4 +174,4 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
             style={{ zIndex: 20 }}
         />
     );
-};
+});

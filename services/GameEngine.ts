@@ -210,6 +210,7 @@ export class GameEngine {
 
         // Start Game
         this.spawnNextFruit();
+        this.app.ticker.maxFPS = 60; // Lock to 60 FPS for consistent physics speed
         this.app.ticker.add(this.update.bind(this));
 
         // Input Handling

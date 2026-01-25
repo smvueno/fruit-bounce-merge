@@ -8,6 +8,7 @@ import { DebugMenu } from './DebugMenu';
 
 // Components
 import { GameBackground } from './GameBackground';
+import { JuiceOverlay } from './JuiceOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
@@ -248,6 +249,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 patternIndex={bgPatternIndex}
                 bgColor={bgColor}
                 fever={fever}
+            />
+
+            {/* 1.1 Juice/Water Overlay - Separate Component */}
+            <JuiceOverlay
+                fever={fever}
                 juice={juice}
             />
 
@@ -297,8 +303,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
             )}
 
-            {/* 1.9 Text Popup (Master Popup) */}
-            <TextPopup data={popupData} />
+            {/* 1.9 Text Popup (Master Popup) - DANGER PRIORITY */}
+            <TextPopup
+                data={limitTime > 0 ? {
+                    type: PopUpType.DANGER,
+                    runningTotal: 0,
+                    multiplier: 0,
+                    dangerTime: limitTime
+                } : popupData}
+                gameAreaTop={gameAreaDimensions.top}
+                gameAreaHeight={gameAreaDimensions.height}
+                gameAreaWidth={gameAreaDimensions.width}
+            />
 
             {/* 1.95 Score Fly Effect (Suck Up) */}
             {suckUpPayload !== null && (
@@ -309,6 +325,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                         onComplete={handleSuckUpComplete}
                         color={popupColor}
                         contextData={lastPopupDataRef.current}
+                        gameAreaTop={gameAreaDimensions.top}
+                        gameAreaHeight={gameAreaDimensions.height}
+                        gameAreaWidth={gameAreaDimensions.width}
                     />
                 </div>
             )}

@@ -1,6 +1,7 @@
 
 import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
 import { PopupData, PopUpType } from '../types';
+import { DANGER_Y_PERCENT } from '../constants';
 
 interface ScoreFlyEffectProps {
     startAmount: number;
@@ -8,6 +9,9 @@ interface ScoreFlyEffectProps {
     onComplete: () => void;
     color: string;
     contextData: PopupData | null;
+    gameAreaTop: number;
+    gameAreaHeight: number;
+    gameAreaWidth: number;
 }
 
 const hexToRgb = (hex: string) => {
@@ -30,18 +34,24 @@ const interpolateColor = (startHex: string, endHex: string, factor: number) => {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
-export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, targetElementId, onComplete, color, contextData }) => {
+export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, targetElementId, onComplete, color, contextData, gameAreaTop, gameAreaHeight, gameAreaWidth }) => {
+    // Calculate popup position (same as TextPopup)
+    const canvasHeightRatio = 1.4;
+    const canvasTopOffsetRatio = -0.2;
+    const dangerYInScreen = gameAreaTop + gameAreaHeight * (canvasTopOffsetRatio + canvasHeightRatio * DANGER_Y_PERCENT);
+    const popupTopPosition = dangerYInScreen + 90; // 90px below danger line for better clearance
+    const popupWidth = gameAreaWidth * 0.95; // Use 95% of game area width
+
     // Styles
     const wrapperStyle: React.CSSProperties = {
         position: 'fixed',
         left: '50%',
-        top: '50%',
-        transform: 'translate(-50%, -50%)',
+        top: `${popupTopPosition}px`,
+        transform: 'translateX(-50%)',
         pointerEvents: 'none',
         zIndex: 100,
         fontFamily: "'Fredoka', 'Segoe UI', sans-serif",
-        width: '95%',
-        maxWidth: '600px',
+        width: `${popupWidth}px`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -141,22 +151,10 @@ export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, tar
         const tx = targetRect.left + targetRect.width / 2;
         const ty = targetRect.top + targetRect.height / 2;
 
-        const cpX = window.innerWidth / 2; // Curve pull towards center horizontally?
-        // Or simply pull towards text popup center?
-        // Let's use the popup center (screen center) as control point or bias.
-        // Screen center:
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-
-        // Control Point: Between Start and Target?
-        // Let's use (cx, ty) logic from before, but safer.
-        // Start is (sx, sy). Target is (tx, ty).
-        // Let's bias the curve "outward". 
-        // Simple Arc: P1 = (sx, ty) [Corner]
+        // Bezier curve control point
         const P1x = sx;
         const P1y = ty;
 
-        const targetColor = '#1a1a1a';
         const duration = 1000;
 
         const animate = (time: number) => {
@@ -172,25 +170,25 @@ export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, tar
             const currentX = (invT * invT * sx) + (2 * invT * t * P1x) + (t * t * tx);
             const currentY = (invT * invT * sy) + (2 * invT * t * P1y) + (t * t * ty);
 
-            // Scale Logic: 1.0 -> 1.2 (Zoom) -> 0.4 (Target)
+            // Scale Logic
             let scale = 1.0;
             if (progress < 0.3) {
-                // 0 -> 0.3: Zoom to 1.2
                 const zt = progress / 0.3;
-                scale = 1.0 + (0.2 * Math.sin(zt * Math.PI / 2));
+                scale = 1.0 + (0.4 * Math.sin(zt * Math.PI / 2));
             } else {
-                // 0.3 -> 1.0: Shrink to 0.4
                 const st = (progress - 0.3) / 0.7;
-                scale = 1.2 - (0.8 * st);
+                scale = 1.4 - (0.8 * st);
             }
 
-            const currentColor = interpolateColor(color, targetColor, t);
+            // Batched Style Update
+            const targetColorHex = '#1a1a1a';
+            const currentColor = interpolateColor(color, targetColorHex, t);
 
             setFlyStyle(prev => ({
                 ...prev,
                 left: `${currentX}px`,
                 top: `${currentY}px`,
-                transform: `translate(-50%, -50%) scale(${scale})`, // No Rotate
+                transform: `translate(-50%, -50%) scale(${scale})`,
                 color: currentColor,
             }));
 

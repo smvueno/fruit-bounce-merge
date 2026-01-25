@@ -9,7 +9,7 @@ interface EffectCanvasProps {
     containerLeft: number;
 }
 
-export const EffectCanvas: React.FC<EffectCanvasProps> = ({
+export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
     engine,
     gameAreaWidth,
     gameAreaHeight,
@@ -153,4 +153,4 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = ({
             style={{ zIndex: 30 }} // Higher than Walls (20) and Game (10)
         />
     );
-};
+});

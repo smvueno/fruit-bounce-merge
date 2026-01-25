@@ -52,11 +52,13 @@ export interface PointEvent {
 export enum PopUpType {
   WATERMELON_CRUSH,
   FRENZY,
-  CHAIN
+  CHAIN,
+  DANGER
 }
 
 export interface PopupData {
   runningTotal: number;
   multiplier: number;
   type: PopUpType;
+  dangerTime?: number;
 }
