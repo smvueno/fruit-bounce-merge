@@ -6,7 +6,7 @@ interface LayoutContainerProps {
 
 export const LayoutContainer: React.FC<LayoutContainerProps> = ({ children }) => {
     return (
-        <div className="w-full h-[100svh] flex justify-center overflow-hidden">
+        <div className="w-full h-[100svh] flex justify-center overflow-hidden pointer-events-none">
             {/* 
                 Container roughly limits to mobile aspect ratio (~9:20) on desktop via max-w.
                 On mobile, it fills the width (because screen < max-w usually).

@@ -21,6 +21,17 @@ export class GameEngine {
     app: PIXI.Application | undefined;
     container: PIXI.Container;
 
+    // Layer Containers
+    backgroundLayer: PIXI.Container;
+    groundLayer: PIXI.Container; // Ground
+    gameLayer: PIXI.Container;   // Fruits
+    wallLayer: PIXI.Container;   // Walls
+    effectLayer: PIXI.Container; // Effects
+
+    layout: { width: number, height: number, top: number, left: number } = { width: 0, height: 0, top: 0, left: 0 };
+    bgPatternIndex: number = 0;
+    bgColor: string = '#FFF8E1';
+
     // Systems
     physicsSystem: PhysicsSystem;
     inputSystem: InputSystem;
@@ -118,6 +129,25 @@ export class GameEngine {
         // Core PIXI Containers
         this.container = new PIXI.Container();
 
+        this.backgroundLayer = new PIXI.Container();
+        this.groundLayer = new PIXI.Container();
+        this.gameLayer = new PIXI.Container(); // This replaces 'container' usage for game objects
+        this.wallLayer = new PIXI.Container();
+        this.effectLayer = new PIXI.Container();
+
+        // Main Hierarchy: 
+        // 1. Background (Full Screen)
+        // 2. Ground
+        // 3. Game Layer (Fruits) - Scaled + Positioned
+        // 4. Wall Layer
+        // 5. Effect Layer
+
+        this.container.addChild(this.backgroundLayer);
+        this.container.addChild(this.groundLayer);
+        this.container.addChild(this.gameLayer);
+        this.container.addChild(this.wallLayer);
+        this.container.addChild(this.effectLayer);
+
         // Initialize Systems
         this.physicsSystem = new PhysicsSystem();
         this.inputSystem = new InputSystem();
@@ -163,6 +193,21 @@ export class GameEngine {
         this.audio.setSfxEnabled(settings.sfxEnabled);
     }
 
+    // New Method to update layout from React
+    updateLayout(layout: { width: number, height: number, top: number, left: number }) {
+        this.layout = layout;
+        this.handleResize();
+    }
+
+    updateBackground(patternIndex: number, bgColor: string) {
+        this.bgPatternIndex = patternIndex;
+        this.bgColor = bgColor;
+        // Trigger RenderSystem update for bg immediately or next frame
+        if (this.renderSystem && this.app) {
+            // We will handle this in the update loop or immediate call
+        }
+    }
+
     async initialize() {
         if (this.destroyed) return;
         this.initializing = true;
@@ -171,18 +216,16 @@ export class GameEngine {
         try {
             await this.app.init({
                 canvas: this.canvasElement,
-                backgroundAlpha: 0,
-                width: this.canvasElement.clientWidth,
-                height: this.canvasElement.clientHeight,
+                backgroundAlpha: 0, // Transparent, we draw BG manually
+                resizeTo: window, // Full window
                 antialias: true,
                 resolution: window.devicePixelRatio || 1,
                 autoDensity: true,
                 preference: 'webgl',
-                resizeTo: this.canvasElement
             });
 
-            this.app.renderer.on('resize', () => this.handleResize());
-
+            // Note: 'resize' event on renderer might conflict with our manual layout updates
+            // We rely on 'updateLayout' from React resize listener.
         } catch (e) {
             console.error(`[GameEngine] PIXI Init Error:`, e);
             this.initializing = false;
@@ -196,60 +239,77 @@ export class GameEngine {
         }
         if (!this.app.renderer) return;
 
-        // Initial Resize
-        this.handleResize();
-
+        // Add Main Container
         this.app.stage.addChild(this.container);
 
-        // Initialize Render System
-        this.renderSystem.initialize(this.app, this.container);
-        const containerY = this.container.position.y || 0;
-
-        // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
-        // this.renderSystem.drawFloor(this.width, this.height, this.scaleFactor, actualH, containerY, actualW);
+        // Initialize Render System with specific layers
+        this.renderSystem.initialize(
+            this.app,
+            this.gameLayer,
+            this.backgroundLayer,
+            this.groundLayer,
+            this.wallLayer,
+            this.effectLayer
+        );
 
         // Start Game
         this.spawnNextFruit();
-        this.app.ticker.maxFPS = 60; // Lock to 60 FPS for consistent physics speed
+        this.app.ticker.maxFPS = 60;
         this.app.ticker.add(this.update.bind(this));
 
-        // Input Handling
+        // Input Handling (Global)
         this.app.stage.eventMode = 'static';
-        if (this.app.screen) this.app.stage.hitArea = this.app.screen;
+        this.app.stage.hitArea = this.app.screen;
 
         this.app.stage.on('pointerdown', this.onPointerDown.bind(this));
         this.app.stage.on('pointermove', this.onPointerMove.bind(this));
         this.app.stage.on('pointerup', this.onPointerUp.bind(this));
         this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
+
+        // Initial Layout Sync
+        this.handleResize();
     }
 
     handleResize() {
-        if (!this.app || !this.app.screen) return;
+        if (!this.app || !this.app.renderer || this.layout.width === 0) return;
 
-        const actualW = this.app.screen.width;
-        const actualH = this.app.screen.height;
-
+        // 1. Calculate Scale based on Game Area Dimensions (provided by Layout)
         // V_WIDTH/V_HEIGHT is the logical game size (600x750)
-        // We want to scale based on the "View Size" (the 4:5 area), not the full canvas size
-        // Helper: We need to know what the "visible" width/height is.
-        // For now, we assume the canvas is 140% of the view.
-        // So viewWidth = actualW / 1.4
-        //    viewHeight = actualH / 1.4
+        this.scaleFactor = Math.min(this.layout.width / V_WIDTH, this.layout.height / V_HEIGHT);
 
-        const viewW = actualW / 1.4;
-        const viewH = actualH / 1.4;
+        // 2. Position the Game Layer
+        // The Game Layer (Fruits) needs to be scaled and positioned exactly over the DOM GameArea
+        // The DOM GameArea is at `this.layout.left`, `this.layout.top`
 
-        this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
-        this.container.scale.set(this.scaleFactor);
+        // HOWEVER: The container holds ALL layers.
+        // We want Background to be 0,0 (Fullscreen)
+        // We want GameLayer to be at layout.left, layout.top
 
-        // Center the container in the canvas
+        // Reset Wrapper Container (it should just cover everything)
+        this.container.position.set(0, 0);
+        this.container.scale.set(1);
+
+        // Config Game Layer
+        // Centering logic: The layout rect might be larger than aspect ratio?
+        // Actually layout comes from GetBoundingClientRect of the AspectRatio Div.
+        // So it should be exact.
+
+        // Center the 600x750 logical game inside the layout rect (just in case)
         const logicalW = V_WIDTH * this.scaleFactor;
         const logicalH = V_HEIGHT * this.scaleFactor;
 
-        const xOffset = (actualW - logicalW) / 2;
-        const yOffset = (actualH - logicalH) / 2;
+        const innerOffsetX = (this.layout.width - logicalW) / 2;
+        const innerOffsetY = (this.layout.height - logicalH) / 2;
 
-        this.container.position.set(xOffset, yOffset);
+        this.gameLayer.position.set(this.layout.left + innerOffsetX, this.layout.top + innerOffsetY);
+        this.gameLayer.scale.set(this.scaleFactor);
+
+        // Effects usually overlay the game, sharing the same coordinate space
+        this.effectLayer.position.copyFrom(this.gameLayer.position);
+        this.effectLayer.scale.copyFrom(this.gameLayer.scale);
+
+        // Tell RenderSystem to resize/position environment
+        this.renderSystem.updateLayout(this.layout, this.scaleFactor, this.app.screen.width, this.app.screen.height);
     }
 
     reset() {
@@ -319,8 +379,8 @@ export class GameEngine {
 
     getInputContext() {
         return {
-            containerX: this.container.position.x,
-            containerY: this.container.position.y,
+            containerX: this.gameLayer.position.x,
+            containerY: this.gameLayer.position.y,
             scaleFactor: this.scaleFactor,
             width: this.width,
             height: this.height,
@@ -424,12 +484,17 @@ export class GameEngine {
             fruits: this.fruits,
             currentFruit: this.currentFruit,
             feverActive: this.feverActive,
-            scaleFactor: this.scaleFactor
+            scaleFactor: this.scaleFactor,
+            juice: this.juice,
+            juiceMax: JUICE_MAX
         };
         this.renderSystem.renderSync(renderCtx);
 
-        // Draw Effects - Moved to React EffectCanvas
-        // this.renderSystem.renderEffects(this.effectSystem.visualParticles, this.height);
+        // Render Effects
+        this.renderSystem.renderEffects(this.effectSystem.visualParticles);
+
+        // Update Scrolling Background
+        this.renderSystem.updateBackgroundAnimation(dt, this.feverActive, this.bgPatternIndex, this.bgColor);
     }
 
     // --- Game Logic Methods ---

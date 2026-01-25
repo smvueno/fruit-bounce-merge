@@ -7,16 +7,11 @@ import { FRUIT_DEFS } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
 // Components
-import { GameBackground } from './GameBackground';
-import { JuiceOverlay } from './JuiceOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
-import { GroundCanvas } from './GroundCanvas';
-import { WallCanvas } from './WallCanvas';
-import { EffectCanvas } from './EffectCanvas';
 import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
 import { ScoreFlyEffect } from './ScoreFlyEffect';
@@ -109,25 +104,81 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         return () => clearInterval(interval);
     }, []);
 
+    // --- Sync Background to Engine ---
+    useEffect(() => {
+        if (engineRef.current) {
+            engineRef.current.updateBackground(bgPatternIndex, bgColor);
+        }
+    }, [bgPatternIndex, bgColor]);
+
+    // --- Track Game Area Position for Ground Canvas ---
     // --- Track Game Area Position for Ground Canvas ---
     useEffect(() => {
-        const updateGameAreaPosition = () => {
+        if (!gameAreaRef.current) return;
+
+        const observer = new ResizeObserver(() => {
             if (gameAreaRef.current) {
                 const rect = gameAreaRef.current.getBoundingClientRect();
-                setGameAreaDimensions({
+                const newLayout = {
                     width: rect.width,
                     height: rect.height,
                     top: rect.top,
                     left: rect.left
+                };
+                // Check if changed to avoid loop
+                setGameAreaDimensions(prev => {
+                    if (prev.width === newLayout.width &&
+                        prev.height === newLayout.height &&
+                        prev.top === newLayout.top &&
+                        prev.left === newLayout.left) return prev;
+
+                    // Sync immediately inside observer
+                    if (engineRef.current) {
+                        engineRef.current.updateLayout(newLayout);
+                    }
+                    return newLayout;
                 });
+            }
+        });
+
+        observer.observe(gameAreaRef.current);
+
+        // Also update on scroll/resize just in case (rect needs relative page pos?)
+        // GetBoundingClientRect is viewport relative. Scroll affects it?
+        // If the game area SCROLLS, we need to update.
+        // Adding window scroll/resize listeners to trigger check as well.
+        const handleGlobalUpdate = () => {
+            if (gameAreaRef.current) {
+                const rect = gameAreaRef.current.getBoundingClientRect();
+                const newLayout = {
+                    width: rect.width,
+                    height: rect.height,
+                    top: rect.top,
+                    left: rect.left
+                };
+                if (engineRef.current) {
+                    engineRef.current.updateLayout(newLayout);
+                }
+                setGameAreaDimensions(newLayout);
             }
         };
 
-        updateGameAreaPosition();
-        window.addEventListener('resize', updateGameAreaPosition);
+        window.addEventListener('resize', handleGlobalUpdate);
+        window.addEventListener('scroll', handleGlobalUpdate, true); // Capture scroll
 
-        return () => window.removeEventListener('resize', updateGameAreaPosition);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', handleGlobalUpdate);
+            window.removeEventListener('scroll', handleGlobalUpdate, true);
+        };
     }, []);
+
+    // Sync Dimensions Effect (in case engine inits after first resize)
+    useEffect(() => {
+        if (engineRef.current && gameAreaDimensions.width > 0) {
+            engineRef.current.updateLayout(gameAreaDimensions);
+        }
+    }, [gameAreaDimensions]);
 
     // --- Engine Initialization ---
     useEffect(() => {
@@ -244,49 +295,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
     return (
         <>
-            {/* 1. Full Screen Background */}
-            <GameBackground
-                patternIndex={bgPatternIndex}
-                bgColor={bgColor}
-                fever={fever}
+            {/* 0. GLOBAL CANVAS - Fixed Fullscreen */}
+            <canvas
+                ref={canvasRef}
+                className="fixed top-0 left-0 w-full h-full touch-none z-0 block"
+                id="game-canvas"
             />
-
-            {/* 1.1 Juice/Water Overlay - Separate Component */}
-            <JuiceOverlay
-                fever={fever}
-                juice={juice}
-            />
-
-            {/* 1.5. Ground Canvas - Extends to screen edges */}
-            {gameAreaDimensions.width > 0 && (
-                <GroundCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
-
-            {/* 1.6. Wall Canvas - Brick walls on sides */}
-            {gameAreaDimensions.width > 0 && (
-                <WallCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
-
-            {/* 1.7. Effect Canvas - Overlay on top of walls */}
-            {gameAreaDimensions.width > 0 && (
-                <EffectCanvas
-                    engine={engineRef.current}
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
 
             {/* 1.8. Point Ticker - Overlay for score popups */}
             {gameAreaDimensions.width > 0 && (
@@ -336,7 +350,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             <LayoutContainer>
 
                 {/* TOP UI (HUD) - Flexible spacer with 20px top padding as requested */}
-                <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1">
+                <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1 pointer-events-auto">
                     <GameHUD
                         score={currentStateScore}
                         playTime={playTime}
@@ -349,7 +363,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
                 {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
                 <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
-                    <GameArea canvasRef={canvasRef}>
+                    <GameArea>
                         {/* Overlays moved to root level for correct z-index stacking */}
                         {/* New Danger Overlay sits INSIDE the game area scaling context */}
                         <DangerOverlay dangerTime={limitTime} />
@@ -357,7 +371,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
 
                 {/* BOTTOM UI - Fixed height spacer. */}
-                <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
+                <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px] pointer-events-auto">
                     <button
                         onClick={handlePauseToggle}
                         className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
