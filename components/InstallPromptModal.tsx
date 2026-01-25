@@ -8,7 +8,7 @@ interface InstallPromptModalProps {
 export const InstallPromptModal: React.FC<InstallPromptModalProps> = ({ onClose }) => {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-md animate-fade-in font-['Fredoka']">
-            <div className="bg-white border-4 border-gray-900 rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl transform scale-100 flex flex-col items-center text-center relative">
+            <div className="bg-white/95 backdrop-blur-2xl border border-white/50 rounded-[2.5rem] px-8 py-6 max-w-sm w-full mx-4 shadow-[0_20px_60px_rgba(0,0,0,0.3)] transform scale-100 flex flex-col items-center text-center relative">
 
                 {/* Close Button */}
                 <button
@@ -26,7 +26,7 @@ export const InstallPromptModal: React.FC<InstallPromptModalProps> = ({ onClose 
                     Install App
                 </h2>
 
-                <div className="text-gray-600 font-medium mb-6 text-left w-full space-y-4 px-2">
+                <div className="text-gray-600 font-medium mb-6 text-left w-full space-y-3 px-2">
                     <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-xl">
                         <div className="bg-white p-2 rounded-lg text-blue-500 shrink-0 shadow-sm border border-gray-100">
                             <Share size={20} />
@@ -34,10 +34,16 @@ export const InstallPromptModal: React.FC<InstallPromptModalProps> = ({ onClose 
                         <p className="text-sm">1. Tap the <span className="font-bold text-gray-900">Share</span> button.</p>
                     </div>
                     <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-xl">
+                        <div className="bg-white p-2 rounded-lg text-purple-500 shrink-0 shadow-sm border border-gray-100">
+                            <span className="text-lg font-bold">⋯</span>
+                        </div>
+                        <p className="text-sm">2. Tap <span className="font-bold text-gray-900">⋯ (More)</span> to reveal more options.</p>
+                    </div>
+                    <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-xl">
                         <div className="bg-white p-2 rounded-lg text-gray-700 shrink-0 shadow-sm border border-gray-100">
                             <SquarePlus size={20} />
                         </div>
-                        <p className="text-sm">2. Select <span className="font-bold text-gray-900">Add to Home Screen</span>.</p>
+                        <p className="text-sm">3. Select <span className="font-bold text-gray-900">Add to Home Screen</span>.</p>
                     </div>
                 </div>
 
