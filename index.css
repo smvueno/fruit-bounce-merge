@@ -1,82 +1,324 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@font-face {
-  font-family: 'Fredoka';
-  src: url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300..700&display=swap');
+/* Custom base styles (these often go in @layer base for overrides or specific non-utility styles) */
+@layer base {
+
+  body,
+  html {
+    /* Use standard CSS for properties not directly covered by @tailwind base preflight,
+       or for custom values that aren't Tailwind utilities.
+       Tailwind's preflight already sets margin/padding to 0.
+    */
+    height: 100svh;
+    /* Use svh to account for mobile toolbars */
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background: #FFF8E1;
+    font-family: 'Fredoka', 'Segoe UI', sans-serif;
+  }
+
+  #root {
+    /* These can generally be applied as Tailwind classes directly to the #root div in index.html,
+       but can also be defined here if they are truly global defaults.
+    */
+    width: 100%;
+    height: 100svh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  canvas {
+    touch-action: none;
+  }
 }
 
-body {
-  margin: 0;
-  font-family: 'Fredoka', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior: none;
-  touch-action: none;
-}
+/* Custom Animations (these should be in @layer utilities as they define utility-like classes) */
+@layer utilities {
+  @keyframes float {
+    0% {
+      transform: translateY(0px);
+    }
 
-/* Animations */
-@keyframes float {
-  0% { transform: translate(0px, 0px) scale(1); }
-  33% { transform: translate(30px, -50px) scale(1.1); }
-  66% { transform: translate(-20px, 20px) scale(0.9); }
-  100% { transform: translate(0px, 0px) scale(1); }
-}
+    50% {
+      transform: translateY(-10px);
+    }
 
-@keyframes pop {
-  0% { transform: scale(0.8); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
+    100% {
+      transform: translateY(0px);
+    }
+  }
 
-@keyframes fade-in-up {
-  0% { opacity: 0; transform: translateY(10px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
 
-@keyframes wave {
-  0% { background-position-x: 0px; }
-  100% { background-position-x: 100px; }
-}
+  @keyframes pulse-danger {
+    0% {
+      opacity: 0.5;
+    }
 
-@keyframes float-right-linear {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(600px); /* 500px container + buffer */ }
-}
+    50% {
+      opacity: 1;
+    }
 
-.animate-float {
-  animation: float infinite ease-in-out;
-}
+    100% {
+      opacity: 0.5;
+    }
+  }
 
-.animate-pop {
-  animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
+  .animate-pulse-danger {
+    animation: pulse-danger 1s infinite;
+  }
 
-.animate-fade-in-up {
-  animation: fade-in-up 0.5s ease-out forwards;
-}
+  @keyframes wave-scroll {
+    0% {
+      background-position-x: 0px;
+    }
 
-.animate-wave {
-  animation: wave 2s linear infinite;
-}
+    100% {
+      background-position-x: 100px;
+    }
+  }
 
-.animate-float-right-fast {
-  animation: float-right-linear linear infinite;
-}
+  .animate-wave {
+    animation: wave-scroll 2s linear infinite;
+  }
 
-.animate-float-right-medium {
-  animation: float-right-linear linear infinite;
-}
+  @keyframes bg-scroll {
+    0% {
+      background-position: 0 0;
+    }
 
-.animate-float-right-slow {
-  animation: float-right-linear linear infinite;
-}
+    100% {
+      background-position: -500px 0;
+    }
+  }
 
-/* Text Stroke Utility */
-.text-stroke {
-  -webkit-text-stroke: 1px rgba(0,0,0,0.1);
-}
+  .animate-bg-scroll {
+    animation: bg-scroll 60s linear infinite;
+  }
 
-.text-stroke-2 {
-  -webkit-text-stroke: 2px white;
+  @keyframes mask-scroll {
+    0% {
+      mask-position: 0 0;
+      -webkit-mask-position: 0 0;
+    }
+
+    100% {
+      mask-position: -200px 200px;
+      -webkit-mask-position: -200px 200px;
+    }
+  }
+
+  .animate-mask-scroll {
+    animation: mask-scroll 30s linear infinite;
+  }
+
+  /* NEW TEXT ANIMATIONS */
+  @keyframes pop-perfect {
+    0% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+
+    40% {
+      transform: scale(1.1);
+      opacity: 1;
+    }
+
+    60% {
+      transform: scale(1.0);
+      opacity: 1;
+    }
+
+    90% {
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(1.0);
+      opacity: 0.3;
+    }
+  }
+
+  .animate-pop-perfect {
+    animation: pop-perfect 3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+  }
+
+  @keyframes pop-enter {
+    0% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+
+    60% {
+      transform: scale(1.1);
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(1.0);
+      opacity: 0.85;
+    }
+  }
+
+  .animate-pop-enter {
+    animation: pop-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+  }
+
+  .animate-bounce-custom {
+    animation: bounce-custom 0.5s cubic-bezier(0.36, 0, 0.66, -0.56) forwards;
+  }
+
+  @keyframes float-fade {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.5) translateY(10px);
+    }
+
+    20% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.2) translateY(0px);
+    }
+
+    40% {
+      transform: translate(-50%, -50%) scale(1.0);
+    }
+
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(1.0) translateY(-60px);
+    }
+  }
+
+  .animate-float-fade {
+    animation: float-fade 0.8s ease-out forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+  }
+
+  @keyframes pop-in-settle {
+    0% {
+      transform: scale(0);
+      opacity: 0;
+    }
+
+    20% {
+      transform: scale(1.2);
+      opacity: 1;
+    }
+
+    30% {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    60% {
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(1);
+      opacity: 0.3;
+      /* Settle to semi-transparent */
+    }
+  }
+
+  .animate-pop-settle {
+    animation: pop-in-settle 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+
+  @keyframes bob {
+
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  .animate-bob {
+    animation: bob 2s ease-in-out infinite;
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  @keyframes pop-in {
+    0% {
+      transform: scale(0);
+      opacity: 0;
+    }
+
+    60% {
+      transform: scale(1.2);
+      opacity: 1;
+    }
+
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .animate-pop-in {
+    animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+  }
+
+  @keyframes breathe {
+
+    0%,
+    100% {
+      transform: scale(1);
+    }
+
+    50% {
+      transform: scale(1.2);
+    }
+  }
+
+  .animate-breathe {
+    animation: breathe 1.5s ease-in-out infinite;
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  /* NEW ADDITIONS FOR CLOUDS */
+  @keyframes float-right-linear {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(600px); }
+  }
+
+  .animate-float-right-fast {
+    animation: float-right-linear linear infinite;
+  }
+
+  .animate-float-right-medium {
+    animation: float-right-linear linear infinite;
+  }
+
+  .animate-float-right-slow {
+    animation: float-right-linear linear infinite;
+  }
+
+  /* Ensure animate-pop exists */
+  @keyframes pop {
+    0% { transform: scale(0.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .animate-pop {
+    animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
 }
