@@ -373,7 +373,7 @@ const App: React.FC = () => {
   // Conditional styles for the game container
   const containerClasses = gameState === GameState.START
     ? "relative w-full h-full max-w-[500px] md:h-auto md:aspect-[9/16] flex flex-col overflow-visible" // Transparent on Start, visible overflow for floating elements if any
-    : "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] bg-white shadow-2xl rounded-xl flex flex-col overflow-hidden"; // Card style on Game
+    : "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] rounded-xl flex flex-col overflow-hidden"; // Card style on Game
 
   return (
     <div className="relative w-full h-[100svh] bg-orange-50 flex items-center justify-center overflow-hidden font-sans select-none px-3 md:px-0">
