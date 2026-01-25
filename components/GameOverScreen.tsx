@@ -54,10 +54,10 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
   const isNumberOne = stats.score > currentTopScore;
 
   return (
-    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-6 z-30 text-white animate-fade-in font-['Fredoka']">
+    <div className="fixed inset-0 bg-white/30 backdrop-blur-md flex flex-col items-center justify-center p-4 z-50 text-white animate-fade-in font-['Fredoka']">
 
       {/* High-Opacity Glass Card - Widened to max-w-lg (32rem) to fit columns without scroll if possible */}
-      <div className="bg-white/95 backdrop-blur-2xl border border-white/50 text-gray-800 rounded-[2.5rem] p-6 w-full max-w-lg text-center shadow-[0_20px_60px_rgba(0,0,0,0.3)] transform scale-100 animate-pop flex flex-col items-center max-h-[85vh] overflow-y-auto min-h-0">
+      <div className="bg-white/95 backdrop-blur-2xl border border-white/50 text-gray-800 rounded-[2.5rem] px-8 py-6 w-full max-w-lg text-center shadow-[0_20px_60px_rgba(0,0,0,0.3)] transform scale-100 animate-pop flex flex-col items-center max-h-[85vh] overflow-y-auto min-h-0">
 
         <h2 className="text-4xl font-bold mb-2 text-red-500 drop-shadow-sm tracking-wide shrink-0">GAME OVER</h2>
 
@@ -132,8 +132,8 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
             onClick={onRestart}
             disabled={isCoolingDown}
             className={`w-full font-bold text-xl py-4 rounded-2xl shadow-[0_8px_16px_rgba(245,158,11,0.3)] transition-all flex items-center justify-center gap-2 ${isCoolingDown
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
-                : 'bg-amber-500 hover:bg-amber-400 text-white active:scale-95'
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
+              : 'bg-amber-500 hover:bg-amber-400 text-white active:scale-95'
               }`}
           >
             <RotateCcw size={24} strokeWidth={3} />
@@ -144,8 +144,8 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ stats, isNewHigh
             onClick={onMenu}
             disabled={isCoolingDown}
             className={`w-full font-bold text-lg py-4 rounded-2xl transition-all flex items-center justify-center gap-2 ${isCoolingDown
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-slate-200 hover:bg-slate-300 text-slate-600 active:scale-95'
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-slate-200 hover:bg-slate-300 text-slate-600 active:scale-95'
               }`}
           >
             <Home size={22} /> MENU

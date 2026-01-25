@@ -57,7 +57,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({ score, playTime, maxTier, next
     const animatedScore = useNumberTicker(score, 1000);
 
     return (
-        <div className="w-full h-full flex flex-col justify-end px-8 md:px-10 z-30 pointer-events-none font-['Fredoka'] pb-2">
+        <div className="w-full h-full flex flex-col justify-center px-8 md:px-10 z-30 pointer-events-none font-['Fredoka'] pb-2">
             <div className="flex justify-between items-end w-full">
                 <div className="flex flex-col gap-1 items-start relative">
                     <div className="text-gray-800 text-xs md:text-sm font-bold tracking-widest uppercase mb-0 opacity-90">SCORE</div>

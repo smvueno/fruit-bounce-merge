@@ -57,6 +57,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     // New Popup Sync State
     const [popupData, setPopupData] = useState<PopupData | null>(null);
     const lastPopupTotalRef = useRef(0);
+    const lastPopupDataRef = useRef<PopupData | null>(null);
     const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
@@ -176,6 +177,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 if (data.runningTotal > 0) {
                     setPopupData(data);
                     lastPopupTotalRef.current = data.runningTotal;
+                    lastPopupDataRef.current = data; // Cache for SuckUp layout context
 
                     // Determine Color based on Type
                     let c = '#fbbf24'; // Default Yellow
@@ -306,6 +308,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                         targetElementId="hud-score-display"
                         onComplete={handleSuckUpComplete}
                         color={popupColor}
+                        contextData={lastPopupDataRef.current}
                     />
                 </div>
             )}

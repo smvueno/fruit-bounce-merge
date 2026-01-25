@@ -26,8 +26,8 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
     const toggleLeaderboardMode = () => onUpdateSettings({ ...settings, showLocalOnly: !settings.showLocalOnly });
 
     return (
-        <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-fade-in font-['Fredoka']">
-            <div className="bg-white/95 backdrop-blur-xl border border-white/50 shadow-[0_20px_60px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 w-full max-w-lg flex flex-col items-center max-h-[85vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-md animate-fade-in font-['Fredoka']">
+            <div className="bg-white/95 backdrop-blur-xl border border-white/50 shadow-[0_20px_60px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 w-full max-w-lg mx-4 flex flex-col items-center max-h-[85vh] overflow-hidden">
 
                 <h2
                     className="text-4xl font-bold text-gray-800 mb-6 tracking-wide drop-shadow-sm select-none"

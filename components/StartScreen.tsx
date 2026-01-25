@@ -50,9 +50,19 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
         <div className="mb-4 md:mb-6 relative shrink-0">
           <h1 className="text-5xl md:text-6xl font-bold text-gray-900 drop-shadow-sm tracking-tight leading-none">
             FRUITY<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">FUSE</span>
+            <span
+              style={{
+                color: 'rgb(250, 204, 21)',
+                WebkitTextStroke: '7px rgb(26, 26, 26)',
+                textShadow: 'rgb(26, 26, 26) 4px 3px 0px',
+                paintOrder: 'stroke',
+                letterSpacing: '0.04em'
+              }}
+            >
+              FUSE
+            </span>
           </h1>
-          <div className="text-lg md:text-xl font-bold text-orange-400 mt-2 tracking-wider">
+          <div className="text-lg md:text-xl font-bold text-red-500 drop-shadow-sm mt-2 tracking-wider">
             Flick & Bounce
           </div>
         </div>
@@ -66,39 +76,39 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
 
         {/* Main Actions Area */}
         <div className="w-full mb-4 md:mb-6 shrink-0 flex gap-2 md:gap-3">
-            {isInstallable && (
-                <button
-                    onClick={handleInstallClick}
-                    className="group relative bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-300 hover:to-blue-400 text-white font-bold p-3 md:p-6 rounded-2xl md:rounded-3xl shadow-[0_10px_20px_rgba(59,130,246,0.4)] transition-all transform active:scale-95 active:shadow-inner flex items-center justify-center shrink-0 aspect-square h-auto"
-                    aria-label="Install App"
-                >
-                    <div className="hidden md:block">
-                        <Download size={32} strokeWidth={3} />
-                    </div>
-                    <div className="block md:hidden">
-                        <Download size={24} strokeWidth={3} />
-                    </div>
-                    {/* Shine Effect */}
-                    <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
-                </button>
-            )}
-
+          {isInstallable && (
             <button
-                onClick={() => onStart()}
-                className="group relative flex-grow bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-bold text-xl md:text-2xl py-3 md:py-6 rounded-2xl md:rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden"
+              onClick={handleInstallClick}
+              className="group relative bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-300 hover:to-blue-400 text-white font-bold p-3 md:p-6 rounded-2xl md:rounded-3xl shadow-[0_10px_20px_rgba(59,130,246,0.4)] transition-all transform active:scale-95 active:shadow-inner flex items-center justify-center shrink-0 aspect-square h-auto"
+              aria-label="Install App"
             >
-                <span className="relative z-10 flex items-center justify-center gap-2 md:gap-3 drop-shadow-md">
-                    <div className="hidden md:block">
-                        <Play size={32} fill="currentColor" />
-                    </div>
-                    <div className="block md:hidden">
-                        <Play size={24} fill="currentColor" />
-                    </div>
-                     PLAY
-                </span>
-                {/* Shine Effect */}
-                <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
+              <div className="hidden md:block">
+                <Download size={32} strokeWidth={3} />
+              </div>
+              <div className="block md:hidden">
+                <Download size={24} strokeWidth={3} />
+              </div>
+              {/* Shine Effect */}
+              <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
             </button>
+          )}
+
+          <button
+            onClick={() => onStart()}
+            className="group relative flex-grow bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-300 hover:to-green-400 text-white font-bold text-xl md:text-2xl py-3 md:py-6 rounded-2xl md:rounded-3xl shadow-[0_10px_20px_rgba(16,185,129,0.4)] transition-all transform active:scale-95 active:shadow-inner overflow-hidden"
+          >
+            <span className="relative z-10 flex items-center justify-center gap-2 md:gap-3 drop-shadow-md">
+              <div className="hidden md:block">
+                <Play size={32} fill="currentColor" />
+              </div>
+              <div className="block md:hidden">
+                <Play size={24} fill="currentColor" />
+              </div>
+              PLAY
+            </span>
+            {/* Shine Effect */}
+            <div className="absolute top-0 -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
+          </button>
         </div>
 
         {/* Settings Toggles - Solid Backgrounds */}
@@ -112,8 +122,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
             aria-label="Toggle Music"
           >
             {settings.musicEnabled ?
-                <><Music size={24} className="hidden md:block" /><Music size={20} className="block md:hidden" /></> :
-                <><Music4 size={24} className="hidden md:block" /><Music4 size={20} className="block md:hidden" /></>
+              <><Music size={24} className="hidden md:block" /><Music size={20} className="block md:hidden" /></> :
+              <><Music4 size={24} className="hidden md:block" /><Music4 size={20} className="block md:hidden" /></>
             }
           </button>
           <button
@@ -125,8 +135,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
             aria-label="Toggle SFX"
           >
             {settings.sfxEnabled ?
-                <><Volume2 size={24} className="hidden md:block" /><Volume2 size={20} className="block md:hidden" /></> :
-                <><VolumeX size={24} className="hidden md:block" /><VolumeX size={20} className="block md:hidden" /></>
+              <><Volume2 size={24} className="hidden md:block" /><Volume2 size={20} className="block md:hidden" /></> :
+              <><VolumeX size={24} className="hidden md:block" /><VolumeX size={20} className="block md:hidden" /></>
             }
           </button>
           <button
@@ -138,8 +148,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
             aria-label="Toggle Haptics"
           >
             {settings.hapticsEnabled ?
-                <><Vibrate size={24} className="hidden md:block" /><Vibrate size={20} className="block md:hidden" /></> :
-                <><VibrateOff size={24} className="hidden md:block" /><VibrateOff size={20} className="block md:hidden" /></>
+              <><Vibrate size={24} className="hidden md:block" /><Vibrate size={20} className="block md:hidden" /></> :
+              <><VibrateOff size={24} className="hidden md:block" /><VibrateOff size={20} className="block md:hidden" /></>
             }
           </button>
           <button
@@ -151,8 +161,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStart, leaderboard, 
             aria-label="Toggle Leaderboard Mode"
           >
             {!settings.showLocalOnly ?
-                <><Globe size={24} className="hidden md:block" /><Globe size={20} className="block md:hidden" /></> :
-                <><User size={24} className="hidden md:block" /><User size={20} className="block md:hidden" /></>
+              <><Globe size={24} className="hidden md:block" /><Globe size={20} className="block md:hidden" /></> :
+              <><User size={24} className="hidden md:block" /><User size={20} className="block md:hidden" /></>
             }
           </button>
         </div>

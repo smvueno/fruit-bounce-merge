@@ -11,7 +11,7 @@ export const LayoutContainer: React.FC<LayoutContainerProps> = ({ children }) =>
                 Container roughly limits to mobile aspect ratio (~9:20) on desktop via max-w.
                 On mobile, it fills the width (because screen < max-w usually).
             */}
-            <div className="relative w-full max-w-[50svh] h-full flex flex-col px-4 md:px-0">
+            <div className="relative w-full max-w-[50svh] h-full flex flex-col">
                 {children}
             </div>
         </div>

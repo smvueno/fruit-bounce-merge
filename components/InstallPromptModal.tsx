@@ -7,8 +7,8 @@ interface InstallPromptModalProps {
 
 export const InstallPromptModal: React.FC<InstallPromptModalProps> = ({ onClose }) => {
     return (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in font-['Fredoka']">
-            <div className="bg-white border-4 border-gray-900 rounded-3xl p-6 max-w-sm w-[90%] shadow-2xl transform scale-100 flex flex-col items-center text-center relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-md animate-fade-in font-['Fredoka']">
+            <div className="bg-white border-4 border-gray-900 rounded-3xl p-6 max-w-sm w-full mx-4 shadow-2xl transform scale-100 flex flex-col items-center text-center relative">
 
                 {/* Close Button */}
                 <button
