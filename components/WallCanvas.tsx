@@ -145,7 +145,7 @@ export const WallCanvas: React.FC<WallCanvasProps> = React.memo(({
             };
 
             // Calculate Positions
-            const overlap = 8; // Slight overlap over the game area - reduced to minimize intrusion
+            const overlap = 12; // Slight overlap over the game area - reduced to minimize intrusion
 
             // Left wall: to the left of container + overlap
             const leftWallX = containerLeft - wallWidth + overlap;

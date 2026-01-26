@@ -94,7 +94,7 @@ export const GameHUD: React.FC<GameHUDProps> = React.memo(({ score, playTime, ma
                                     <FruitSVG tier={savedFruit} size={28} />
                                 </div>
                             ) : (
-                                <div className="text-gray-300 text-[8px] font-bold uppercase">EMPTY</div>
+                                <span className="text-[8px] font-bold text-black/50">EMPTY</span>
                             )}
                         </div>
                     </div>

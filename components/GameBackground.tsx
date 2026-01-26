@@ -74,7 +74,7 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
             className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#FFF8E1]"
             style={{
                 backgroundColor: bgColor, // CSS Transition handles this container color
-                opacity: 0.4,
+                opacity: 0.3,
                 transition: 'background-color 2s ease'
             }}
         >
@@ -101,7 +101,7 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
                             backgroundSize: '80px 80px',
                             backgroundRepeat: 'repeat',
                             // CSS TRANSITION HANDLES OPACITY SMOOTHNESS
-                            opacity: isVisible ? 0.1 : 0,
+                            opacity: isVisible ? 0.2 : 0,
                             transition: 'opacity 1.5s ease-in-out',
                             willChange: 'background-position, opacity' // Hint for compositor
                         }}

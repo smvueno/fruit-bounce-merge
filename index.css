@@ -76,10 +76,14 @@
   @keyframes wave-scroll {
     0% {
       background-position-x: 0px;
+      mask-position-x: 0px;
+      -webkit-mask-position-x: 0px;
     }
 
     100% {
       background-position-x: 100px;
+      mask-position-x: 100px;
+      -webkit-mask-position-x: 100px;
     }
   }
 

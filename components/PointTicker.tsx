@@ -20,15 +20,6 @@ export const PointTicker: React.FC<PointTickerProps> = React.memo(({ latestEvent
     const [popups, setPopups] = useState<PopupInstance[]>([]);
     const nextId = useRef(0);
 
-    // Filter out old popups
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const now = Date.now();
-            setPopups(prev => prev.filter(p => now - p.createdAt < 800)); // 800ms lifetime
-        }, 100);
-        return () => clearInterval(interval);
-    }, []);
-
     // Add new popup on event
     useEffect(() => {
         if (!latestEvent) return;
@@ -36,8 +27,9 @@ export const PointTicker: React.FC<PointTickerProps> = React.memo(({ latestEvent
         // Skip small visual noise if requested, but usually points are important feedback
         // if (settings.reducedParticles && latestEvent.tier < 2) return;
 
+        const newId = nextId.current++;
         const newPopup: PopupInstance = {
-            id: nextId.current++,
+            id: newId,
             x: latestEvent.x,
             y: latestEvent.y,
             points: latestEvent.points,
@@ -46,6 +38,13 @@ export const PointTicker: React.FC<PointTickerProps> = React.memo(({ latestEvent
         };
 
         setPopups(prev => [...prev, newPopup]);
+
+        // Self-cleanup after lifetime (800ms)
+        const timer = setTimeout(() => {
+            setPopups(prev => prev.filter(p => p.id !== newId));
+        }, 800);
+
+        return () => clearTimeout(timer);
     }, [latestEvent, settings]);
 
     return (

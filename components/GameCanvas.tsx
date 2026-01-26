@@ -286,7 +286,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             {/* 1.8. Point Ticker - Overlay for score popups */}
             {gameAreaDimensions.width > 0 && (
                 <div
-                    className="absolute z-20 pointer-events-none"
+                    className="fixed z-20 pointer-events-none"
                     style={{
                         width: gameAreaDimensions.width,
                         height: gameAreaDimensions.height,
@@ -345,15 +345,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
                 <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
                     <GameArea canvasRef={canvasRef}>
-                        {/* 1.1 Juice/Water Overlay - Constrained to GameArea */}
-                        <div className="absolute inset-0 overflow-hidden rounded-3xl z-[15] pointer-events-none">
-                            <JuiceOverlay
-                                fever={fever}
-                                juice={juice}
-                                dangerYPercent={DANGER_Y_PERCENT}
-                            />
-                        </div>
-
                         {/* Overlays moved to root level for correct z-index stacking */}
                         {/* New Danger Overlay sits INSIDE the game area scaling context */}
                         <DangerOverlay dangerTime={limitTime} />
@@ -372,6 +363,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
 
             </LayoutContainer>
+
+            {/* 1.15 Juice/Water Overlay - Moved OUT of GameArea to be betwen Background and Ground */}
+            {/* Placed here in DOM order: After Background, but z-index controlled to be < Ground (z-5) */}
+            {gameAreaDimensions.width > 0 && (
+                <div
+                    className="fixed overflow-hidden rounded-t-3xl pointer-events-none"
+                    style={{
+                        zIndex: 2, // Above Background (0), Below Ground (5)
+                        width: gameAreaDimensions.width,
+                        height: gameAreaDimensions.height,
+                        top: gameAreaDimensions.top,
+                        left: gameAreaDimensions.left
+                    }}
+                >
+                    <JuiceOverlay
+                        fever={fever}
+                        juice={juice}
+                        dangerYPercent={DANGER_Y_PERCENT}
+                    />
+                </div>
+            )}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
