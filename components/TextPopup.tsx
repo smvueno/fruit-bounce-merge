@@ -53,6 +53,20 @@ export const TextPopup: React.FC<TextPopupProps> = React.memo(({ data, gameAreaT
                 // Already Visible (ACTIVE or IDLE)
                 if (cachedData && data.type !== cachedData.type) {
                     // TYPE CHANGE (Replace old with new)
+
+                    // SPECIAL CASE: Immediate switch for FRENZY
+                    if (data.type === PopUpType.FRENZY) {
+                        clearTimers();
+                        setCachedData(data);
+                        setVisualState('ENTERING'); // Jump striaght to enter
+
+                        transitionTimerRef.current = setTimeout(() => {
+                            setVisualState('ACTIVE');
+                            startIdleTimer();
+                        }, 500);
+                        return;
+                    }
+
                     // 1. Exit Old
                     clearTimers();
                     setVisualState('EXITING');
@@ -234,12 +248,15 @@ export const TextPopup: React.FC<TextPopupProps> = React.memo(({ data, gameAreaT
                         </h1>
 
                         {/* Main Score (Bottom) */}
-                        <div
-                            className="text-5xl md:text-7xl font-black leading-none tracking-wide transition-all duration-300"
-                            style={commonStyle}
-                        >
-                            {cachedData.runningTotal.toLocaleString()}
-                        </div>
+                        {/* Only show score if > 0 (Hides the initial "0" when Frenzy starts) */}
+                        {cachedData.runningTotal > 0 && (
+                            <div
+                                className="text-5xl md:text-7xl font-black leading-none tracking-wide transition-all duration-300"
+                                style={commonStyle}
+                            >
+                                {cachedData.runningTotal.toLocaleString()}
+                            </div>
+                        )}
                     </>
                 )}
 

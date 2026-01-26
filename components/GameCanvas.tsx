@@ -53,7 +53,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
     const [currentStateScore, setCurrentStateScore] = useState(0);
+    const currentStateScoreRef = useRef(0);
     const [latestPointEvent, setLatestPointEvent] = useState<PointEvent | null>(null);
+
+    // Sync Ref with State
+    useEffect(() => {
+        currentStateScoreRef.current = currentStateScore;
+    }, [currentStateScore]);
 
     // New Popup Sync State
     const [popupData, setPopupData] = useState<PopupData | null>(null);
@@ -94,7 +100,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const handleSuckUpComplete = () => {
         if (suckUpPayload !== null) {
             // Now we finally add the batched score to the visible HUD score
-            const newTotal = currentStateScore + suckUpPayload;
+            // Use Ref to avoid stale closure if this callback is captured
+            const newTotal = currentStateScoreRef.current + suckUpPayload;
             setCurrentStateScore(newTotal);
             setScore(newTotal); // Notify App
             setSuckUpPayload(null);
@@ -135,8 +142,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
         const engine = new GameEngine(canvasRef.current, settings, {
             onScore: (amt: number, total: number) => {
-                // Legacy
-                if (total > currentStateScore + (lastPopupTotalRef.current || 0)) {
+                // Legacy - Use Ref to avoid stale closure
+                const current = currentStateScoreRef.current;
+                if (total > current + (lastPopupTotalRef.current || 0)) {
                     setScore(total);
                     setCurrentStateScore(total);
                 }
@@ -175,7 +183,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 setLatestPointEvent(event);
             },
             onPopupUpdate: (data: PopupData) => {
-                if (data.runningTotal > 0) {
+                // Allow trigger if > 0 OR if it's a FRENZY start (which might have 0 score initially)
+                // We identify Frenzy start by type FRENZY and valid multiplier, even if runningTotal is 0
+                if (data.runningTotal > 0 || data.type === PopUpType.FRENZY) {
                     setPopupData(data);
                     lastPopupTotalRef.current = data.runningTotal;
                     lastPopupDataRef.current = data; // Cache for SuckUp layout context
@@ -188,6 +198,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     setPopupColor(c);
 
                 } else if (data.runningTotal === 0) {
+                    // Only suck up if it wasn't a Frenzy start event (which we handled above)
                     triggerSuckUp();
                 }
             }
@@ -221,6 +232,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         if (onPauseChange) onPauseChange(false);
         setScore(0);
         setCurrentStateScore(0);
+        currentStateScoreRef.current = 0; // Reset ref
         setCombo(0);
         setFever(false);
         setJuice(0);

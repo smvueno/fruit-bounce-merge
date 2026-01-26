@@ -101,6 +101,7 @@ export class GameEngine {
     // Frenzy-Chain Suspension Logic
     preFrenzyChain: number = 0;
     preFrenzyStreak: number = 0;
+    currentFrenzyMult: number = 1;
 
     // Optimization: Reused Objects
     private _physicsContext: PhysicsContext;
@@ -445,14 +446,22 @@ export class GameEngine {
             // Only emit if we have value or are in a streak
             // AND we are not in a celebration (which handles its own popups)
             if (!this.celebrationEffect && (this.streakScore > 0 || this.feverActive || this.comboChain > 0)) {
-                const comboMult = 1 + Math.min(this.comboChain, 10);
-                const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
-                const multiplier = comboMult * feverMult;
+
+                let multiplier = 1;
+                let popType = PopUpType.CHAIN;
+
+                if (this.feverActive) {
+                    multiplier = this.currentFrenzyMult;
+                    popType = PopUpType.FRENZY;
+                } else {
+                    const comboMult = 1 + Math.min(this.comboChain, 10);
+                    multiplier = comboMult;
+                }
 
                 this.onPopupUpdate({
                     runningTotal: this.streakScore,
                     multiplier: multiplier,
-                    type: this.feverActive ? PopUpType.FRENZY : PopUpType.CHAIN
+                    type: popType
                 });
 
                 // If we had a batch, clear it (if we were accumulating batch for something else, 
@@ -596,8 +605,25 @@ export class GameEngine {
                 this.audio.playFrenzyStart(); // Start Sound
                 this.feverTimer = FEVER_DURATION_MS;
                 this.stats.feverCount++;
-                const mult = this.stats.feverCount + 1;
-                this.onFeverStart(mult);
+
+                // Calculate Additive Multiplier
+                // Base Frenzy: 1st time = 2x, 2nd = 3x.
+                const frenzyBase = this.stats.feverCount + 1;
+
+                // Chain Bonus from "Saved" state (Chain logic uses 1 + min(chain, 10))
+                const chainMult = 1 + Math.min(this.preFrenzyChain, 10);
+
+                // Additive Formula: Chain + FrenzyBase
+                this.currentFrenzyMult = chainMult + frenzyBase;
+
+                this.onFeverStart(this.currentFrenzyMult);
+
+                // Immediate Visual Feedback (Instant Popup)
+                this.onPopupUpdate({
+                    runningTotal: 0, // Will not show score yet
+                    multiplier: this.currentFrenzyMult,
+                    type: PopUpType.FRENZY
+                });
             }
         }
 
@@ -707,16 +733,27 @@ export class GameEngine {
 
         const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
         // Calculate midX/midY early for message
+        // Calculate midX/midY early for message
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
 
-        this.comboChain++;
-        this.didMergeThisTurn = true;
-        this.onCombo(this.comboChain);
+        let totalPoints = 0;
 
-        const comboMult = 1 + Math.min(this.comboChain, 10);
-        const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
-        const totalPoints = basePoints * comboMult * feverMult;
+        if (this.feverActive) {
+            // FRENZY MODE:
+            // 1. Do NOT increment chain (Paused)
+            // 2. Use Additive Multiplier calculated at start
+            this.didMergeThisTurn = true; // Still mark merge to prevent chain reset logic elsewhere if needed
+            totalPoints = basePoints * this.currentFrenzyMult;
+        } else {
+            // NORMAL MODE:
+            this.comboChain++;
+            this.didMergeThisTurn = true;
+            this.onCombo(this.comboChain);
+
+            const comboMult = 1 + Math.min(this.comboChain, 10);
+            totalPoints = basePoints * comboMult;
+        }
 
         // Emit immediate local event
         this.onPointEvent({
