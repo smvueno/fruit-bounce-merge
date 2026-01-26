@@ -66,6 +66,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const lastPopupTotalRef = useRef(0);
     const lastPopupDataRef = useRef<PopupData | null>(null);
     const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
+    // Ref to track suckUpPayload immediately to prevent race conditions in onScore
+    const suckUpPayloadRef = useRef(0);
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
     // Track fever state for closure access
@@ -91,6 +93,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         const val = lastPopupTotalRef.current;
         if (val > 0) {
             setSuckUpPayload(val);
+            suckUpPayloadRef.current = val;
             engineRef.current?.audio.playScoreFlyUp();
             setPopupData(null); // Clear central popup
             lastPopupTotalRef.current = 0; // Reset accumulator
@@ -105,6 +108,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             setCurrentStateScore(newTotal);
             setScore(newTotal); // Notify App
             setSuckUpPayload(null);
+            suckUpPayloadRef.current = 0;
         }
     };
 
@@ -148,14 +152,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 // Fix for double counting bug:
                 // During streaks (Frenzy/Chain/Celebration), the "total" (engine score) advances immediately,
                 // but we want the UI score to stay behind so the "Suck Up" effect can add the accumulated streak score at the end.
-                // Previously, we compared total vs (current + lastPopupTotal), but lastPopupTotal lagged behind due to batching (100ms),
-                // causing race conditions where the UI score would jump ahead, leading to double counting when the Suck Up happened.
 
-                // New Logic: Calculate what the UI score *should* be (Total minus any pending streak points).
-                // Only update if this "safe base score" has increased.
+                // We must also account for any "flying" points (suckUpPayloadRef) that are in transit visually.
+                // If the engine has reset its streak score (e.g. at Fever End), but the visual Suck Up is still happening,
+                // we must treat those points as "pending" so we don't prematurely update the base score.
+
                 const streak = engineRef.current?.streakScore || 0;
                 const celebration = engineRef.current?.celebrationScore || 0;
-                const targetBaseScore = total - streak - celebration;
+                const pendingSuckUp = suckUpPayloadRef.current || 0;
+
+                // The "Base Score" is the Engine Total minus any points currently in a "Temporary/Visual" state.
+                const targetBaseScore = total - streak - celebration - pendingSuckUp;
 
                 if (targetBaseScore > current) {
                     setScore(targetBaseScore);
@@ -180,6 +187,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 // Use the explicit score if provided to avoid race condition with chain restore
                 if (typeof finalScore === 'number' && finalScore > 0) {
                     setSuckUpPayload(finalScore);
+                    suckUpPayloadRef.current = finalScore;
                     engineRef.current?.audio.playScoreFlyUp();
                     setPopupData(null);
                     lastPopupTotalRef.current = 0;
