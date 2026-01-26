@@ -569,6 +569,13 @@ export class GameEngine {
             }
 
             if (this.feverTimer <= 0) {
+                // FORCE FINAL UPDATE to ensure UI has the full Frenzy score for "Suck Up"
+                this.onPopupUpdate({
+                    runningTotal: this.streakScore,
+                    multiplier: this.currentFrenzyMult,
+                    type: PopUpType.FRENZY
+                });
+
                 this.feverActive = false;
                 this.audio.setFrenzy(false);
                 this.audio.playFrenzyEnd(); // End Sound
@@ -614,7 +621,9 @@ export class GameEngine {
                 const chainMult = 1 + Math.min(this.preFrenzyChain, 10);
 
                 // Additive Formula: Chain + FrenzyBase
-                this.currentFrenzyMult = chainMult + frenzyBase;
+                // User Request Update: Multiply them for crazier scores!
+                // If Chain was 4x and Frenzy is 2x -> 4 * 2 = 8x.
+                this.currentFrenzyMult = chainMult * frenzyBase;
 
                 this.onFeverStart(this.currentFrenzyMult);
 
