@@ -1,11 +1,11 @@
 import * as PIXI from 'pixi.js';
-import { FruitDef, FruitTier, Difficulty, GameSettings, GameStats } from '../types';
-import { FRUIT_DEFS, DIFFICULTY_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { FruitDef, FruitTier, GameSettings, GameStats, PointEvent, PopupData, PopUpType } from '../types';
+import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
 import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
 
 // Systems
-import { PhysicsSystem, PhysicsCallbacks } from './systems/PhysicsSystem';
+import { PhysicsSystem, PhysicsCallbacks, PhysicsContext } from './systems/PhysicsSystem';
 import { InputSystem } from './systems/InputSystem';
 import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
@@ -20,7 +20,6 @@ export class GameEngine {
     // PIXI references (Managed by RenderSystem mainly, but Engine holds App for Lifecycle)
     app: PIXI.Application | undefined;
     container: PIXI.Container;
-    effectContainer: PIXI.Container;
 
     // Systems
     physicsSystem: PhysicsSystem;
@@ -37,7 +36,6 @@ export class GameEngine {
     height: number = V_HEIGHT;
     scaleFactor: number = 1;
 
-    difficulty: Difficulty;
     settings: GameSettings;
     destroyed: boolean = false;
     initializing: boolean = false;
@@ -68,12 +66,20 @@ export class GameEngine {
     onTimeUpdate: (ms: number) => void = () => { };
     onSaveUpdate: (tier: FruitTier | null) => void = () => { };
     onCelebration: () => void = () => { };
+    onPointEvent: (event: PointEvent) => void = () => { };
+    onPopupUpdate: (data: PopupData) => void = () => { };
 
     score: number = 0;
     stats: GameStats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
 
     comboChain: number = 0;
+    streakScore: number = 0;
+    celebrationScore: number = 0; // Separate tracker for WC event
     didMergeThisTurn: boolean = false;
+
+    // Batching State
+    scoreBatch: number = 0;
+    scoreBatchTimer: number = 0;
 
     feverActive: boolean = false;
     feverTimer: number = 0;
@@ -85,26 +91,35 @@ export class GameEngine {
     dangerTimer: number = 0;
     dangerActive: boolean = false;
     dangerAccumulator: number = 0;
+    isOverLimit: boolean = false;
     readonly DANGER_TRIGGER_DELAY: number = 3000;
 
     // Spawn Logic State
     consecutiveNonSpecialCount: number = 0;
     generatedFruitCount: number = 0;
 
+    // Frenzy-Chain Suspension Logic
+    preFrenzyChain: number = 0;
+    preFrenzyStreak: number = 0;
+    currentFrenzyMult: number = 1;
+
+    // Optimization: Reused Objects
+    private _physicsContext: PhysicsContext;
+    private _physicsCallbacks: PhysicsCallbacks;
+
+    private spawnTimeout: any = null;
+
     constructor(
         canvas: HTMLCanvasElement,
-        difficulty: Difficulty,
         settings: GameSettings,
         callbacks: any
     ) {
         this.canvasElement = canvas;
-        this.difficulty = difficulty;
         this.settings = settings;
         Object.assign(this, callbacks);
 
         // Core PIXI Containers
         this.container = new PIXI.Container();
-        this.effectContainer = new PIXI.Container();
 
         // Initialize Systems
         this.physicsSystem = new PhysicsSystem();
@@ -113,6 +128,27 @@ export class GameEngine {
         this.renderSystem = new RenderSystem();
 
         this.audio = new MusicEngine(this.settings.musicEnabled, this.settings.sfxEnabled);
+
+        // Optimization: Initialize reusable objects
+        this._physicsContext = {
+            fruits: [],
+            activeTomatoes: [],
+            activeBombs: [],
+            celebrationEffect: null,
+            currentFruit: null,
+            isAiming: false,
+            dragAnchorX: 0,
+            dragAnchorY: 0,
+            width: this.width,
+            height: this.height
+        };
+
+        this._physicsCallbacks = {
+            onMerge: (p1, p2) => this.merge(p1, p2),
+            onBombExplosion: (bomb) => this.handleBombExplosion(bomb),
+            onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
+            onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
+        };
     }
 
     setPaused(paused: boolean) {
@@ -166,11 +202,10 @@ export class GameEngine {
         // Initial Resize
         this.handleResize();
 
-        this.app.stage.addChild(this.effectContainer);
         this.app.stage.addChild(this.container);
 
         // Initialize Render System
-        this.renderSystem.initialize(this.app, this.container, this.effectContainer);
+        this.renderSystem.initialize(this.app, this.container);
         const containerY = this.container.position.y || 0;
 
         // Ground now rendered by GroundCanvas component (see GameCanvas.tsx)
@@ -178,6 +213,7 @@ export class GameEngine {
 
         // Start Game
         this.spawnNextFruit();
+        this.app.ticker.maxFPS = 60; // Lock to 60 FPS for consistent physics speed
         this.app.ticker.add(this.update.bind(this));
 
         // Input Handling
@@ -208,7 +244,6 @@ export class GameEngine {
 
         this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
         this.container.scale.set(this.scaleFactor);
-        this.effectContainer.scale.set(this.scaleFactor);
 
         // Center the container in the canvas
         const logicalW = V_WIDTH * this.scaleFactor;
@@ -218,7 +253,6 @@ export class GameEngine {
         const yOffset = (actualH - logicalH) / 2;
 
         this.container.position.set(xOffset, yOffset);
-        this.effectContainer.position.set(xOffset, yOffset);
     }
 
     reset() {
@@ -226,6 +260,11 @@ export class GameEngine {
         this.effectSystem.reset();
         this.renderSystem.reset();
         this.inputSystem.reset(); // Clear pointer history
+
+        if (this.spawnTimeout) {
+            clearTimeout(this.spawnTimeout);
+            this.spawnTimeout = null;
+        }
 
         // 2. Clear Game State
         this.fruits = [];
@@ -237,9 +276,16 @@ export class GameEngine {
         this.score = 0;
         this.stats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
         this.comboChain = 0;
+        this.streakScore = 0;
+        this.scoreBatch = 0;
+        this.scoreBatchTimer = 0;
+
         this.didMergeThisTurn = false;
+
         this.feverActive = false;
         this.feverTimer = 0;
+        this.currentFrenzyMult = 1;
+
         this.juice = 0;
         this.dangerTimer = 0;
         this.dangerActive = false;
@@ -248,6 +294,9 @@ export class GameEngine {
         this.canDrop = true;
         this.consecutiveNonSpecialCount = 0;
         this.generatedFruitCount = 0;
+
+        this.preFrenzyChain = 0;
+        this.preFrenzyStreak = 0;
 
         // 3. Update UI
         this.onScore(0, 0);
@@ -260,6 +309,7 @@ export class GameEngine {
 
         // 4. Restart
         this.setPaused(false);
+        this.audio.reset(); // Restart music from intro
         this.savedFruitTier = null;
         this.canSwap = true;
         this.onSaveUpdate(null);
@@ -315,6 +365,16 @@ export class GameEngine {
             if (!this.didMergeThisTurn) {
                 this.comboChain = 0;
                 this.onCombo(0);
+                // Reset streak if not in fever
+                if (!this.feverActive) {
+                    this.streakScore = 0;
+                    this.onPopupUpdate({
+                        runningTotal: 0,
+                        multiplier: 1,
+                        type: PopUpType.CHAIN // Value doesn't matter for reset, just need clean state? specific type?
+                        // Actually, just sending 0 might be enough for UI to close
+                    });
+                }
             }
             this.didMergeThisTurn = false;
 
@@ -326,11 +386,14 @@ export class GameEngine {
             this.currentFruit = null;
             this.canDrop = false;
 
-            const config = DIFFICULTY_CONFIG[this.difficulty];
-            setTimeout(() => {
+            // Clear any existing timeout just in case
+            if (this.spawnTimeout) clearTimeout(this.spawnTimeout);
+
+            this.spawnTimeout = setTimeout(() => {
                 this.canDrop = true;
+                this.spawnTimeout = null;
                 this.spawnNextFruit();
-            }, config.spawnDelay);
+            }, GAME_CONFIG.spawnDelay);
         }
     }
 
@@ -345,28 +408,19 @@ export class GameEngine {
         this.updateGameLogic(dtMs);
 
         // 2. Update Physics
-        const physicsContext = {
-            fruits: this.fruits,
-            activeTomatoes: this.activeTomatoes,
-            activeBombs: this.activeBombs,
-            celebrationEffect: this.celebrationEffect,
-            currentFruit: this.currentFruit,
-            isAiming: this.inputSystem.isAiming,
-            dragAnchorX: this.inputSystem.dragAnchorX,
-            dragAnchorY: this.inputSystem.dragAnchorY,
-            width: this.width,
-            height: this.height,
-            difficulty: this.difficulty
-        };
+        // Optimization: Reuse object to reduce GC
+        this._physicsContext.fruits = this.fruits;
+        this._physicsContext.activeTomatoes = this.activeTomatoes;
+        this._physicsContext.activeBombs = this.activeBombs;
+        this._physicsContext.celebrationEffect = this.celebrationEffect;
+        this._physicsContext.currentFruit = this.currentFruit;
+        this._physicsContext.isAiming = this.inputSystem.isAiming;
+        this._physicsContext.dragAnchorX = this.inputSystem.dragAnchorX;
+        this._physicsContext.dragAnchorY = this.inputSystem.dragAnchorY;
+        this._physicsContext.width = this.width;
+        this._physicsContext.height = this.height;
 
-        const callbacks: PhysicsCallbacks = {
-            onMerge: (p1, p2) => this.merge(p1, p2),
-            onBombExplosion: (bomb) => this.handleBombExplosion(bomb),
-            onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
-            onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
-        };
-
-        this.physicsSystem.update(dt, physicsContext, callbacks);
+        this.physicsSystem.update(dt, this._physicsContext, this._physicsCallbacks);
 
         // 3. Update Effects
         const effectContext = {
@@ -383,7 +437,7 @@ export class GameEngine {
         this.audio.update();
 
         // 5. Render
-        this.renderSystem.drawDangerLine(this.width, this.height, this.dangerActive);
+        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
 
         // Sync Render State
         const renderCtx = {
@@ -394,8 +448,8 @@ export class GameEngine {
         };
         this.renderSystem.renderSync(renderCtx);
 
-        // Draw Effects
-        this.renderSystem.renderEffects(this.effectSystem.visualParticles, this.height);
+        // Draw Effects - Moved to React EffectCanvas
+        // this.renderSystem.renderEffects(this.effectSystem.visualParticles, this.height);
     }
 
     // --- Game Logic Methods ---
@@ -403,6 +457,37 @@ export class GameEngine {
     updateGameLogic(dtMs: number) {
         this.stats.timePlayed += dtMs;
         this.onTimeUpdate(this.stats.timePlayed);
+
+        // Score Batching Logic (100ms)
+        this.scoreBatchTimer += dtMs;
+        if (this.scoreBatchTimer >= 100) {
+            this.scoreBatchTimer = 0;
+            // Only emit if we have value or are in a streak
+            // AND we are not in a celebration (which handles its own popups)
+            if (!this.celebrationEffect && (this.streakScore > 0 || this.feverActive || this.comboChain > 0)) {
+
+                let multiplier = 1;
+                let popType = PopUpType.CHAIN;
+
+                if (this.feverActive) {
+                    multiplier = this.currentFrenzyMult;
+                    popType = PopUpType.FRENZY;
+                } else {
+                    const comboMult = 1 + Math.min(this.comboChain, 10);
+                    multiplier = comboMult;
+                }
+
+                this.onPopupUpdate({
+                    runningTotal: this.streakScore,
+                    multiplier: multiplier,
+                    type: popType
+                });
+
+                // If we had a batch, clear it (if we were accumulating batch for something else, 
+                // but here we are using streakScore for the running total)
+                this.scoreBatch = 0;
+            }
+        }
 
         // Update Timers for Active Effects
         // Tomato Timer
@@ -455,7 +540,7 @@ export class GameEngine {
                 this.audio.playBombTick(1.0 - (b.timer / b.maxTime)); // Pitch up as it gets closer
             } else if (b.timer < 1.5 && b.timer > 0) {
                 // play extra tick at .5
-                if ((b.timer + (dtMs/1000)) >= (currentSec - 0.5) && b.timer < (currentSec - 0.5)) {
+                if ((b.timer + (dtMs / 1000)) >= (currentSec - 0.5) && b.timer < (currentSec - 0.5)) {
                     this.audio.playBombTick(1.0);
                 }
             }
@@ -503,22 +588,70 @@ export class GameEngine {
             }
 
             if (this.feverTimer <= 0) {
+                // FORCE FINAL UPDATE to ensure UI has the full Frenzy score for "Suck Up"
+                this.onPopupUpdate({
+                    runningTotal: this.streakScore,
+                    multiplier: this.currentFrenzyMult,
+                    type: PopUpType.FRENZY
+                });
+
                 this.feverActive = false;
                 this.audio.setFrenzy(false);
                 this.audio.playFrenzyEnd(); // End Sound
                 this.juice = 0;
                 this.onJuiceUpdate(0, JUICE_MAX);
                 this.onFeverEnd();
+
+                // Fever ended - Restore previous Chain State
+                this.comboChain = this.preFrenzyChain;
+                this.streakScore = this.preFrenzyStreak;
+
+                // Resume Chain Visual if it existed
+                if (this.streakScore > 0) {
+                    const comboMult = 1 + Math.min(this.comboChain, 10);
+                    this.onPopupUpdate({
+                        runningTotal: this.streakScore,
+                        multiplier: comboMult,
+                        type: PopUpType.CHAIN
+                    });
+                }
             }
         } else {
             if (this.juice >= JUICE_MAX && !this.feverActive) {
+                // Save Chain State before starting Frenzy
+                this.preFrenzyChain = this.comboChain;
+                this.preFrenzyStreak = this.streakScore;
+
+                // Reset Chain for Frenzy Session (start fresh 0 multiplier)
+                this.comboChain = 0;
+                this.streakScore = 0;
+
                 this.feverActive = true;
                 this.audio.setFrenzy(true);
                 this.audio.playFrenzyStart(); // Start Sound
                 this.feverTimer = FEVER_DURATION_MS;
                 this.stats.feverCount++;
-                const mult = this.stats.feverCount + 1;
-                this.onFeverStart(mult);
+
+                // Calculate Additive Multiplier
+                // Base Frenzy: 1st time = 2x, 2nd = 3x.
+                const frenzyBase = this.stats.feverCount + 1;
+
+                // Chain Bonus from "Saved" state (Chain logic uses 1 + min(chain, 10))
+                const chainMult = 1 + Math.min(this.preFrenzyChain, 10);
+
+                // Additive Formula: Chain + FrenzyBase
+                // User Request Update: Multiply them for crazier scores!
+                // If Chain was 4x and Frenzy is 2x -> 4 * 2 = 8x.
+                this.currentFrenzyMult = chainMult * frenzyBase;
+
+                this.onFeverStart(this.currentFrenzyMult);
+
+                // Immediate Visual Feedback (Instant Popup)
+                this.onPopupUpdate({
+                    runningTotal: 0, // Will not show score yet
+                    multiplier: this.currentFrenzyMult,
+                    type: PopUpType.FRENZY
+                });
             }
         }
 
@@ -526,11 +659,12 @@ export class GameEngine {
         const dangerY = this.height * DANGER_Y_PERCENT;
         let inDangerZone = false;
         for (const f of this.fruits) {
-            if (!f.isStatic && f.y - f.radius < dangerY) {
+            if (!f.isStatic && !f.isCaught && f.y - f.radius < dangerY) {
                 inDangerZone = true;
                 break;
             }
         }
+        this.isOverLimit = inDangerZone;
         if (inDangerZone) {
             this.dangerAccumulator += dtMs;
             if (this.dangerAccumulator > this.DANGER_TRIGGER_DELAY) {
@@ -626,13 +760,40 @@ export class GameEngine {
         if (nextTier > FruitTier.WATERMELON) nextTier = FruitTier.WATERMELON;
 
         const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
-        this.comboChain++;
-        this.didMergeThisTurn = true;
-        this.onCombo(this.comboChain);
+        // Calculate midX/midY early for message
+        // Calculate midX/midY early for message
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
 
-        const comboMult = 1 + Math.min(this.comboChain, 10);
-        const feverMult = this.feverActive ? (this.stats.feverCount + 1) : 1;
-        const totalPoints = basePoints * comboMult * feverMult;
+        let totalPoints = 0;
+
+        if (this.feverActive) {
+            // FRENZY MODE:
+            // 1. Do NOT increment chain (Paused)
+            // 2. Use Additive Multiplier calculated at start
+            this.didMergeThisTurn = true; // Still mark merge to prevent chain reset logic elsewhere if needed
+            totalPoints = basePoints * this.currentFrenzyMult;
+        } else {
+            // NORMAL MODE:
+            this.comboChain++;
+            this.didMergeThisTurn = true;
+            this.onCombo(this.comboChain);
+
+            const comboMult = 1 + Math.min(this.comboChain, 10);
+            totalPoints = basePoints * comboMult;
+        }
+
+        // Emit immediate local event
+        this.onPointEvent({
+            x: midX,
+            y: midY,
+            points: totalPoints,
+            tier: nextTier
+        });
+
+        // Accumulate Score
+        this.streakScore += totalPoints;
+        this.scoreBatch += totalPoints;
 
         this.addScore(totalPoints);
         this.stats.bestCombo = Math.max(this.stats.bestCombo, this.comboChain);
@@ -643,9 +804,6 @@ export class GameEngine {
 
         this.removeParticle(p1);
         this.removeParticle(p2);
-
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
 
         const nextDef = FRUIT_DEFS[nextTier as FruitTier];
         const newP = new Particle(midX, midY, nextDef, this.nextId++);
@@ -684,16 +842,40 @@ export class GameEngine {
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(30);
     }
 
+    /**
+     * Helper method to handle common effect conclusion logic.
+     * Reduces code duplication between tomato and bomb effects.
+     * Returns the release position where particles should be spawned.
+     */
+    private prepareEffectConclusion(
+        effectParticle: Particle | undefined,
+        fallbackX: number,
+        fallbackY: number,
+        onRemove?: () => void
+    ): { releaseX: number; releaseY: number } {
+        let releaseX = fallbackX;
+        let releaseY = fallbackY;
+
+        if (effectParticle) {
+            releaseX = effectParticle.x;
+            releaseY = effectParticle.y;
+            this.removeParticle(effectParticle);
+            if (onRemove) onRemove();
+        }
+
+        return { releaseX, releaseY };
+    }
+
     concludeTomatoEffect(effect: TomatoEffect) {
         const tomato = this.fruits.find(p => p.id === effect.tomatoId);
-        let releaseX = effect.x;
-        let releaseY = effect.y;
-        if (tomato) {
-            releaseX = tomato.x;
-            releaseY = tomato.y;
-            this.removeParticle(tomato);
-            this.stats.tomatoUses++;
-        }
+        const { releaseX, releaseY } = this.prepareEffectConclusion(
+            tomato,
+            effect.x,
+            effect.y,
+            () => this.stats.tomatoUses++
+        );
+
+        // Release captured fruits with restored properties
         for (const id of effect.capturedIds) {
             const p = this.fruits.find(f => f.id === id);
             if (p) {
@@ -711,10 +893,10 @@ export class GameEngine {
                 p.vy = Math.sin(angle) * force - 3;
             }
         }
+
+        // Visual and audio effects
         this.effectSystem.createMergeEffect(releaseX, releaseY, "#FF4444");
         this.applyShockwave(releaseX, releaseY, 600, 40);
-
-        // Play Bomb Sound (Watermelon tier + extra bass)
         this.audio.playMergeSound(FruitTier.WATERMELON);
 
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([50, 50]);
@@ -722,17 +904,15 @@ export class GameEngine {
 
     concludeBombEffect(effect: BombEffect) {
         const bomb = this.fruits.find(p => p.id === effect.bombId);
-        let releaseX = effect.x;
-        let releaseY = effect.y;
-
-        if (bomb) {
-            releaseX = bomb.x;
-            releaseY = bomb.y;
-            this.removeParticle(bomb);
-        }
+        const { releaseX, releaseY } = this.prepareEffectConclusion(
+            bomb,
+            effect.x,
+            effect.y
+        );
 
         this.effectSystem.createGhostEffect(releaseX, releaseY, 28);
 
+        // Process each captured fruit - split into smaller fruits
         for (const id of effect.capturedIds) {
             const p = this.fruits.find(f => f.id === id);
             if (!p) continue;
@@ -780,11 +960,10 @@ export class GameEngine {
             this.effectSystem.createMergeEffect(fruitX, fruitY, fruitColor);
         }
 
+        // Visual and audio effects
         this.effectSystem.createMergeEffect(releaseX, releaseY, "#212121");
         this.applyShockwave(releaseX, releaseY, 600, 40);
         this.audio.playMergeSound(FruitTier.WATERMELON);
-
-        // Play Shrapnel Sound
         this.audio.playBombShrapnel();
 
         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate([100, 50, 100]);
@@ -805,7 +984,7 @@ export class GameEngine {
 
         const capturedIds: number[] = [];
         for (const p of this.fruits) {
-            if (p.isStatic || p.tier > FruitTier.GRAPE) continue;
+            if (p.isStatic) continue;
 
             p.isCaught = true;
             p.ignoreCollisions = true;
@@ -823,7 +1002,32 @@ export class GameEngine {
             this.onMaxFruit(this.stats.maxTier);
         }
 
-        this.addScore(5000);
+        // Initialize score sequence
+        // 1. Flush any existing streak visual first to avoid "lost" score
+        if (this.streakScore > 0) {
+            this.onPopupUpdate({
+                runningTotal: 0, // Sending 0 triggers the "Suck Up" in GameCanvas
+                multiplier: 1,
+                type: PopUpType.CHAIN
+            });
+        }
+
+        // 2. Calculate Base Score for Celebration (5000)
+        let baseScore = 5000;
+        if (this.feverActive) {
+            baseScore *= this.currentFrenzyMult;
+        }
+
+        this.celebrationScore = baseScore;
+        this.streakScore = 0; // Clear any pending main game streak
+        this.addScore(baseScore);
+
+        // Trigger Popup
+        this.onPopupUpdate({
+            type: PopUpType.WATERMELON_CRUSH,
+            runningTotal: this.celebrationScore,
+            multiplier: 1
+        });
     }
 
     updateCelebrationLogic(dtMs: number) {
@@ -845,44 +1049,79 @@ export class GameEngine {
             }
 
             if (allArrived || state.timer > 3000) {
-                state.phase = 'hold';
+                state.phase = 'pop'; // Go to POP phase instead of HOLD/EXPLODE
                 state.timer = 0;
+                state.popTimer = 0;
+                state.popIndex = 0;
             }
-        } else if (state.phase === 'hold') {
-            if (state.timer > 500) {
-                state.phase = 'explode';
+        } else if (state.phase === 'pop') {
+            const POP_INTERVAL = 100; // ms between pops
+            state.popTimer += dtMs;
 
-                const targetX = this.width / 2;
-                const targetY = this.height * SPAWN_Y_PERCENT;
+            if (state.popTimer >= POP_INTERVAL) {
+                state.popTimer -= POP_INTERVAL;
 
-                this.effectSystem.createMergeEffect(targetX, targetY, "#FFD700");
-                this.audio.playMergeSound(FruitTier.RAINBOW);
+                if (state.popIndex < state.capturedIds.length) {
+                    const id = state.capturedIds[state.popIndex];
+                    state.popIndex++;
 
-                for (const id of state.capturedIds) {
                     const p = this.fruits.find(f => f.id === id);
-                    if (!p) continue;
+                    if (p) {
+                        const tier = p.tier;
+                        // Calculate Points (Base merge points for that tier)
+                        // Formula: BASE * 2^tier
+                        let points = SCORE_BASE_MERGE * Math.pow(2, tier) * 2; // Double points for clearing!
 
-                    p.isCaught = false;
-                    p.ignoreCollisions = false;
+                        // Apply Frenzy Multiplier if active
+                        if (this.feverActive) {
+                            points *= this.currentFrenzyMult;
+                        }
+                        this.addScore(points);
+                        this.celebrationScore += points;
 
-                    const angle = Math.random() * Math.PI * 2;
-                    const force = 10 + Math.random() * 15;
-                    p.vx = Math.cos(angle) * force;
-                    p.vy = Math.sin(angle) * force + 5;
-                    p.cooldownTimer = 1.0;
+                        // Visual & Audio
+                        this.effectSystem.createMergeEffect(p.x, p.y, FRUIT_DEFS[tier].color);
+                        this.audio.playMergeSound(tier);
+                        if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(10);
+
+                        this.removeParticle(p);
+
+                        // Update Popup
+                        this.onPopupUpdate({
+                            type: PopUpType.WATERMELON_CRUSH,
+                            runningTotal: this.celebrationScore,
+                            multiplier: 1
+                        });
+                    }
+
+                    // If we just popped the last one, end logic
+                    if (state.popIndex >= state.capturedIds.length) {
+                        this.celebrationEffect = null;
+                        this.audio.playBombShrapnel(); // Final sound
+
+                        // Finish: Trigger Suck Up logic (sending 0 resets and sucks)
+                        this.onPopupUpdate({
+                            type: PopUpType.WATERMELON_CRUSH,
+                            runningTotal: 0,
+                            multiplier: 1
+                        });
+                        this.celebrationScore = 0;
+                    }
+                } else {
+                    this.celebrationEffect = null;
                 }
-
-                this.celebrationEffect = null;
             }
         }
     }
 
     applyShockwave(x: number, y: number, radius: number, force: number) {
+        const radiusSq = radius * radius;
         for (const p of this.fruits) {
             const dx = p.x - x;
             const dy = p.y - y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < radius && d > 0) {
+            const distSq = dx * dx + dy * dy;
+            if (distSq < radiusSq && distSq > 0) {
+                const d = Math.sqrt(distSq);
                 const factor = 1 - d / radius;
                 p.vx += (dx / d) * force * factor;
                 p.vy += (dy / d) * force * factor;
@@ -973,7 +1212,8 @@ export class GameEngine {
     addScore(amt: number) {
         this.score += Math.floor(amt);
         this.stats.score = this.score;
-        this.onScore(Math.floor(amt), this.score);
+        // DISABLED for now to decouple Real score from Display score (per Task 2 requirements)
+        // this.onScore(Math.floor(amt), this.score); 
     }
 
     gameOver() {

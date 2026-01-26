@@ -48,31 +48,31 @@ self.addEventListener('fetch', (event) => {
     if (request.url.includes('supabase.co')) {
         // For leaderboard endpoints, use stale-while-revalidate
         if (request.url.includes('/leaderboard')) {
+            // Network First Strategy for Leaderboard
+            // We need fresh data for Realtime updates.
+            // 1. Try Network
+            // 2. If successful, update cache and return
+            // 3. If failed (offline), return cached response
             event.respondWith(
-                caches.match(request).then((cachedResponse) => {
-                    // Fetch fresh data in the background
-                    const fetchPromise = fetch(request).then((networkResponse) => {
-                        // Clone BEFORE using the response to avoid "body already used" error
+                fetch(request)
+                    .then((networkResponse) => {
+                        // Clone response to cache it
                         const responseToCache = networkResponse.clone();
 
-                        // Update cache with fresh data (async, no await needed)
                         if (networkResponse.ok) {
                             caches.open(CACHE_NAME).then((cache) => {
                                 cache.put(request, responseToCache);
                             });
                         }
-
                         return networkResponse;
-                    }).catch(() => {
-                        // Network failed, return cached if available
-                        return cachedResponse;
-                    });
-
-                    // Return cached response immediately if available, otherwise wait for network
-                    return cachedResponse || fetchPromise;
-                })
+                    })
+                    .catch(() => {
+                        // Network failed (offline), try cache
+                        return caches.match(request);
+                    })
             );
         } else {
+
             // For other Supabase calls (auth, etc.), always use network
             return event.respondWith(fetch(request));
         }
@@ -118,6 +118,17 @@ self.addEventListener('fetch', (event) => {
                 return fetch(fetchRequest).then((response) => {
                     // Check if valid response
                     if (!response || response.status !== 200 || response.type !== 'basic') {
+                        return response;
+                    }
+
+                    // SAFETY CHECK: In SPA mode, 404s often return index.html (text/html).
+                    // We must NOT cache index.html as a script or css file!
+                    const contentType = response.headers.get('content-type');
+                    const isHTML = contentType && contentType.includes('text/html');
+                    const isAsset = request.url.match(/\.(js|css|png|jpg|jpeg|svg|json)$/i);
+
+                    if (isAsset && isHTML) {
+                        console.warn('⚠️ Preventing caching of HTML response for asset:', request.url);
                         return response;
                     }
 

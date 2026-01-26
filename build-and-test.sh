@@ -4,7 +4,7 @@
 set -e
 
 echo "========================================"
-echo "    Fruit Bounce Merge - Build & Test   "
+echo "    FRUITY FUSE: Flick & Bounce - Build & Test   "
 echo "========================================"
 
 # Clean up previous build
@@ -21,7 +21,7 @@ echo ""
 echo "========================================"
 echo "    Starting Local Preview Server       "
 echo "========================================"
-echo "ℹ️  The app will be served at: http://localhost:4173/fruit-bounce-merge/"
+echo "ℹ️  The app will be served at: http://localhost:4173/"
 echo "ℹ️  Press Ctrl+C to stop the server"
 echo ""
 

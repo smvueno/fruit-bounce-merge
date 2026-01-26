@@ -5,7 +5,7 @@ interface GameAreaProps {
     canvasRef: React.RefObject<HTMLCanvasElement>;
 }
 
-export const GameArea: React.FC<GameAreaProps> = ({ children, canvasRef }) => {
+export const GameArea: React.FC<GameAreaProps> = React.memo(({ children, canvasRef }) => {
     return (
         <div className="relative w-full aspect-[4/5] bg-transparent overflow-visible">
             {/* The Actual Game Canvas */}
@@ -25,4 +25,4 @@ export const GameArea: React.FC<GameAreaProps> = ({ children, canvasRef }) => {
 
         </div>
     );
-};
+});

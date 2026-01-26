@@ -125,6 +125,17 @@ export class MusicEngine {
         this.isPlaying = false;
     }
 
+    reset() {
+        this.currentSection = 'intro';
+        this.targetSection = 'loop';
+        this.resetCursors();
+        this.soundQueue = [];
+        if (this.ctx) {
+            this.nextNoteTime = this.ctx.currentTime + 0.1;
+            this.nextSfxTime = this.ctx.currentTime;
+        }
+    }
+
     update() {
         if (!this.ctx || !this.isPlaying) return;
 
@@ -271,39 +282,39 @@ export class MusicEngine {
         }
         // --- LARGE (8, 9, 10) ---
         else if (tier >= 8) {
-             osc.type = 'sawtooth'; // Richer tone
-             // Filter for Thud
-             const filter = this.ctx.createBiquadFilter();
-             filter.type = 'lowpass';
-             filter.frequency.setValueAtTime(600, time); // Higher start than before for audibility
-             filter.frequency.exponentialRampToValueAtTime(150, time + 0.2);
+            osc.type = 'sawtooth'; // Richer tone
+            // Filter for Thud
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(600, time); // Higher start than before for audibility
+            filter.frequency.exponentialRampToValueAtTime(150, time + 0.2);
 
-             osc.disconnect();
-             osc.connect(filter);
-             filter.connect(gain);
+            osc.disconnect();
+            osc.connect(filter);
+            filter.connect(gain);
 
-             // Pitch Drop
-             const baseFreq = TIER_FREQUENCIES[tier];
-             osc.frequency.setValueAtTime(baseFreq, time);
-             osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, time + 0.25);
+            // Pitch Drop
+            const baseFreq = TIER_FREQUENCIES[tier];
+            osc.frequency.setValueAtTime(baseFreq, time);
+            osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, time + 0.25);
 
-             duration = 0.3;
-             volume = 0.85; // Boosted volume
+            duration = 0.3;
+            volume = 0.85; // Boosted volume
 
-             // Add Sub-Bass for Large Fruits too (Watermelon etc)
-             if (tier === 10) {
-                 const sub = this.ctx.createOscillator();
-                 const subGain = this.ctx.createGain();
-                 sub.type = 'sine';
-                 sub.frequency.setValueAtTime(60, time);
-                 sub.frequency.exponentialRampToValueAtTime(40, time + 0.3);
-                 sub.connect(subGain);
-                 subGain.connect(this.masterGain);
-                 subGain.gain.setValueAtTime(0.4, time);
-                 subGain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
-                 sub.start(time);
-                 sub.stop(time + 0.3);
-             }
+            // Add Sub-Bass for Large Fruits too (Watermelon etc)
+            if (tier === 10) {
+                const sub = this.ctx.createOscillator();
+                const subGain = this.ctx.createGain();
+                sub.type = 'sine';
+                sub.frequency.setValueAtTime(60, time);
+                sub.frequency.exponentialRampToValueAtTime(40, time + 0.3);
+                sub.connect(subGain);
+                subGain.connect(this.masterGain);
+                subGain.gain.setValueAtTime(0.4, time);
+                subGain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+                sub.start(time);
+                sub.stop(time + 0.3);
+            }
         }
         // --- MEDIUM (4, 5, 6, 7) ---
         else if (tier >= 4) {
@@ -478,6 +489,125 @@ export class MusicEngine {
 
         osc.start(now);
         osc.stop(now + 0.2);
+    }
+
+    // --- NEW TASK 1 SOUNDS ---
+
+    playScoreTick() {
+        // Ascending pitch chime (800Hz -> 1600Hz)
+        // Louder than merge sound
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.type = 'sine'; // Clean chime
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(1600, now + 0.15);
+
+        gain.gain.setValueAtTime(0.6, now); // Loud!
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+        osc.start(now);
+        osc.stop(now + 0.15);
+    }
+
+    playScoreFlyUp() {
+        // Whoosh + Sparkle
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain || !this.noiseBuffer) return;
+        const now = this.ctx.currentTime;
+
+        // 1. Whoosh (Noise low -> high)
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuffer;
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(200, now);
+        filter.frequency.exponentialRampToValueAtTime(3000, now + 0.4);
+        filter.Q.value = 1;
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.3, now + 0.1);
+        gain.gain.linearRampToValueAtTime(0, now + 0.4);
+
+        src.start(now);
+        src.stop(now + 0.4);
+
+        // 2. Sparkle (High freq trill)
+        const sparkleOsc = this.ctx.createOscillator();
+        const sparkleGain = this.ctx.createGain();
+        sparkleOsc.connect(sparkleGain);
+        sparkleGain.connect(this.masterGain);
+
+        sparkleOsc.type = 'triangle';
+        sparkleOsc.frequency.setValueAtTime(2000, now);
+        sparkleOsc.frequency.linearRampToValueAtTime(4000, now + 0.4);
+
+        // AM Modulation for "sparkle" feel
+        const lfo = this.ctx.createOscillator();
+        lfo.type = 'square';
+        lfo.frequency.value = 30;
+        const lfoGain = this.ctx.createGain();
+        lfoGain.gain.value = 1000; // Depth
+        lfo.connect(lfoGain);
+        lfoGain.connect(sparkleOsc.frequency);
+        lfo.start(now);
+        lfo.stop(now + 0.4);
+
+        sparkleGain.gain.setValueAtTime(0.1, now);
+        sparkleGain.gain.linearRampToValueAtTime(0, now + 0.4);
+
+        sparkleOsc.start(now);
+        sparkleOsc.stop(now + 0.4);
+    }
+
+    playWatermelonFanfare() {
+        // 3-Phase Sequence
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        // Phase 1: Layered Chord (C Major)
+        const chordNotes = [523.25, 659.25, 783.99, 1046.50];
+        chordNotes.forEach((freq) => {
+            this.playTone(freq, 'sawtooth', 0.8, now, 0.3);
+        });
+
+        // Phase 2: Sequential Pops (Arpeggio)
+        const arpeggio = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+        arpeggio.forEach((freq, i) => {
+            // Start after chord slightly
+            this.playTone(freq, 'sine', 0.1, now + 0.5 + (i * 0.08), 0.4);
+        });
+
+        // Phase 3: Finale (Crash + Bass)
+        const finaleTime = now + 1.2;
+        this.playNoise('crash', finaleTime, 0.6);
+        this.playTone(130.81, 'sawtooth', 1.0, finaleTime, 0.5); // C3 low
+        this.playTone(2093.00, 'sine', 1.0, finaleTime, 0.4); // C7 high
+    }
+
+    playChainArpeggio(multiplier: number) {
+        // Multiplier affects speed/pitch
+        if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
+        const now = this.ctx.currentTime;
+
+        const baseRun = [523.25, 659.25, 783.99, 1046.50];
+        // Higher multiplier = faster run
+        const speed = Math.max(0.04, 0.15 - (multiplier * 0.01));
+
+        baseRun.forEach((freq, i) => {
+            const pitchMod = 1 + (multiplier * 0.1); // Shift pitch up slightly with multiplier
+            this.playTone(freq * pitchMod, 'triangle', 0.2, now + (i * speed), 0.3);
+        });
     }
 
     // --- MUSIC PROCESSING ---

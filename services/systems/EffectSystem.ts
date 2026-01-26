@@ -87,11 +87,17 @@ export class EffectSystem {
         if (hasActive) {
             if (this.visualParticles.filter(p => p.type === 'suck').length < 300) {
                 for (const t of activeTomatoes) {
+                    // Fix: Use actual particle position for spawning center
+                    const tomatoParticle = ctx.fruits.find(f => f.id === t.tomatoId);
+                    // Fallback to t.x/t.y if particle somehow missing, though it should exist
+                    const centerX = tomatoParticle ? tomatoParticle.x : t.x;
+                    const centerY = tomatoParticle ? tomatoParticle.y : t.y;
+
                     for (let i = 0; i < 3; i++) {
                         const angle = Math.random() * Math.PI * 2;
                         const spawnR = 180 + Math.random() * 40;
-                        const px = t.x + Math.cos(angle) * spawnR;
-                        const py = t.y + Math.sin(angle) * spawnR;
+                        const px = centerX + Math.cos(angle) * spawnR;
+                        const py = centerY + Math.sin(angle) * spawnR;
 
                         const p = new EffectParticle(px, py, 0xFF4444, 'suck');
                         p.targetId = t.tomatoId;
@@ -165,8 +171,9 @@ export class EffectSystem {
         if (ctx.feverActive) {
             if (Math.random() < 0.3) {
                 const sparkle = new EffectParticle(Math.random() * ctx.width, ctx.height + 20, 0xFFD700, 'star');
-                sparkle.vy = -Math.random() * 2 - 2;
+                sparkle.vy = -Math.random() * 2 - 3; // Slightly faster upward (-3 to -5)
                 sparkle.vx = (Math.random() - 0.5) * 1;
+                sparkle.life = 5.0; // Last long enough to go up the whole screen
                 this.visualParticles.push(sparkle);
             }
         }
@@ -187,8 +194,13 @@ export class EffectSystem {
 
             if (targetTomato) {
                 // --- EVENT HORIZON MODE ---
-                const dx = p.x - targetTomato.x;
-                const dy = p.y - targetTomato.y;
+                // Fix: Use actual particle position as target
+                const tomatoParticle = ctx.fruits.find(f => f.id === targetTomato!.tomatoId);
+                const centerX = tomatoParticle ? tomatoParticle.x : targetTomato.x;
+                const centerY = tomatoParticle ? tomatoParticle.y : targetTomato.y;
+
+                const dx = p.x - centerX;
+                const dy = p.y - centerY;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 const currentAngle = Math.atan2(dy, dx);
 
@@ -203,8 +215,8 @@ export class EffectSystem {
                 const nextAngle = currentAngle + tangentialSpeed;
                 const nextRadius = dist - radialSpeed;
 
-                p.x = targetTomato.x + Math.cos(nextAngle) * nextRadius;
-                p.y = targetTomato.y + Math.sin(nextAngle) * nextRadius;
+                p.x = centerX + Math.cos(nextAngle) * nextRadius;
+                p.y = centerY + Math.sin(nextAngle) * nextRadius;
                 p.color = 0xFF0000;
                 if (p.alpha < 1.0) p.alpha += 0.05;
 

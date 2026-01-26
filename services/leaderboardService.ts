@@ -6,10 +6,7 @@ let cachedLeaderboard: LeaderboardEntry[] = [];
 let lastFetchTime: number | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-/**
- * Get when leaderboard was last fetched
- */
-export const getLastFetchTime = (): number | null => lastFetchTime;
+
 
 /**
  * Check if leaderboard cache is stale
@@ -19,7 +16,7 @@ export const shouldRefreshLeaderboard = (): boolean => {
   return Date.now() - lastFetchTime > CACHE_DURATION;
 };
 
-export const getGlobalLeaderboard = async (limit = 50, force = false): Promise<LeaderboardEntry[]> => {
+export const getGlobalLeaderboard = async (limit = 100, force = false): Promise<LeaderboardEntry[]> => {
   // Return cached data if fresh and not forced
   if (!force && !shouldRefreshLeaderboard() && cachedLeaderboard.length > 0) {
     return cachedLeaderboard;
@@ -111,25 +108,7 @@ export const submitScore = async (entry: LeaderboardEntry): Promise<boolean> => 
   }
 };
 
-/**
- * Tries to upload pending scores.
- * Returns the list of scores that STILL failed to upload (or all of them if offline).
- */
-export const uploadPendingScores = async (pending: LeaderboardEntry[]): Promise<LeaderboardEntry[]> => {
-  if (pending.length === 0) return [];
 
-  const remaining: LeaderboardEntry[] = [];
-
-  // Try to process them one by one (or Promise.all, but one by one is safer for rate limits/errors)
-  for (const entry of pending) {
-    const success = await submitScore(entry);
-    if (!success) {
-      remaining.push(entry);
-    }
-  }
-
-  return remaining;
-};
 
 import { loadData, saveData } from '../utils/storage';
 import { offlineManager } from './offlineManager';
@@ -165,13 +144,14 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
       // Keep track of which specific entries (by unique props) succeeded
       const successIndices: number[] = [];
 
-      for (let i = 0; i < pendingToUpload.length; i++) {
-        const entry = pendingToUpload[i];
-        const success = await submitScore(entry);
+      // Parallelize uploads for performance
+      const results = await Promise.all(pendingToUpload.map(entry => submitScore(entry)));
+
+      results.forEach((success, i) => {
         if (success) {
           successIndices.push(i);
         }
-      }
+      });
 
       if (successIndices.length > 0) {
         // Critical: Re-load data to ensure we don't overwrite any NEW pending scores 
@@ -205,7 +185,7 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
     }
 
     // 4. Fetch Global (force refresh)
-    const global = await getGlobalLeaderboard(50, true);
+    const global = await getGlobalLeaderboard(100, true);
     return global;
   } catch (e) {
     console.error('Error during sync:', e);
@@ -220,7 +200,7 @@ export const performFullSync = async (): Promise<LeaderboardEntry[] | null> => {
  * Supabase Realtime subscription for live leaderboard updates
  */
 let realtimeChannel: any = null;
-let lastRealtimeFetch = 0; // Timestamp of last fetch triggered by Realtime
+let realtimeDebounceTimer: any = null;
 
 /**
  * Subscribe to live leaderboard updates via Supabase Realtime
@@ -240,26 +220,27 @@ export const subscribeToLeaderboard = (callback: (newScores: LeaderboardEntry[])
     .on(
       'postgres_changes',
       {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'leaderboard'
       },
       (payload) => {
-        console.log('New score detected via Realtime:', payload);
+        console.log('Leaderboard change detected via Realtime:', payload);
 
-        // Throttle fetches to once every 10 seconds max, even if multiple INSERTs occur
-        const now = Date.now();
-        if (now - lastRealtimeFetch > 10000) { // 10 second throttle
-          lastRealtimeFetch = now;
-          // Fetch updated leaderboard and call callback
-          getGlobalLeaderboard(50, true).then(scores => {
+        // Debounce fetches to prevent flooding
+        // If a fetch is already scheduled, clear it and restart timer
+        if (realtimeDebounceTimer) {
+          clearTimeout(realtimeDebounceTimer);
+        }
+
+        realtimeDebounceTimer = setTimeout(() => {
+          console.log('Fetching leaderboard after debounce...');
+          getGlobalLeaderboard(100, true).then(scores => {
             callback(scores);
           }).catch(err => {
             console.error('Failed to fetch leaderboard after Realtime event:', err);
           });
-        } else {
-          console.log('Throttling Realtime fetch - too soon since last fetch');
-        }
+        }, 1000); // 1 second debounce
       }
     )
     .subscribe((status) => {

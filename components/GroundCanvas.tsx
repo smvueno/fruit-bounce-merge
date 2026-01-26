@@ -7,7 +7,9 @@ interface GroundCanvasProps {
     containerLeft: number;
 }
 
-export const GroundCanvas: React.FC<GroundCanvasProps> = ({
+const V_WIDTH = 600; // Virtual width from GameEngine (must match!)
+
+export const GroundCanvas: React.FC<GroundCanvasProps> = React.memo(({
     gameAreaWidth,
     gameAreaHeight,
     containerTop,
@@ -15,9 +17,12 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = ({
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    // Helper function to calculate wavy floor Y position (matches RenderSystem)
-    const getFloorY = (x: number, baseY: number): number => {
-        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
+    // Helper function to calculate wavy floor Y position (matches RenderSystem LOGIC but needs SCALING)
+    // Physics: baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
+    // x is Virtual X (0..600).
+    // Result is Virtual Y offset.
+    const getVirtualFloorOffset = (virtualX: number): number => {
+        return Math.sin(virtualX * 0.015) * 10 + Math.cos(virtualX * 0.04) * 5;
     };
 
     useEffect(() => {
@@ -46,9 +51,17 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = ({
             // Clear canvas
             ctx.clearRect(0, 0, width, height);
 
+            // scaleFactor: How many pixels per 1 virtual unit?
+            // gameAreaWidth corresponds to V_WIDTH (600).
+            const scaleFactor = gameAreaWidth / V_WIDTH;
+
             // Calculate the game area's floor position in viewport coordinates
-            // The floor is at height - 60 in game coordinates
-            const gameFloorOffset = 60; // Distance from bottom of game area
+            // The floor is at height - 15 in VIRTUAL coordinates.
+            // So visual offset is 15 * scaleFactor.
+            const virtualFloorOffset = 15;
+            const gameFloorOffset = virtualFloorOffset * scaleFactor;
+
+            // Note: We might want a slight epsilon alignment, but let's trust the math first.
             const gameFloorY = containerTop + gameAreaHeight - gameFloorOffset;
 
             // Draw ground extending from game floor to bottom of screen and edge-to-edge
@@ -64,9 +77,21 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = ({
             // Draw wavy top edge
             const step = 5;
             for (let x = startX; x <= endX; x += step) {
-                // Map screen X to game coordinates for wave pattern continuity
-                const gameX = (x - containerLeft) * (gameAreaWidth / gameAreaWidth);
-                const waveY = getFloorY(gameX, gameFloorY);
+                // 1. Get X relative to Game Area (Physics Origin is Left of Game Area)
+                const visualRelX = x - containerLeft;
+
+                // 2. Convert to Virtual X
+                const virtualX = visualRelX / scaleFactor;
+
+                // 3. Get Virtual Y Offset (The wave height)
+                const virtualWaveHeight = getVirtualFloorOffset(virtualX);
+
+                // 4. Convert Virtual Wave Height to Visual Pixels
+                const visualWaveHeight = virtualWaveHeight * scaleFactor;
+
+                // 5. Apply to Base Y
+                const waveY = gameFloorY + visualWaveHeight;
+
                 ctx.lineTo(x, waveY);
             }
 
@@ -81,8 +106,12 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = ({
             // Add border stroke on top edge
             ctx.beginPath();
             for (let x = startX; x <= endX; x += step) {
-                const gameX = (x - containerLeft) * (gameAreaWidth / gameAreaWidth);
-                const waveY = getFloorY(gameX, gameFloorY);
+                const visualRelX = x - containerLeft;
+                const virtualX = visualRelX / scaleFactor;
+                const virtualWaveHeight = getVirtualFloorOffset(virtualX);
+                const visualWaveHeight = virtualWaveHeight * scaleFactor;
+                const waveY = gameFloorY + visualWaveHeight;
+
                 if (x === startX) {
                     ctx.moveTo(x, waveY);
                 } else {
@@ -135,4 +164,4 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = ({
             style={{ zIndex: 5 }}
         />
     );
-};
+});

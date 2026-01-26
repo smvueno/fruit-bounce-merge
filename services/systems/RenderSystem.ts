@@ -17,21 +17,18 @@ export class RenderSystem {
     textures: Map<FruitTier, PIXI.Texture> = new Map();
     floorGraphics: PIXI.Graphics;
     dangerLine: PIXI.Graphics;
-    effectGraphics: PIXI.Graphics;
 
     constructor() {
         this.floorGraphics = new PIXI.Graphics();
         this.dangerLine = new PIXI.Graphics();
-        this.effectGraphics = new PIXI.Graphics();
     }
 
-    initialize(app: PIXI.Application, container: PIXI.Container, effectContainer: PIXI.Container) {
+    initialize(app: PIXI.Application, container: PIXI.Container) {
         this.app = app;
         this.container = container;
 
         container.addChild(this.floorGraphics);
         container.addChild(this.dangerLine);
-        effectContainer.addChild(this.effectGraphics);
 
         this.initTextures();
     }
@@ -89,7 +86,6 @@ export class RenderSystem {
             }
         });
         this.fruitSprites.clear();
-        this.effectGraphics.clear();
         this.floorGraphics.clear(); // Will need redraw
     }
 
@@ -194,20 +190,4 @@ export class RenderSystem {
         }
     }
 
-    renderEffects(particles: EffectParticle[], height: number) {
-        this.effectGraphics.clear();
-        for (const p of particles) {
-            // Render
-            if (p.type === 'star') {
-                this.effectGraphics.star(p.x, p.y, 5, p.size, p.size * 0.4, p.rotation);
-                this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
-            } else if (p.type === 'bomb-ghost') {
-                this.effectGraphics.circle(p.x, p.y, p.size);
-                this.effectGraphics.fill({ color: 0x212121, alpha: p.alpha });
-            } else {
-                this.effectGraphics.circle(p.x, p.y, p.size);
-                this.effectGraphics.fill({ color: p.color, alpha: p.alpha });
-            }
-        }
-    }
 }

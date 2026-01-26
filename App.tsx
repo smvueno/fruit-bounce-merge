@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { GameState, Difficulty, GameStats, SavedData, LeaderboardEntry } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { GameState, GameStats, SavedData, LeaderboardEntry, PopUpType, PopupData } from './types';
 import { StartScreen } from './components/StartScreen';
 import { GameOverScreen } from './components/GameOverScreen';
 import { GameCanvas } from './components/GameCanvas';
@@ -22,6 +22,9 @@ const App: React.FC = () => {
   const [finalStats, setFinalStats] = useState<GameStats | null>(null);
   const [isNewHigh, setIsNewHigh] = useState(false);
   const [globalLeaderboard, setGlobalLeaderboard] = useState<LeaderboardEntry[]>([]);
+
+  // Ref to track current game state for event listeners
+  const gameStateRef = useRef(gameState);
 
   // Service Worker Update State
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -86,6 +89,11 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Update ref when state changes
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
   useEffect(() => {
     // Load initial data
     setData(loadData());
@@ -138,7 +146,7 @@ const App: React.FC = () => {
         if (reg.waiting) {
           setWaitingWorker(reg.waiting);
           // Only show modal if not saving and on start screen
-          if (gameState === GameState.START && !offlineManager.isSavingInProgress()) {
+          if (gameStateRef.current === GameState.START && !offlineManager.isSavingInProgress()) {
             setShowUpdateModal(true);
           }
         }
@@ -158,7 +166,7 @@ const App: React.FC = () => {
 
                 // New update available and installed
                 setWaitingWorker(newWorker);
-                if (gameState === GameState.START) setShowUpdateModal(true);
+                if (gameStateRef.current === GameState.START) setShowUpdateModal(true);
               }
             });
           }
@@ -229,7 +237,7 @@ const App: React.FC = () => {
     return () => clearInterval(pollId);
   }, [gameState, isPaused]); // Add dependencies so interval closure sees current state
 
-  const handleStart = (diff: Difficulty) => {
+  const handleStart = () => {
     // Check for update before starting - prevent game start if update available
     if (waitingWorker) {
       // Navigate to START screen so the modal can be shown
@@ -238,8 +246,6 @@ const App: React.FC = () => {
       return; // Don't start the game
     }
 
-    saveData({ lastDifficulty: diff });
-    setData(prev => ({ ...prev, lastDifficulty: diff }));
     setCurrentScore(0);
     setIsPaused(false); // Reset pause state on start
     setGameState(GameState.PLAYING);
@@ -255,7 +261,7 @@ const App: React.FC = () => {
 
     const activeList = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
     const sortedLeaderboard = [...activeList].sort((a, b) => b.score - a.score);
-    const LIMIT = 10; // Badge usually relevant for top 10
+    const LIMIT = 100; // Expanded to Top 100
 
     let qualifies = false;
     if (stats.score > 0) {
@@ -267,15 +273,6 @@ const App: React.FC = () => {
           qualifies = true;
         }
       }
-    }
-
-    // Also track legacy per-difficulty high score (internal use)
-    const diff = data.lastDifficulty;
-    const oldHigh = data.highScores[diff] || 0;
-    if (stats.score > oldHigh) {
-      const newHighScores = { ...data.highScores, [diff]: stats.score };
-      saveData({ highScores: newHighScores });
-      setData(prev => ({ ...prev, highScores: newHighScores }));
     }
 
     setIsNewHigh(qualifies);
@@ -307,9 +304,9 @@ const App: React.FC = () => {
       const newPending = [...(data.pendingScores || [])];
 
       // 3. Conditional Global Upload
-      // Only attempt to upload if it qualifies for the global leaderboard (Top 50)
+      // Only attempt to upload if it qualifies for the global leaderboard (Top 100)
       // If global list is empty (e.g. offline/first load), we assume it qualifies.
-      const lowestGlobalScore = globalLeaderboard.length < 50
+      const lowestGlobalScore = globalLeaderboard.length < 100
         ? 0
         : globalLeaderboard[globalLeaderboard.length - 1].score;
 
@@ -373,15 +370,31 @@ const App: React.FC = () => {
 
   const activeLeaderboard = data.settings.showLocalOnly ? (data.leaderboard || []) : globalLeaderboard;
 
+  // Conditional styles for the game container
+  const containerClasses = gameState === GameState.START
+    ? "relative w-full h-full max-w-[500px] md:h-auto md:aspect-[9/16] flex flex-col overflow-visible" // Transparent on Start, visible overflow for floating elements if any
+    : "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] rounded-xl flex flex-col overflow-hidden"; // Card style on Game
+
   return (
-    <div className="relative w-full h-[100svh] bg-gray-900 flex items-center justify-center overflow-hidden font-sans select-none">
-      {/* Background decoration */}
-      <div className="absolute inset-0 bg-yellow-100 opacity-5">
-        <div className="w-full h-full" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+    <div className="relative w-full h-[100svh] bg-orange-50 flex items-center justify-center overflow-hidden font-sans select-none px-3 md:px-0">
+      {/* Global Background Blobs & Glass Effect */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Animated Blobs */}
+        <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%]">
+          <div className="absolute top-[20%] left-[20%] w-64 h-64 md:w-96 md:h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '8s' }}></div>
+          <div className="absolute top-[30%] right-[20%] w-72 h-72 md:w-[30rem] md:h-[30rem] bg-yellow-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '10s', animationDelay: '2s' }}></div>
+          <div className="absolute bottom-[20%] left-[30%] w-80 h-80 md:w-[32rem] md:h-[32rem] bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-float" style={{ animationDuration: '12s', animationDelay: '4s' }}></div>
+        </div>
+
+        {/* Global Frosted Glass Overlay */}
+        <div className="absolute inset-0 bg-white/30 backdrop-blur-2xl"></div>
+
+        {/* Subtle Texture */}
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#000 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
       </div>
 
-      {/* Responsive Game Container - Fixed Aspect Ratio 2:3 (Portrait) */}
-      <div className="relative w-full h-full max-h-[100svh] bg-white shadow-2xl rounded-xl ring-8 ring-black/10 flex flex-col">
+      {/* Responsive Game Container */}
+      <div className={containerClasses}>
 
         {gameState === GameState.START && (
           <>
@@ -410,7 +423,6 @@ const App: React.FC = () => {
         {gameState === GameState.PLAYING && (
           <>
             <GameCanvas
-              difficulty={data.lastDifficulty}
               settings={data.settings}
               onUpdateSettings={updateSettings}
               leaderboard={activeLeaderboard}
@@ -426,7 +438,7 @@ const App: React.FC = () => {
             isNewHigh={isNewHigh}
             leaderboard={activeLeaderboard}
             isLocalOnly={data.settings.showLocalOnly}
-            onRestart={() => handleStart(data.lastDifficulty)}
+            onRestart={() => handleStart()}
             onMenu={() => {
               setGameState(GameState.START);
               // Check for update after transitioning to menu

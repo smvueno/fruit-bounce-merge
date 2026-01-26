@@ -1,6 +1,6 @@
-import { FruitTier, Difficulty } from '../../types';
+import { FruitTier } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
-import { DIFFICULTY_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK } from '../../constants';
+import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET, SPAWN_Y_PERCENT } from '../../constants';
 
 export interface PhysicsContext {
     fruits: Particle[];
@@ -13,7 +13,6 @@ export interface PhysicsContext {
     dragAnchorY: number;
     width: number;
     height: number;
-    difficulty: Difficulty; // Difficulty enum value
 }
 
 export interface PhysicsCallbacks {
@@ -26,9 +25,8 @@ export interface PhysicsCallbacks {
 export class PhysicsSystem {
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
-        const config = DIFFICULTY_CONFIG[ctx.difficulty];
-        const gravity = config.gravity;
-        const friction = config.friction;
+        const gravity = GAME_CONFIG.gravity;
+        const friction = GAME_CONFIG.friction;
 
         // 1. Reset Collision Flags
         for (const p of ctx.fruits) {
@@ -103,7 +101,7 @@ export class PhysicsSystem {
     }
 
     getFloorY(x: number, height: number): number {
-        const baseY = height - 60;
+        const baseY = height - FLOOR_OFFSET;
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
@@ -151,15 +149,36 @@ export class PhysicsSystem {
         }
     }
 
+    /**
+     * Helper method to iterate over fruits and apply effect-specific logic.
+     * Reduces code duplication between tomato and bomb physics updates.
+     */
+    private forEachEffectTarget(
+        ctx: PhysicsContext,
+        effectParticle: Particle | undefined,
+        shouldProcess: (p: Particle, effectParticle: Particle) => boolean,
+        processTarget: (p: Particle, effectParticle: Particle) => void
+    ) {
+        if (!effectParticle) return;
+
+        for (const p of ctx.fruits) {
+            if (p.id === effectParticle.id || p === ctx.currentFruit || p.isStatic) continue;
+
+            if (shouldProcess(p, effectParticle)) {
+                processTarget(p, effectParticle);
+            }
+        }
+    }
+
     updateTomatoPhysics(ctx: PhysicsContext) {
         for (const t of ctx.activeTomatoes) {
             const tomato = ctx.fruits.find(p => p.id === t.tomatoId);
-            if (!tomato) continue;
 
-            for (const p of ctx.fruits) {
-                if (p.id === t.tomatoId || p === ctx.currentFruit || p.isStatic) continue;
-
-                if (p.tier === t.targetTier) {
+            this.forEachEffectTarget(
+                ctx,
+                tomato,
+                (p) => p.tier === t.targetTier,
+                (p, tomato) => {
                     p.isCaught = true;
                     p.ignoreCollisions = true;
                     if (!t.capturedIds.includes(p.id)) t.capturedIds.push(p.id);
@@ -182,34 +201,39 @@ export class PhysicsSystem {
                         p.rotation += 0.3;
                     }
                 }
-            }
+            );
         }
     }
 
     updateBombPhysics(ctx: PhysicsContext) {
         for (const b of ctx.activeBombs) {
             const bomb = ctx.fruits.find(p => p.id === b.bombId);
-            if (!bomb) continue;
 
-            // Check which fruits are currently touching the bomb
-            for (const p of ctx.fruits) {
-                if (p.id === b.bombId || p === ctx.currentFruit || p.isStatic) continue;
+            this.forEachEffectTarget(
+                ctx,
+                bomb,
+                (p) => {
+                    // Don't capture special fruits
+                    if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW || p.tier === FruitTier.BOMB) {
+                        return false;
+                    }
+                    return true;
+                },
+                (p, bomb) => {
+                    const dx = p.x - bomb.x;
+                    const dy = p.y - bomb.y;
+                    const distSq = dx * dx + dy * dy;
+                    const radSum = p.radius + bomb.radius;
+                    const threshold = radSum + 5;
 
-                // Don't capture special fruits
-                if (p.tier === FruitTier.TOMATO || p.tier === FruitTier.RAINBOW || p.tier === FruitTier.BOMB) continue;
-
-                const dx = p.x - bomb.x;
-                const dy = p.y - bomb.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const radSum = p.radius + bomb.radius;
-
-                // If touching and not already tracked, add to list
-                if (dist < radSum + 5) { // 5px buffer for detection
-                    if (!b.capturedIds.includes(p.id)) {
-                        b.capturedIds.push(p.id);
+                    // If touching and not already tracked, add to list
+                    if (distSq < threshold * threshold) { // 5px buffer for detection
+                        if (!b.capturedIds.includes(p.id)) {
+                            b.capturedIds.push(p.id);
+                        }
                     }
                 }
-            }
+            );
         }
     }
 
@@ -219,13 +243,10 @@ export class PhysicsSystem {
 
         if (state.phase === 'suck') {
             const targetX = ctx.width / 2;
-            const targetY = ctx.height * 0.15; // SPAWN_Y_PERCENT is approx 0.15, passing it or hardcoding? 
-            // Better to hardcode or pass config. Let's use hardcoded approx for now or add to context if critical.
-            // GameEngine said `this.height * SPAWN_Y_PERCENT`. 
-            // Let's assume SPAWN_Y_PERCENT is 0.15 as per constants usually. 
-            // Wait, I should import SPAWN_Y_PERCENT.
+            const targetY = ctx.height * SPAWN_Y_PERCENT;
 
             for (const id of state.capturedIds) {
+
                 const p = ctx.fruits.find(f => f.id === id);
                 if (!p) continue;
 
@@ -242,7 +263,7 @@ export class PhysicsSystem {
                 p.rotation += 0.2;
                 p.angularVelocity = 0.2;
             }
-        } else if (state.phase === 'hold') {
+        } else if (state.phase === 'hold' || state.phase === 'pop') {
             for (const id of state.capturedIds) {
                 const p = ctx.fruits.find(f => f.id === id);
                 if (!p) continue;
@@ -315,13 +336,10 @@ export class PhysicsSystem {
                         // Check Watermelon Celebration
                         if (p1.tier === FruitTier.WATERMELON) {
                             if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                                // SAFE: The callback removes particles from ctx.fruits, but we immediately
+                                // break from the inner loop. This prevents further iteration over the modified
+                                // array. The outer loop continues safely as it only needs valid indices.
                                 callbacks.onCelebrationMatch(p1, p2);
-                                i--; // Does this make sense in this context without breaking loop? 
-                                // In original code it was `i--`, `break`. The item is removed.
-                                // But here we are just calling callback. The callback MUST remove the item synchronously?
-                                // If the callback removes the item from the list, `ctx.fruits` changes length.
-                                // This IS dangerous if `ctx.fruits` is disjoint from the loop control.
-                                // We better ask the callback to handle removal, but we need to stop processing this pair.
                                 break;
                             }
                         }
@@ -358,7 +376,7 @@ export class PhysicsSystem {
                     // --- RESTORED TOMATO LOGIC ---
                     if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
                         callbacks.onTomatoCollision(p1, p2);
-                        return; // Original has return? Yes "return;" - ends this function call? Or just the pair?
+                        continue;
                         // In `resolveCollisions`, it was a void function. `return` would skip ALL other collisions for ALL fruits.
                         // That seems buggy in original code or I misread context.
                         // Looking at original line 1130: `return;` inside proper logic.

@@ -1,5 +1,5 @@
 
-import { Difficulty, FruitTier } from "./types";
+import { FruitTier } from "./types";
 
 export { FRUIT_DEFS } from './services/fruitConfig';
 
@@ -7,28 +7,11 @@ export { FRUIT_DEFS } from './services/fruitConfig';
 const PHYSICS_GRAVITY = 0.8;
 const PHYSICS_FRICTION = 0.98; // Air resistance
 
-export const DIFFICULTY_CONFIG = {
-  [Difficulty.EASY]: {
-    gravity: PHYSICS_GRAVITY,
-    friction: PHYSICS_FRICTION,
-    aimAssist: true,
-    spawnDelay: 400,
-    spawnTiers: [FruitTier.CHERRY, FruitTier.STRAWBERRY, FruitTier.GRAPE, FruitTier.CLEMENTINE]
-  },
-  [Difficulty.NORMAL]: {
-    gravity: PHYSICS_GRAVITY,
-    friction: PHYSICS_FRICTION,
-    aimAssist: true,
-    spawnDelay: 500,
-    spawnTiers: [FruitTier.CHERRY, FruitTier.STRAWBERRY, FruitTier.GRAPE]
-  },
-  [Difficulty.HARD]: {
-    gravity: PHYSICS_GRAVITY,
-    friction: PHYSICS_FRICTION,
-    aimAssist: false,
-    spawnDelay: 600,
-    spawnTiers: [FruitTier.CHERRY, FruitTier.STRAWBERRY]
-  },
+// Game configuration (previously HARD difficulty)
+export const GAME_CONFIG = {
+  gravity: PHYSICS_GRAVITY,
+  friction: PHYSICS_FRICTION,
+  spawnDelay: 600,
 };
 
 // Physics Engine Constants
@@ -44,8 +27,9 @@ export const FRICTION_SLIDE = 0.99;
 export const FRICTION_LOCK = 0.5; // Multiplier per substep. 0.5^10 is effectively 0.
 
 export const DANGER_TIME_MS = 5000;
-export const DANGER_Y_PERCENT = 0.15;
-export const SPAWN_Y_PERCENT = 0.08;
+export const DANGER_Y_PERCENT = 0.13;
+export const SPAWN_Y_PERCENT = 0.06;
+export const FLOOR_OFFSET = 15;
 
 // Scoring
 export const SCORE_BASE_MERGE = 2; // Exponential base multiplier

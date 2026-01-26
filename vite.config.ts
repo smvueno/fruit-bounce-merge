@@ -22,7 +22,23 @@ export default defineConfig(({ command, mode }) => {
     plugins: [react(), injectBuildTime()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      '__BUILD_DATE__': JSON.stringify((() => {
+        const now = new Date();
+        const options = {
+          timeZone: 'Asia/Tokyo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        } as const;
+        const formatter = new Intl.DateTimeFormat('ja-JP', options);
+        const parts = formatter.formatToParts(now);
+        const getPart = (type: string) => parts.find(p => p.type === type)?.value;
+        return `${getPart('year')}.${getPart('month')}.${getPart('day')} ${getPart('hour')}:${getPart('minute')}`;
+      })())
     },
     resolve: {
       alias: {

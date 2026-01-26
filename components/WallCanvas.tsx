@@ -7,7 +7,7 @@ interface WallCanvasProps {
     containerLeft: number;
 }
 
-export const WallCanvas: React.FC<WallCanvasProps> = ({
+export const WallCanvas: React.FC<WallCanvasProps> = React.memo(({
     gameAreaWidth,
     gameAreaHeight,
     containerTop,
@@ -48,9 +48,8 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
             // Wall dimensions - Updated for new design
             const wallWidth = 80; // Width from SVG
             const topMargin = 60; // Space from top of screen
-            const extendBelowGround = 50; // Extend footer below the ground
             const wallTop = topMargin;
-            const wallHeight = gameFloorY - wallTop + extendBelowGround;
+            const wallHeight = height - wallTop; // Extend to bottom of viewport
 
             // Draw grass wall function (SVG based)
             const drawGrassWall = (x: number, y: number, height: number, side: 'left' | 'right') => {
@@ -146,7 +145,7 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
             };
 
             // Calculate Positions
-            const overlap = 17; // Slight overlap over the game area (12 + 5)
+            const overlap = 12; // Slight overlap over the game area - reduced to minimize intrusion
 
             // Left wall: to the left of container + overlap
             const leftWallX = containerLeft - wallWidth + overlap;
@@ -175,4 +174,4 @@ export const WallCanvas: React.FC<WallCanvasProps> = ({
             style={{ zIndex: 20 }}
         />
     );
-};
+});

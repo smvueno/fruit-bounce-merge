@@ -1,12 +1,14 @@
 
+// ... imports
 import React, { useEffect, useRef, useState } from 'react';
-import { Difficulty, GameSettings, GameStats, FruitTier, LeaderboardEntry } from '../types';
+import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
-import { FRUIT_DEFS } from '../constants';
+import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
 // Components
 import { GameBackground } from './GameBackground';
+import { JuiceOverlay } from './JuiceOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
@@ -14,10 +16,14 @@ import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
 import { GroundCanvas } from './GroundCanvas';
 import { WallCanvas } from './WallCanvas';
+import { EffectCanvas } from './EffectCanvas';
+import { PointTicker } from './PointTicker';
+import { TextPopup } from './TextPopup';
+import { ScoreFlyEffect } from './ScoreFlyEffect';
+import { DangerOverlay } from './DangerOverlay';
 import { Pause } from 'lucide-react';
 
 interface GameCanvasProps {
-    difficulty: Difficulty;
     settings: GameSettings;
     onUpdateSettings: (s: GameSettings) => void;
     leaderboard: LeaderboardEntry[];
@@ -27,7 +33,7 @@ interface GameCanvasProps {
     onPauseChange?: (paused: boolean) => void;
 }
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<GameEngine | null>(null);
     const gameAreaRef = useRef<HTMLDivElement>(null);
@@ -35,7 +41,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     // Game State
     const [combo, setCombo] = useState(0);
     const [fever, setFever] = useState(false);
-    const [limitTime, setLimitTime] = useState(0); // Using limitTime instead of dangerTime for generic name if desired, keeping logic exact
+    const [limitTime, setLimitTime] = useState(0);
     const [juice, setJuice] = useState(0);
     const [nextFruit, setNextFruit] = useState<FruitTier>(FruitTier.CHERRY);
     const [savedFruit, setSavedFruit] = useState<FruitTier | null>(null);
@@ -47,6 +53,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
     const [currentStateScore, setCurrentStateScore] = useState(0);
+    const currentStateScoreRef = useRef(0);
+    const [latestPointEvent, setLatestPointEvent] = useState<PointEvent | null>(null);
+
+    // Sync Ref with State
+    useEffect(() => {
+        currentStateScoreRef.current = currentStateScore;
+    }, [currentStateScore]);
+
+    // New Popup Sync State
+    const [popupData, setPopupData] = useState<PopupData | null>(null);
+    const lastPopupTotalRef = useRef(0);
+    const lastPopupDataRef = useRef<PopupData | null>(null);
+    const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
+    const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
+
+    // Track fever state for closure access
+    const feverRef = useRef(false);
 
     // Visual State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
@@ -60,10 +83,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
         left: 0
     });
 
+    // --- Helper to Trigger Suck Up ---
+    const triggerSuckUp = () => {
+        // Prevent suck up during fever - score should accumulate
+        if (feverRef.current) return;
+
+        const val = lastPopupTotalRef.current;
+        if (val > 0) {
+            setSuckUpPayload(val);
+            engineRef.current?.audio.playScoreFlyUp();
+            setPopupData(null); // Clear central popup
+            lastPopupTotalRef.current = 0; // Reset accumulator
+        }
+    };
+
+    const handleSuckUpComplete = () => {
+        if (suckUpPayload !== null) {
+            // Now we finally add the batched score to the visible HUD score
+            // Use Ref to avoid stale closure if this callback is captured
+            const newTotal = currentStateScoreRef.current + suckUpPayload;
+            setCurrentStateScore(newTotal);
+            setScore(newTotal); // Notify App
+            setSuckUpPayload(null);
+        }
+    };
+
     // --- Background Cycle Effect ---
     useEffect(() => {
         const interval = setInterval(() => {
-            setBgPatternIndex(prev => (prev + 1) % 4); // 4 patterns hardcoded in Background
+            setBgPatternIndex(prev => (prev + 1) % 4);
         }, 25000);
         return () => clearInterval(interval);
     }, []);
@@ -92,19 +140,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
     useEffect(() => {
         if (!canvasRef.current) return;
 
-        const engine = new GameEngine(canvasRef.current, difficulty, settings, {
+        const engine = new GameEngine(canvasRef.current, settings, {
             onScore: (amt: number, total: number) => {
-                setScore(total); // Parent update
-                setCurrentStateScore(total); // Local update
+                // Legacy - Use Ref to avoid stale closure
+                const current = currentStateScoreRef.current;
+                if (total > current + (lastPopupTotalRef.current || 0)) {
+                    setScore(total);
+                    setCurrentStateScore(total);
+                }
             },
             onGameOver: onGameOver,
-            onCombo: (c: number) => setCombo(c),
+            onCombo: (c: number) => {
+                setCombo(c);
+                if (c === 0) {
+                    triggerSuckUp();
+                }
+            },
             onFeverStart: (mult: number) => {
                 setFever(true);
+                feverRef.current = true;
                 setCurrentFeverMult(mult);
             },
-            onFeverEnd: () => setFever(false),
-            // Map "Danger" callback to state
+            onFeverEnd: () => {
+                setFever(false);
+                feverRef.current = false;
+                triggerSuckUp();
+            },
             onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
@@ -117,12 +178,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
             onCelebration: () => {
                 setShowCelebration(true);
                 setTimeout(() => setShowCelebration(false), 4000);
+            },
+            onPointEvent: (event: PointEvent) => {
+                setLatestPointEvent(event);
+            },
+            onPopupUpdate: (data: PopupData) => {
+                // Allow trigger if > 0 OR if it's a FRENZY start (which might have 0 score initially)
+                // We identify Frenzy start by type FRENZY and valid multiplier, even if runningTotal is 0
+                if (data.runningTotal > 0 || data.type === PopUpType.FRENZY) {
+                    setPopupData(data);
+                    lastPopupTotalRef.current = data.runningTotal;
+                    lastPopupDataRef.current = data; // Cache for SuckUp layout context
+
+                    // Determine Color based on Type
+                    let c = '#fbbf24'; // Default Yellow
+                    if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80'; // Green-400 (Matches TextPopup.tsx)
+                    else if (data.type === PopUpType.FRENZY) c = '#facc15'; // Yellow-400
+                    else if (data.type === PopUpType.CHAIN) c = '#fb923c'; // Orange-400 (Matches TextPopup.tsx)
+                    setPopupColor(c);
+
+                } else if (data.runningTotal === 0) {
+                    // Only suck up if it wasn't a Frenzy start event (which we handled above)
+                    triggerSuckUp();
+                }
             }
         });
 
         engine.initialize().catch(e => console.error("Game init failed", e));
         engineRef.current = engine;
-
         return () => {
             engine.cleanup();
             engineRef.current = null;
@@ -148,6 +231,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
         setIsPaused(false);
         if (onPauseChange) onPauseChange(false);
         setScore(0);
+        setCurrentStateScore(0);
+        currentStateScoreRef.current = 0; // Reset ref
         setCombo(0);
         setFever(false);
         setJuice(0);
@@ -155,6 +240,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
         setSavedFruit(null);
         setMaxTier(FruitTier.CHERRY);
         setShowCelebration(false);
+        setPopupData(null);
+        lastPopupTotalRef.current = 0;
+        setSuckUpPayload(null);
     };
 
     const handleSecretTap = () => {
@@ -172,8 +260,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                 patternIndex={bgPatternIndex}
                 bgColor={bgColor}
                 fever={fever}
-                juice={juice}
             />
+
+            {/* 1.1 Juice/Water Overlay - Moved to GameArea */}
 
             {/* 1.5. Ground Canvas - Extends to screen edges */}
             {gameAreaDimensions.width > 0 && (
@@ -195,11 +284,66 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                 />
             )}
 
+            {/* 1.7. Effect Canvas - Overlay on top of walls */}
+            {gameAreaDimensions.width > 0 && (
+                <EffectCanvas
+                    engine={engineRef.current}
+                    gameAreaWidth={gameAreaDimensions.width}
+                    gameAreaHeight={gameAreaDimensions.height}
+                    containerTop={gameAreaDimensions.top}
+                    containerLeft={gameAreaDimensions.left}
+                />
+            )}
+
+            {/* 1.8. Point Ticker - Overlay for score popups */}
+            {gameAreaDimensions.width > 0 && (
+                <div
+                    className="fixed z-20 pointer-events-none"
+                    style={{
+                        width: gameAreaDimensions.width,
+                        height: gameAreaDimensions.height,
+                        top: gameAreaDimensions.top,
+                        left: gameAreaDimensions.left
+                    }}
+                >
+                    <PointTicker latestEvent={latestPointEvent} settings={settings} />
+                </div>
+            )}
+
+            {/* 1.9 Text Popup (Master Popup) - DANGER PRIORITY */}
+            <TextPopup
+                data={limitTime > 0 ? {
+                    type: PopUpType.DANGER,
+                    runningTotal: 0,
+                    multiplier: 0,
+                    dangerTime: limitTime
+                } : popupData}
+                gameAreaTop={gameAreaDimensions.top}
+                gameAreaHeight={gameAreaDimensions.height}
+                gameAreaWidth={gameAreaDimensions.width}
+            />
+
+            {/* 1.95 Score Fly Effect (Suck Up) */}
+            {suckUpPayload !== null && (
+                <div className="fixed z-[100]">
+                    <ScoreFlyEffect
+                        startAmount={suckUpPayload}
+                        targetElementId="hud-score-display"
+                        onComplete={handleSuckUpComplete}
+                        color={popupColor}
+                        contextData={lastPopupDataRef.current}
+                        gameAreaTop={gameAreaDimensions.top}
+                        gameAreaHeight={gameAreaDimensions.height}
+                        gameAreaWidth={gameAreaDimensions.width}
+                    />
+                </div>
+            )}
+
             {/* 2. Main Layout Container */}
             <LayoutContainer>
 
-                {/* TOP UI (HUD) - Occupies top section of 9:20 Container */}
-                <div className="w-full flex flex-col justify-end pb-2 relative z-30">
+                {/* TOP UI (HUD) - Flexible spacer with 20px top padding as requested */}
+                <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1">
                     <GameHUD
                         score={currentStateScore}
                         playTime={playTime}
@@ -210,31 +354,51 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ difficulty, settings, on
                     />
                 </div>
 
-                {/* 3. Game Area (4:5 Aspect Ratio) */}
-                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-0 z-10">
+                {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
+                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
                     <GameArea canvasRef={canvasRef}>
                         {/* Overlays moved to root level for correct z-index stacking */}
+                        {/* New Danger Overlay sits INSIDE the game area scaling context */}
+                        <DangerOverlay dangerTime={limitTime} />
                     </GameArea>
                 </div>
 
-                {/* BOTTOM UI - REMOVED (Pause Button moved to absolute) */}
+                {/* BOTTOM UI - Fixed height spacer. */}
+                <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
+                    <button
+                        onClick={handlePauseToggle}
+                        className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                        aria-label="Pause Game"
+                    >
+                        <Pause size={24} fill="currentColor" />
+                    </button>
+                </div>
 
             </LayoutContainer>
 
-            {/* ABSOLUTE PAUSE BUTTON - Bottom Center */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40">
-                <button
-                    onClick={handlePauseToggle}
-                    className="w-16 h-16 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-                    aria-label="Pause Game"
+            {/* 1.15 Juice/Water Overlay - Moved OUT of GameArea to be betwen Background and Ground */}
+            {/* Placed here in DOM order: After Background, but z-index controlled to be < Ground (z-5) */}
+            {gameAreaDimensions.width > 0 && (
+                <div
+                    className="fixed overflow-hidden rounded-t-3xl pointer-events-none"
+                    style={{
+                        zIndex: 2, // Above Background (0), Below Ground (5)
+                        width: gameAreaDimensions.width,
+                        height: gameAreaDimensions.height,
+                        top: gameAreaDimensions.top,
+                        left: gameAreaDimensions.left
+                    }}
                 >
-                    <Pause size={32} fill="currentColor" />
-                </button>
-            </div>
+                    <JuiceOverlay
+                        fever={fever}
+                        juice={juice}
+                        dangerYPercent={DANGER_Y_PERCENT}
+                    />
+                </div>
+            )}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
-                dangerTime={limitTime}
                 showCelebration={showCelebration}
                 fever={fever}
                 combo={combo}
