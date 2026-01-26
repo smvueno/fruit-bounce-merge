@@ -1105,10 +1105,13 @@ export class GameEngine {
                             runningTotal: 0,
                             multiplier: 1
                         });
+                        // Reset Celebration Score to unblock main score updates
                         this.celebrationScore = 0;
                     }
                 } else {
                     this.celebrationEffect = null;
+                    // Ensure cleanup if loop somehow exits early (defensive)
+                    this.celebrationScore = 0;
                 }
             }
         }
