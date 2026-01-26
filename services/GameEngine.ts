@@ -100,7 +100,7 @@ export class GameEngine {
 
     // Frenzy-Chain Suspension Logic
     preFrenzyChain: number = 0;
-    preFrenzyStreak: number = 0;
+    public preFrenzyStreak: number = 0;
     currentFrenzyMult: number = 1;
 
     // Optimization: Reused Objects

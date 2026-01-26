@@ -161,8 +161,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 const celebration = engineRef.current?.celebrationScore || 0;
                 const pendingSuckUp = suckUpPayloadRef.current || 0;
 
+                // If Fever is Active, the Engine has reset "streakScore" to 0 (counting only frenzy points).
+                // However, it has "banked" the pre-frenzy streak in "preFrenzyStreak".
+                // If we don't subtract this banked amount, the UI will think those points are now permanent
+                // and mistakenly update the base score (Leak).
+                // Later, when Frenzy ends, the Engine restores the streak, and the UI will try to subtract it again,
+                // causing the score to freeze.
+                const hiddenStreak = (engineRef.current?.feverActive && engineRef.current?.preFrenzyStreak) || 0;
+
                 // The "Base Score" is the Engine Total minus any points currently in a "Temporary/Visual" state.
-                const targetBaseScore = total - streak - celebration - pendingSuckUp;
+                const targetBaseScore = total - streak - celebration - pendingSuckUp - hiddenStreak;
 
                 if (targetBaseScore > current) {
                     setScore(targetBaseScore);
