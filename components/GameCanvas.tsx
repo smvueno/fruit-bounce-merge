@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
-import { FRUIT_DEFS } from '../constants';
+import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
 // Components
@@ -195,7 +195,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
         engine.initialize().catch(e => console.error("Game init failed", e));
         engineRef.current = engine;
-
         return () => {
             engine.cleanup();
             engineRef.current = null;
@@ -251,11 +250,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 fever={fever}
             />
 
-            {/* 1.1 Juice/Water Overlay - Separate Component */}
-            <JuiceOverlay
-                fever={fever}
-                juice={juice}
-            />
+            {/* 1.1 Juice/Water Overlay - Moved to GameArea */}
 
             {/* 1.5. Ground Canvas - Extends to screen edges */}
             {gameAreaDimensions.width > 0 && (
@@ -350,6 +345,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
                 <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
                     <GameArea canvasRef={canvasRef}>
+                        {/* 1.1 Juice/Water Overlay - Constrained to GameArea */}
+                        <div className="absolute inset-0 overflow-hidden rounded-3xl z-[15] pointer-events-none">
+                            <JuiceOverlay
+                                fever={fever}
+                                juice={juice}
+                                dangerYPercent={DANGER_Y_PERCENT}
+                            />
+                        </div>
+
                         {/* Overlays moved to root level for correct z-index stacking */}
                         {/* New Danger Overlay sits INSIDE the game area scaling context */}
                         <DangerOverlay dangerTime={limitTime} />
@@ -398,4 +402,3 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         </>
     );
 };
-
