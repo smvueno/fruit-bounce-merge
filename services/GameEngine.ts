@@ -58,7 +58,7 @@ export class GameEngine {
     onGameOver: (stats: GameStats) => void = () => { };
     onCombo: (count: number) => void = () => { };
     onFeverStart: (mult: number) => void = () => { };
-    onFeverEnd: () => void = () => { };
+    onFeverEnd: (finalScore?: number) => void = () => { };
     onDanger: (active: boolean, remainingMs: number) => void = () => { };
     onJuiceUpdate: (current: number, max: number) => void = () => { };
     onNextFruit: (tier: FruitTier) => void = () => { };
@@ -600,7 +600,7 @@ export class GameEngine {
                 this.audio.playFrenzyEnd(); // End Sound
                 this.juice = 0;
                 this.onJuiceUpdate(0, JUICE_MAX);
-                this.onFeverEnd();
+                this.onFeverEnd(this.streakScore);
 
                 // Fever ended - Restore previous Chain State
                 this.comboChain = this.preFrenzyChain;
@@ -1212,8 +1212,6 @@ export class GameEngine {
     addScore(amt: number) {
         this.score += Math.floor(amt);
         this.stats.score = this.score;
-        // DISABLED for now to decouple Real score from Display score (per Task 2 requirements)
-        // this.onScore(Math.floor(amt), this.score); 
     }
 
     gameOver() {
