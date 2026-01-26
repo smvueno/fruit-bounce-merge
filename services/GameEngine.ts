@@ -107,6 +107,8 @@ export class GameEngine {
     private _physicsContext: PhysicsContext;
     private _physicsCallbacks: PhysicsCallbacks;
 
+    private spawnTimeout: any = null;
+
     constructor(
         canvas: HTMLCanvasElement,
         settings: GameSettings,
@@ -259,6 +261,11 @@ export class GameEngine {
         this.renderSystem.reset();
         this.inputSystem.reset(); // Clear pointer history
 
+        if (this.spawnTimeout) {
+            clearTimeout(this.spawnTimeout);
+            this.spawnTimeout = null;
+        }
+
         // 2. Clear Game State
         this.fruits = [];
         this.activeTomatoes = [];
@@ -269,9 +276,16 @@ export class GameEngine {
         this.score = 0;
         this.stats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
         this.comboChain = 0;
+        this.streakScore = 0;
+        this.scoreBatch = 0;
+        this.scoreBatchTimer = 0;
+
         this.didMergeThisTurn = false;
+
         this.feverActive = false;
         this.feverTimer = 0;
+        this.currentFrenzyMult = 1;
+
         this.juice = 0;
         this.dangerTimer = 0;
         this.dangerActive = false;
@@ -371,8 +385,12 @@ export class GameEngine {
             this.currentFruit = null;
             this.canDrop = false;
 
-            setTimeout(() => {
+            // Clear any existing timeout just in case
+            if (this.spawnTimeout) clearTimeout(this.spawnTimeout);
+
+            this.spawnTimeout = setTimeout(() => {
                 this.canDrop = true;
+                this.spawnTimeout = null;
                 this.spawnNextFruit();
             }, GAME_CONFIG.spawnDelay);
         }
@@ -983,10 +1001,25 @@ export class GameEngine {
             this.onMaxFruit(this.stats.maxTier);
         }
 
-        // Initialize score sequence (Use separate tracker to avoid collision with Chain/Frenzy batcher)
-        this.celebrationScore = 5000;
+        // Initialize score sequence
+        // 1. Flush any existing streak visual first to avoid "lost" score
+        if (this.streakScore > 0) {
+            this.onPopupUpdate({
+                runningTotal: 0, // Sending 0 triggers the "Suck Up" in GameCanvas
+                multiplier: 1,
+                type: PopUpType.CHAIN
+            });
+        }
+
+        // 2. Calculate Base Score for Celebration (5000)
+        let baseScore = 5000;
+        if (this.feverActive) {
+            baseScore *= this.currentFrenzyMult;
+        }
+
+        this.celebrationScore = baseScore;
         this.streakScore = 0; // Clear any pending main game streak
-        this.addScore(5000);
+        this.addScore(baseScore);
 
         // Trigger Popup
         this.onPopupUpdate({
@@ -1036,7 +1069,12 @@ export class GameEngine {
                         const tier = p.tier;
                         // Calculate Points (Base merge points for that tier)
                         // Formula: BASE * 2^tier
-                        const points = SCORE_BASE_MERGE * Math.pow(2, tier) * 2; // Double points for clearing!
+                        let points = SCORE_BASE_MERGE * Math.pow(2, tier) * 2; // Double points for clearing!
+
+                        // Apply Frenzy Multiplier if active
+                        if (this.feverActive) {
+                            points *= this.currentFrenzyMult;
+                        }
                         this.addScore(points);
                         this.celebrationScore += points;
 
