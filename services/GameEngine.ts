@@ -309,6 +309,7 @@ export class GameEngine {
 
         // 4. Restart
         this.setPaused(false);
+        this.audio.reset(); // Restart music from intro
         this.savedFruitTier = null;
         this.canSwap = true;
         this.onSaveUpdate(null);

@@ -4,7 +4,7 @@
 set -e
 
 echo "========================================"
-echo "    Fruit Bounce Merge - Build & Test   "
+echo "    FRUITY FUSE: Flick & Bounce - Build & Test   "
 echo "========================================"
 
 # Clean up previous build

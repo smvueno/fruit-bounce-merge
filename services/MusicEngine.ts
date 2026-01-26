@@ -125,6 +125,17 @@ export class MusicEngine {
         this.isPlaying = false;
     }
 
+    reset() {
+        this.currentSection = 'intro';
+        this.targetSection = 'loop';
+        this.resetCursors();
+        this.soundQueue = [];
+        if (this.ctx) {
+            this.nextNoteTime = this.ctx.currentTime + 0.1;
+            this.nextSfxTime = this.ctx.currentTime;
+        }
+    }
+
     update() {
         if (!this.ctx || !this.isPlaying) return;
 
