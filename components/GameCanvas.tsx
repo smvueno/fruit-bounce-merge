@@ -52,8 +52,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [pauseTapCount, setPauseTapCount] = useState(0);
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
+
+    // Score State
+    // currentStateScore represents the "Visible HUD Score".
+    // It lags behind the engine's "Real Score" until a streak ends (Suck Up).
     const [currentStateScore, setCurrentStateScore] = useState(0);
     const currentStateScoreRef = useRef(0);
+
     const [latestPointEvent, setLatestPointEvent] = useState<PointEvent | null>(null);
 
     // Sync Ref with State
@@ -61,15 +66,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         currentStateScoreRef.current = currentStateScore;
     }, [currentStateScore]);
 
-    // New Popup Sync State
+    // Popup & Suck Up State
     const [popupData, setPopupData] = useState<PopupData | null>(null);
-    const lastPopupTotalRef = useRef(0);
-    const lastPopupDataRef = useRef<PopupData | null>(null);
+    const lastPopupDataRef = useRef<PopupData | null>(null); // To keep context (color/position) for suck up
     const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
-
-    // Track fever state for closure access
-    const feverRef = useRef(false);
 
     // Visual State
     const [bgPatternIndex, setBgPatternIndex] = useState(0);
@@ -84,26 +85,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     });
 
     // --- Helper to Trigger Suck Up ---
-    const triggerSuckUp = () => {
-        // Prevent suck up during fever - score should accumulate
-        if (feverRef.current) return;
-
-        const val = lastPopupTotalRef.current;
-        if (val > 0) {
-            setSuckUpPayload(val);
+    const triggerSuckUp = (amount: number) => {
+        if (amount > 0) {
+            setSuckUpPayload(amount);
             engineRef.current?.audio.playScoreFlyUp();
-            setPopupData(null); // Clear central popup
-            lastPopupTotalRef.current = 0; // Reset accumulator
+            setPopupData(null); // Clear central popup as the points fly away
         }
     };
 
     const handleSuckUpComplete = () => {
         if (suckUpPayload !== null) {
-            // Now we finally add the batched score to the visible HUD score
-            // Use Ref to avoid stale closure if this callback is captured
+            // Add the payload to the visible score
             const newTotal = currentStateScoreRef.current + suckUpPayload;
             setCurrentStateScore(newTotal);
-            setScore(newTotal); // Notify App
+            setScore(newTotal); // Notify Parent App
             setSuckUpPayload(null);
         }
     };
@@ -141,39 +136,47 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         if (!canvasRef.current) return;
 
         const engine = new GameEngine(canvasRef.current, settings, {
+            // Score Updates
             onScore: (amt: number, total: number) => {
-                // Legacy - Use Ref to avoid stale closure
-                const current = currentStateScoreRef.current;
-                if (total > current + (lastPopupTotalRef.current || 0)) {
-                    setScore(total);
-                    setCurrentStateScore(total);
+                // We intentionally ignore 'total' here to keep the HUD detached
+                // The HUD only updates via Suck Up (onStreakEnd)
+                // However, if total is 0 (reset), we should sync.
+                if (total === 0) {
+                    setCurrentStateScore(0);
+                    setScore(0);
                 }
             },
-            onGameOver: onGameOver,
-            onCombo: (c: number) => {
-                setCombo(c);
-                if (c === 0) {
-                    triggerSuckUp();
-                }
+
+            // Core Game Events
+            onGameOver: (stats: GameStats) => {
+                // Force sync HUD to Real Score on Game Over to ensure no points are lost
+                setCurrentStateScore(stats.score);
+                setScore(stats.score);
+                onGameOver(stats);
             },
+
+            // Combo & Fever
+            onCombo: (c: number) => setCombo(c),
             onFeverStart: (mult: number) => {
                 setFever(true);
-                feverRef.current = true;
                 setCurrentFeverMult(mult);
             },
             onFeverEnd: (finalScore?: number) => {
                 setFever(false);
-                feverRef.current = false;
-                // Use the explicit score if provided to avoid race condition with chain restore
-                if (typeof finalScore === 'number' && finalScore > 0) {
-                    setSuckUpPayload(finalScore);
-                    engineRef.current?.audio.playScoreFlyUp();
-                    setPopupData(null);
-                    lastPopupTotalRef.current = 0;
-                } else {
-                    triggerSuckUp();
-                }
             },
+
+            // New Score System Events
+            onPopupStash: () => {
+                setPopupData(null); // Hide popup temporarily
+            },
+            onPopupRestore: (data: PopupData) => {
+                setPopupData(data); // Restore popup
+            },
+            onStreakEnd: (amount: number) => {
+                triggerSuckUp(amount);
+            },
+
+            // Visuals
             onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
@@ -191,24 +194,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 setLatestPointEvent(event);
             },
             onPopupUpdate: (data: PopupData) => {
-                // Allow trigger if > 0 OR if it's a FRENZY start (which might have 0 score initially)
-                // We identify Frenzy start by type FRENZY and valid multiplier, even if runningTotal is 0
-                if (data.runningTotal > 0 || data.type === PopUpType.FRENZY) {
-                    setPopupData(data);
-                    lastPopupTotalRef.current = data.runningTotal;
-                    lastPopupDataRef.current = data; // Cache for SuckUp layout context
+                setPopupData(data);
+                lastPopupDataRef.current = data; // Cache context
 
-                    // Determine Color based on Type
-                    let c = '#fbbf24'; // Default Yellow
-                    if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80'; // Green-400 (Matches TextPopup.tsx)
-                    else if (data.type === PopUpType.FRENZY) c = '#facc15'; // Yellow-400
-                    else if (data.type === PopUpType.CHAIN) c = '#fb923c'; // Orange-400 (Matches TextPopup.tsx)
-                    setPopupColor(c);
-
-                } else if (data.runningTotal === 0) {
-                    // Only suck up if it wasn't a Frenzy start event (which we handled above)
-                    triggerSuckUp();
-                }
+                // Update Color
+                let c = '#fbbf24'; // Default Yellow
+                if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80';
+                else if (data.type === PopUpType.FRENZY) c = '#facc15';
+                else if (data.type === PopUpType.CHAIN) c = '#fb923c';
+                setPopupColor(c);
             }
         });
 
@@ -249,7 +243,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         setMaxTier(FruitTier.CHERRY);
         setShowCelebration(false);
         setPopupData(null);
-        lastPopupTotalRef.current = 0;
         setSuckUpPayload(null);
     };
 
@@ -269,8 +262,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 bgColor={bgColor}
                 fever={fever}
             />
-
-            {/* 1.1 Juice/Water Overlay - Moved to GameArea */}
 
             {/* 1.5. Ground Canvas - Extends to screen edges */}
             {gameAreaDimensions.width > 0 && (
