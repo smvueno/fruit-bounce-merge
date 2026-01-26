@@ -144,9 +144,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             onScore: (amt: number, total: number) => {
                 // Legacy - Use Ref to avoid stale closure
                 const current = currentStateScoreRef.current;
-                if (total > current + (lastPopupTotalRef.current || 0)) {
-                    setScore(total);
-                    setCurrentStateScore(total);
+
+                // Fix for double counting bug:
+                // During streaks (Frenzy/Chain/Celebration), the "total" (engine score) advances immediately,
+                // but we want the UI score to stay behind so the "Suck Up" effect can add the accumulated streak score at the end.
+                // Previously, we compared total vs (current + lastPopupTotal), but lastPopupTotal lagged behind due to batching (100ms),
+                // causing race conditions where the UI score would jump ahead, leading to double counting when the Suck Up happened.
+
+                // New Logic: Calculate what the UI score *should* be (Total minus any pending streak points).
+                // Only update if this "safe base score" has increased.
+                const streak = engineRef.current?.streakScore || 0;
+                const celebration = engineRef.current?.celebrationScore || 0;
+                const targetBaseScore = total - streak - celebration;
+
+                if (targetBaseScore > current) {
+                    setScore(targetBaseScore);
+                    setCurrentStateScore(targetBaseScore);
                 }
             },
             onGameOver: onGameOver,
