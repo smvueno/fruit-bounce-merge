@@ -184,12 +184,20 @@ export const ScoreFlyEffect: React.FC<ScoreFlyEffectProps> = ({ startAmount, tar
             const targetColorHex = '#1a1a1a';
             const currentColor = interpolateColor(color, targetColorHex, t);
 
+            // Opacity Logic
+            let opacity = 1.0;
+            if (progress > 0.7) {
+                const fadeProgress = (progress - 0.7) / 0.3; // 0 to 1
+                opacity = 1.0 - fadeProgress;
+            }
+
             setFlyStyle(prev => ({
                 ...prev,
                 left: `${currentX}px`,
                 top: `${currentY}px`,
                 transform: `translate(-50%, -50%) scale(${scale})`,
                 color: currentColor,
+                opacity: opacity
             }));
 
             if (progress < 1) {
