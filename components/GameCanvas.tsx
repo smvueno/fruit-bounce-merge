@@ -161,10 +161,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 feverRef.current = true;
                 setCurrentFeverMult(mult);
             },
-            onFeverEnd: () => {
+            onFeverEnd: (finalScore?: number) => {
                 setFever(false);
                 feverRef.current = false;
-                triggerSuckUp();
+                // Use the explicit score if provided to avoid race condition with chain restore
+                if (typeof finalScore === 'number' && finalScore > 0) {
+                    setSuckUpPayload(finalScore);
+                    engineRef.current?.audio.playScoreFlyUp();
+                    setPopupData(null);
+                    lastPopupTotalRef.current = 0;
+                } else {
+                    triggerSuckUp();
+                }
             },
             onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
