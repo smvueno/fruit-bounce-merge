@@ -1018,7 +1018,10 @@ export class GameEngine {
             baseScore *= this.currentFrenzyMult;
         }
 
-        this.celebrationScore = baseScore;
+        // Absorb any existing streak score into the celebration score
+        // This ensures pending Frenzy/Chain points are visually "Sucked Up" as part of the celebration,
+        // rather than "leaking" into the main score immediately when streakScore is cleared.
+        this.celebrationScore = baseScore + this.streakScore;
         this.streakScore = 0; // Clear any pending main game streak
         this.addScore(baseScore);
 
