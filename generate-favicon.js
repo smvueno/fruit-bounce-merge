@@ -34,8 +34,16 @@ async function generateFavicon() {
         for (const size of sizes) {
             console.log(`📐 Generating ${size}x${size} PNG...`);
             const buffer = await sharp(svgPath)
-                .resize(size, size)
-                .png()
+                .resize(size, size, {
+                    kernel: sharp.kernel.lanczos3,
+                    fit: 'contain',
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                })
+                .png({
+                    compressionLevel: 9,
+                    adaptiveFiltering: true,
+                    force: true
+                })
                 .toBuffer();
 
             pngBuffers.push(buffer);

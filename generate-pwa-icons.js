@@ -29,8 +29,16 @@ async function generatePWAIcons() {
             console.log(`PLEASE WAIT: Generating ${icon.size}x${icon.size} to ${icon.name}...`);
 
             await sharp(svgPath)
-                .resize(icon.size, icon.size)
-                .png()
+                .resize(icon.size, icon.size, {
+                    kernel: sharp.kernel.lanczos3,
+                    fit: 'contain',
+                    background: { r: 0, g: 0, b: 0, alpha: 0 }
+                })
+                .png({
+                    compressionLevel: 9,
+                    adaptiveFiltering: true,
+                    force: true
+                })
                 .toFile(outputPath);
 
             console.log(`✅ Generated ${icon.name}`);
