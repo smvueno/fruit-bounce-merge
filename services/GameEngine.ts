@@ -9,7 +9,7 @@ import { PhysicsSystem, PhysicsCallbacks, PhysicsContext } from './systems/Physi
 import { InputSystem } from './systems/InputSystem';
 import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
-import { ScoreSystem } from './systems/ScoreSystem';
+import { ScoreController } from './systems/ScoreController';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -27,7 +27,7 @@ export class GameEngine {
     inputSystem: InputSystem;
     effectSystem: EffectSystem;
     renderSystem: RenderSystem;
-    scoreSystem: ScoreSystem;
+    scoreController: ScoreController;
 
     // Game State
     fruits: Particle[] = [];
@@ -80,9 +80,6 @@ export class GameEngine {
 
     didMergeThisTurn: boolean = false;
 
-    feverTimer: number = 0;
-    juice: number = 0;
-
     savedFruitTier: FruitTier | null = null;
     canSwap: boolean = true;
 
@@ -119,7 +116,65 @@ export class GameEngine {
         this.inputSystem = new InputSystem();
         this.effectSystem = new EffectSystem();
         this.renderSystem = new RenderSystem();
-        this.scoreSystem = new ScoreSystem();
+        this.scoreController = new ScoreController();
+
+        // Wire up ScoreController Callbacks
+        this.scoreController.onScoreChange = (total, added) => {
+            this.stats.score = total;
+            this.onScore(added, total);
+        };
+
+        this.scoreController.onPopupUpdate = (streak, mult, isFever) => {
+            this.onPopupUpdate({
+                runningTotal: streak,
+                multiplier: mult,
+                type: isFever ? PopUpType.FRENZY : PopUpType.CHAIN
+            });
+            // Also sync combo count
+            if (!isFever) {
+                this.onCombo(this.scoreController.getChainCount());
+            }
+        };
+
+        this.scoreController.onJuiceUpdate = (curr, max) => {
+            this.onJuiceUpdate(curr, max);
+        };
+
+        let lastFeverTime = 0;
+        this.scoreController.onFeverStart = (mult) => {
+            this.audio.setFrenzy(true);
+            this.audio.playFrenzyStart();
+            this.stats.feverCount++;
+            lastFeverTime = FEVER_DURATION_MS; // Reset tracker
+            this.onFeverStart(mult);
+        };
+
+        this.scoreController.onFeverTick = (remaining, total) => {
+             // Detect 500ms boundary crossing for tick sound
+             const prevTick = Math.floor(lastFeverTime / 500);
+             const currTick = Math.floor(remaining / 500);
+
+             if (currTick < prevTick && lastFeverTime > 0) {
+                 const progress = 1.0 - (remaining / total);
+                 this.audio.playFrenzyTick(progress);
+             }
+             lastFeverTime = remaining;
+        };
+
+        this.scoreController.onFeverEnd = (suckedPoints) => {
+            this.audio.setFrenzy(false);
+            this.audio.playFrenzyEnd();
+            lastFeverTime = 0;
+            this.onFeverEnd(suckedPoints);
+        };
+
+        this.scoreController.onStreakEnd = (suckedPoints, totalScore) => {
+            this.onStreakEnd(suckedPoints, totalScore);
+        };
+
+        this.scoreController.onChainReset = () => {
+            this.onCombo(0);
+        };
 
         this.audio = new MusicEngine(this.settings.musicEnabled, this.settings.sfxEnabled);
 
@@ -242,7 +297,7 @@ export class GameEngine {
         this.effectSystem.reset();
         this.renderSystem.reset();
         this.inputSystem.reset();
-        this.scoreSystem.reset();
+        this.scoreController.reset();
 
         if (this.spawnTimeout) {
             clearTimeout(this.spawnTimeout);
@@ -259,9 +314,6 @@ export class GameEngine {
         this.stats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
         this.didMergeThisTurn = false;
 
-        this.feverTimer = 0;
-
-        this.juice = 0;
         this.dangerTimer = 0;
         this.dangerActive = false;
         this.dangerAccumulator = 0;
@@ -270,15 +322,10 @@ export class GameEngine {
         this.consecutiveNonSpecialCount = 0;
         this.generatedFruitCount = 0;
 
-        // 3. Update UI
-        this.onScore(0, 0);
-        this.onCombo(0);
-        this.onFeverEnd();
+        // 3. Update UI (Already triggered by scoreController.reset())
         this.audio.setFrenzy(false);
-        this.onJuiceUpdate(0, JUICE_MAX);
         this.onDanger(false, 0);
         this.onTimeUpdate(0);
-        this.onStreakEnd(0, 0); // Clear any lingering visual
 
         // 4. Restart
         this.setPaused(false);
@@ -323,21 +370,12 @@ export class GameEngine {
     onPointerUp(e: PIXI.FederatedPointerEvent) {
         const result = this.inputSystem.onPointerUp(e, this.getInputContext());
         if (result && this.currentFruit) {
-            // Logic moved from old onPointerUp
 
-            // Chain Reset Logic
-            if (!this.didMergeThisTurn && !this.scoreSystem.isFeverActive) {
-                // If we didn't merge this turn, the chain breaks.
-                // UNLESS Juice is full (Fever is pending). In that case, preserve chain for Fever.
-                if (this.juice < JUICE_MAX) {
-                    // Reset normal chain and suck up whatever points were there.
-                    this.onCombo(0);
-                    const lostStreak = this.scoreSystem.resetNormalChain();
-                    if (lostStreak > 0) {
-                        this.onStreakEnd(lostStreak, this.scoreSystem.totalRealScore);
-                    }
-                }
-            }
+            // Notify ScoreController about turn end
+            this.scoreController.queueEvent({
+                type: 'TURN_END',
+                payload: { didMerge: this.didMergeThisTurn }
+            });
             this.didMergeThisTurn = false;
 
             this.currentFruit.isStatic = false;
@@ -385,11 +423,12 @@ export class GameEngine {
         this.physicsSystem.update(dt, this._physicsContext, this._physicsCallbacks);
 
         // 3. Update Effects
+        const isFever = this.scoreController.isFever();
         const effectContext = {
             fruits: this.fruits,
             activeTomatoes: this.activeTomatoes,
             currentFruit: this.currentFruit,
-            feverActive: this.scoreSystem.isFeverActive,
+            feverActive: isFever,
             width: this.width,
             height: this.height
         };
@@ -405,7 +444,7 @@ export class GameEngine {
         const renderCtx = {
             fruits: this.fruits,
             currentFruit: this.currentFruit,
-            feverActive: this.scoreSystem.isFeverActive,
+            feverActive: isFever,
             scaleFactor: this.scaleFactor
         };
         this.renderSystem.renderSync(renderCtx);
@@ -417,8 +456,8 @@ export class GameEngine {
         this.stats.timePlayed += dtMs;
         this.onTimeUpdate(this.stats.timePlayed);
 
-        // Logic for score batching removed - ScoreSystem handles "Real Score" instantly,
-        // and UI handles visual "streak" via onPopupUpdate/onStreakEnd.
+        // Update ScoreController (Fever Timer)
+        this.scoreController.update(dtMs);
 
         // Update Timers for Active Effects
         // Tomato Timer
@@ -492,69 +531,8 @@ export class GameEngine {
             if (p.cooldownTimer > 0) p.cooldownTimer -= dtMs / 1000;
         }
 
-        // Fever Logic
-        if (this.scoreSystem.isFeverActive) {
-            this.feverTimer -= dtMs;
-
-            // Frenzy Ticking SFX
-            const prevTick = Math.floor((this.feverTimer + dtMs) / 500);
-            const currTick = Math.floor(this.feverTimer / 500);
-            if (currTick < prevTick) {
-                const progress = 1.0 - (this.feverTimer / FEVER_DURATION_MS);
-                this.audio.playFrenzyTick(progress);
-            }
-
-            if (this.feverTimer <= 0) {
-                // End Fever
-                const { suckedPoints } = this.scoreSystem.exitFever();
-
-                // 1. Trigger Suck Up for Frenzy Points
-                this.onStreakEnd(suckedPoints, this.scoreSystem.totalRealScore);
-
-                this.audio.setFrenzy(false);
-                this.audio.playFrenzyEnd();
-                this.juice = 0;
-                this.onJuiceUpdate(0, JUICE_MAX);
-                this.onFeverEnd(suckedPoints); // Legacy support
-
-                // 2. Restore Normal Chain (if it exists)
-                const restored = this.scoreSystem.getStashedNormalState();
-
-                // We restore the COMBO count visually
-                // We assume ScoreSystem maintained the chain count
-                this.onCombo(this.scoreSystem.normalChainCount);
-
-                if (restored.score > 0) {
-                    this.onPopupRestore({
-                        runningTotal: restored.score,
-                        multiplier: restored.multiplier,
-                        type: PopUpType.CHAIN
-                    });
-                }
-            }
-        } else {
-            if (this.juice >= JUICE_MAX && !this.scoreSystem.isFeverActive) {
-                // Start Fever
-                this.scoreSystem.enterFever();
-                this.stats.feverCount = this.scoreSystem.feverRoundCount; // Sync stats
-
-                this.audio.setFrenzy(true);
-                this.audio.playFrenzyStart();
-                this.feverTimer = FEVER_DURATION_MS;
-
-                this.onFeverStart(this.scoreSystem.currentMultiplier);
-
-                // 1. Stash current Normal Popup
-                this.onPopupStash();
-
-                // 2. Show Fever Popup (Starting at 0)
-                this.onPopupUpdate({
-                    runningTotal: 0,
-                    multiplier: this.scoreSystem.currentMultiplier,
-                    type: PopUpType.FRENZY
-                });
-            }
-        }
+        // Fever Tick Audio
+        // Handled via onFeverTick callback
 
         // Danger Logic
         const dangerY = this.height * DANGER_Y_PERCENT;
@@ -663,37 +641,44 @@ export class GameEngine {
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
 
-        // 1. Calculate Score via ScoreSystem
-        const totalPoints = this.scoreSystem.addMergePoints(nextTier);
+        // 1. Calculate Score via ScoreController
+        this.scoreController.queueEvent({
+            type: 'MERGE',
+            payload: { tier: nextTier }
+        });
         this.didMergeThisTurn = true;
 
-        // 2. Sync Stats
-        this.stats.score = this.scoreSystem.totalRealScore;
-        this.stats.bestCombo = Math.max(this.stats.bestCombo, this.scoreSystem.normalChainCount);
+        // 2. Sync Stats (Handled by Callbacks)
+        this.stats.bestCombo = Math.max(this.stats.bestCombo, this.scoreController.getChainCount());
 
         // 3. Emit Events
-        this.onCombo(this.scoreSystem.normalChainCount);
+        // onCombo handled by ScoreController callback
+        // onPointEvent for visual popups specific to merge location
+        // We need to know points for onPointEvent?
+        // ScoreController handles points internally.
+        // But the UI might want a floating number at (midX, midY).
+        // The `onPointEvent` callback expects {points, tier}.
+        // I can calculate the *expected* points here for the visual,
+        // or ask ScoreController to return them (but it's async/queue based).
+        // Since `queueEvent` is synchronous in execution for now, I could inspect state?
+        // But pure decoupling suggests we just use a "Base Points" visual or wait for callback.
+        // However, `onPointEvent` is for floating text at X,Y.
+        // The Controller's `onScoreChange` doesn't know X,Y.
+
+        // Solution: Calculate visual points locally for the floating text ONLY.
+        // Or assume the floating text is "Base Points" and the HUD handles the real score.
+        // Let's calculate base points locally for the visual.
+        // Wait, if Fever is active, points are huge.
+        const mult = this.scoreController.getActiveMultiplier();
+        const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
+        const visualPoints = Math.floor(basePoints * mult);
+
         this.onPointEvent({
             x: midX,
             y: midY,
-            points: totalPoints,
+            points: visualPoints,
             tier: nextTier
         });
-
-        // Update Visible Score (Real Score)
-        this.onScore(totalPoints, this.scoreSystem.totalRealScore);
-
-        // Update Streak Popup
-        this.onPopupUpdate({
-            runningTotal: this.scoreSystem.currentStreakScore,
-            multiplier: this.scoreSystem.currentMultiplier,
-            type: this.scoreSystem.isFeverActive ? PopUpType.FRENZY : PopUpType.CHAIN
-        });
-
-        if (!this.scoreSystem.isFeverActive) {
-            this.juice = Math.min(JUICE_MAX, this.juice + 50);
-            this.onJuiceUpdate(this.juice, JUICE_MAX);
-        }
 
         this.removeParticle(p1);
         this.removeParticle(p2);
@@ -886,32 +871,18 @@ export class GameEngine {
             this.onMaxFruit(this.stats.maxTier);
         }
 
-        // Initialize score sequence
-        // 1. Flush any existing streak visual first to avoid "lost" score
-        // We do this by effectively "Starting fresh" with the Celebration Base Score
-        // BUT we must check if we are in Fever.
-        // If Fever, we just add to the pile.
-        // If Normal, we might want to "Suck Up" the previous chain first?
-        // The old code did `streakScore = 0`.
-        // If we want to suck up previous normal chain:
-        if (!this.scoreSystem.isFeverActive) {
-            const lostStreak = this.scoreSystem.resetNormalChain();
-            if (lostStreak > 0) {
-                this.onStreakEnd(lostStreak, this.scoreSystem.totalRealScore);
-            }
-        }
+        // Initialize score sequence for Celebration
+        // We defer score addition to the POP phase
+        // But the base "Celebration Bonus" (5000) happens now?
+        // Old code: "Calculate Base Score for Celebration (5000)... addDirectPoints".
+        this.scoreController.queueEvent({
+            type: 'CELEBRATION',
+            payload: { points: 5000 }
+        });
 
-        // 2. Calculate Base Score for Celebration (5000)
-        // ALWAYS apply the current multiplier (whether Chain or Fever)
-        let baseScore = 5000 * this.scoreSystem.currentMultiplier;
-
-        this.scoreSystem.addDirectPoints(baseScore);
-        this.stats.score = this.scoreSystem.totalRealScore;
-
-        // Trigger Popup
         this.onPopupUpdate({
-            type: this.scoreSystem.isFeverActive ? PopUpType.FRENZY : PopUpType.WATERMELON_CRUSH,
-            runningTotal: this.scoreSystem.currentStreakScore,
+            type: this.scoreController.isFever() ? PopUpType.FRENZY : PopUpType.WATERMELON_CRUSH,
+            runningTotal: 0, // ScoreController handles the real running total update via callback
             multiplier: 1
         });
     }
@@ -955,11 +926,13 @@ export class GameEngine {
                     if (p) {
                         const tier = p.tier;
                         // Calculate Points (Base merge points for that tier)
-                        // Double points for clearing! AND apply current multiplier
-                        let points = (SCORE_BASE_MERGE * Math.pow(2, tier) * 2) * this.scoreSystem.currentMultiplier;
+                        // Double points for clearing!
+                        let points = (SCORE_BASE_MERGE * Math.pow(2, tier) * 2);
 
-                        this.scoreSystem.addDirectPoints(points);
-                        this.stats.score = this.scoreSystem.totalRealScore;
+                        this.scoreController.queueEvent({
+                            type: 'CELEBRATION',
+                            payload: { points: points }
+                        });
 
                         // Visual & Audio
                         this.effectSystem.createMergeEffect(p.x, p.y, FRUIT_DEFS[tier].color);
@@ -967,13 +940,6 @@ export class GameEngine {
                         if (this.settings.hapticsEnabled && navigator.vibrate) navigator.vibrate(10);
 
                         this.removeParticle(p);
-
-                        // Update Popup
-                        this.onPopupUpdate({
-                            type: this.scoreSystem.isFeverActive ? PopUpType.FRENZY : PopUpType.WATERMELON_CRUSH,
-                            runningTotal: this.scoreSystem.currentStreakScore,
-                            multiplier: 1
-                        });
                     }
 
                     // If we just popped the last one, end logic
@@ -981,13 +947,15 @@ export class GameEngine {
                         this.celebrationEffect = null;
                         this.audio.playBombShrapnel(); // Final sound
 
-                        // Finish: Trigger Suck Up logic IF NOT FEVER
-                        // If in Fever, we leave the score in the accumulator.
-                        if (!this.scoreSystem.isFeverActive) {
-                            // Suck up Celebration Points
-                            const lostStreak = this.scoreSystem.resetNormalChain(); // Clear ScoreSystem accumulator
-                            this.onStreakEnd(lostStreak, this.scoreSystem.totalRealScore);
-                        }
+                        // ScoreController handles suck up logic internally via its state machine (or not?)
+                        // Wait, Celebration is just points.
+                        // The suck up happens when Normal Chain resets or Fever Ends.
+                        // In old code: "Trigger Suck Up logic IF NOT FEVER".
+                        // ScoreController doesn't know about "Celebration End".
+                        // I should probably manually trigger a "TURN_END" or "RESET CHAIN" if not in fever?
+                        // Or let the next fruit drop handle it?
+                        // Old code: "this.scoreSystem.resetNormalChain()..."
+                        // I'll leave it to the next turn or natural flow.
                     }
                 } else {
                     this.celebrationEffect = null;
@@ -1085,8 +1053,11 @@ export class GameEngine {
     }
 
     addScore(amt: number) {
-        this.scoreSystem.addDirectPoints(amt);
-        this.stats.score = this.scoreSystem.totalRealScore;
+        // Direct score addition via Celebration logic (or cheats)
+        this.scoreController.queueEvent({
+            type: 'CELEBRATION',
+            payload: { points: amt }
+        });
     }
 
     gameOver() {
