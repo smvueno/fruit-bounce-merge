@@ -92,7 +92,8 @@ export class ScoreController {
     // Trigger initial UI updates
     this.onScoreChange(0, 0);
     this.onJuiceUpdate(0, JUICE_MAX);
-    this.onPopupUpdate(0, 1, false);
+    // Don't show popup on reset (it should be hidden until chain starts)
+    // this.onPopupUpdate(0, 1, false);
   }
 
   /**
@@ -317,7 +318,8 @@ export class ScoreController {
     this.state.sessionAccumulator = 0;
 
     this.onChainReset();
-    this.onPopupUpdate(0, 1, false);
+    // Don't show popup on chain reset (hide it)
+    // this.onPopupUpdate(0, 1, false);
   }
 
   // --- Pure Calculations ---
