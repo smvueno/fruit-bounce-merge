@@ -70,6 +70,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [popupData, setPopupData] = useState<PopupData | null>(null);
     const lastPopupDataRef = useRef<PopupData | null>(null); // To keep context (color/position) for suck up
     const [suckUpPayload, setSuckUpPayload] = useState<number | null>(null);
+    // New: Store the target total score to snap to after suck up
+    const [pendingTotalScore, setPendingTotalScore] = useState<number | null>(null);
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
     // Visual State
@@ -85,9 +87,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     });
 
     // --- Helper to Trigger Suck Up ---
-    const triggerSuckUp = (amount: number) => {
+    const triggerSuckUp = (amount: number, targetTotal: number) => {
         if (amount > 0) {
             setSuckUpPayload(amount);
+            setPendingTotalScore(targetTotal); // Store the authoritative total
             engineRef.current?.audio.playScoreFlyUp();
             setPopupData(null); // Clear central popup as the points fly away
         }
@@ -95,11 +98,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
     const handleSuckUpComplete = () => {
         if (suckUpPayload !== null) {
-            // Add the payload to the visible score
-            const newTotal = currentStateScoreRef.current + suckUpPayload;
+            // Convergence Logic:
+            // Instead of adding the payload to the current state (which might be stale/drifted),
+            // we simply snap to the 'pendingTotalScore' provided by the engine.
+            // This guarantees the HUD always matches the Real Score eventually.
+
+            let newTotal = 0;
+            if (pendingTotalScore !== null) {
+                newTotal = pendingTotalScore;
+            } else {
+                // Fallback (should rare/never happen if flow is correct)
+                newTotal = currentStateScoreRef.current + suckUpPayload;
+            }
+
             setCurrentStateScore(newTotal);
             setScore(newTotal); // Notify Parent App
+
             setSuckUpPayload(null);
+            setPendingTotalScore(null);
         }
     };
 
@@ -175,8 +191,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             onPopupRestore: (data: PopupData) => {
                 setPopupData(data); // Restore popup
             },
-            onStreakEnd: (amount: number) => {
-                triggerSuckUp(amount);
+            // Updated signature to accept totalRealScore
+            onStreakEnd: (amount: number, totalRealScore: number) => {
+                triggerSuckUp(amount, totalRealScore);
             },
 
             // Visuals

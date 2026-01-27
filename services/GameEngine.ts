@@ -74,7 +74,7 @@ export class GameEngine {
     // New Callbacks for Score System refactor
     onPopupStash: () => void = () => { };
     onPopupRestore: (data: PopupData) => void = () => { };
-    onStreakEnd: (amount: number) => void = () => { };
+    onStreakEnd: (amount: number, totalRealScore: number) => void = () => { };
 
     stats: GameStats = { score: 0, bestCombo: 0, feverCount: 0, tomatoUses: 0, dangerSaves: 0, timePlayed: 0, maxTier: FruitTier.CHERRY };
 
@@ -278,7 +278,7 @@ export class GameEngine {
         this.onJuiceUpdate(0, JUICE_MAX);
         this.onDanger(false, 0);
         this.onTimeUpdate(0);
-        this.onStreakEnd(0); // Clear any lingering visual
+        this.onStreakEnd(0, 0); // Clear any lingering visual
 
         // 4. Restart
         this.setPaused(false);
@@ -334,7 +334,7 @@ export class GameEngine {
                     this.onCombo(0);
                     const lostStreak = this.scoreSystem.resetNormalChain();
                     if (lostStreak > 0) {
-                        this.onStreakEnd(lostStreak);
+                        this.onStreakEnd(lostStreak, this.scoreSystem.totalRealScore);
                     }
                 }
             }
@@ -509,7 +509,7 @@ export class GameEngine {
                 const { suckedPoints } = this.scoreSystem.exitFever();
 
                 // 1. Trigger Suck Up for Frenzy Points
-                this.onStreakEnd(suckedPoints);
+                this.onStreakEnd(suckedPoints, this.scoreSystem.totalRealScore);
 
                 this.audio.setFrenzy(false);
                 this.audio.playFrenzyEnd();
@@ -897,7 +897,7 @@ export class GameEngine {
         if (!this.scoreSystem.isFeverActive) {
             const lostStreak = this.scoreSystem.resetNormalChain();
             if (lostStreak > 0) {
-                this.onStreakEnd(lostStreak);
+                this.onStreakEnd(lostStreak, this.scoreSystem.totalRealScore);
             }
         }
 
@@ -986,7 +986,7 @@ export class GameEngine {
                         if (!this.scoreSystem.isFeverActive) {
                             // Suck up Celebration Points
                             const lostStreak = this.scoreSystem.resetNormalChain(); // Clear ScoreSystem accumulator
-                            this.onStreakEnd(lostStreak);
+                            this.onStreakEnd(lostStreak, this.scoreSystem.totalRealScore);
                         }
                     }
                 } else {
