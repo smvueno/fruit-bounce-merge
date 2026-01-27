@@ -172,11 +172,16 @@ export class ScoreController {
     // In Fever Mode, chain is frozen, so we don't touch chainCount.
     if (!this.state.feverActive) {
       this.state.chainCount++;
-      this.state.chainMultiplier = Math.min(10, 1 + this.state.chainCount); // Cap at 10x? Or 1+Count?
-      // "Chain 9 -> 10x" logic from old system:
-      // Chain 0 -> 1x
-      // Chain 1 -> 2x ... Chain 9 -> 10x.
-      this.state.chainMultiplier = 1 + Math.min(this.state.chainCount, 9);
+
+      // Chain 1 (First Merge) -> 1x
+      // Chain 2 (Second Merge) -> 2x
+      // Chain 3 -> 3x...
+      // Chain 10+ -> 10x
+      if (this.state.chainCount <= 1) {
+        this.state.chainMultiplier = 1;
+      } else {
+        this.state.chainMultiplier = Math.min(10, this.state.chainCount);
+      }
     }
 
     // 2. Calculation: Get Points
@@ -200,8 +205,12 @@ export class ScoreController {
 
     // 5. UI Updates
     // Update the "Streak/Accumulator" popup
+    // Only show if multiplier > 1 or in Fever
     const activeMult = this.getActiveMultiplier();
-    this.onPopupUpdate(this.state.sessionAccumulator, activeMult, this.state.feverActive);
+
+    if (this.state.feverActive || this.state.chainCount >= 2) {
+        this.onPopupUpdate(this.state.sessionAccumulator, activeMult, this.state.feverActive);
+    }
   }
 
   private handleTurnEnd(payload: { didMerge: boolean }) {
