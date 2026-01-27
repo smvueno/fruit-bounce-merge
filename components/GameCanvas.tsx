@@ -163,6 +163,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             },
             onFeverEnd: (finalScore?: number) => {
                 setFever(false);
+                // Legacy support cleanup
+                // We don't use this for score sync anymore (GameEngine calls onStreakEnd)
+                // But we keep it to ensure fever state is cleared in UI
             },
 
             // New Score System Events
