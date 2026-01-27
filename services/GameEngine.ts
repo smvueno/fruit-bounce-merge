@@ -328,11 +328,14 @@ export class GameEngine {
             // Chain Reset Logic
             if (!this.didMergeThisTurn && !this.scoreSystem.isFeverActive) {
                 // If we didn't merge this turn, the chain breaks.
-                // Reset normal chain and suck up whatever points were there.
-                this.onCombo(0);
-                const lostStreak = this.scoreSystem.resetNormalChain();
-                if (lostStreak > 0) {
-                    this.onStreakEnd(lostStreak);
+                // UNLESS Juice is full (Fever is pending). In that case, preserve chain for Fever.
+                if (this.juice < JUICE_MAX) {
+                    // Reset normal chain and suck up whatever points were there.
+                    this.onCombo(0);
+                    const lostStreak = this.scoreSystem.resetNormalChain();
+                    if (lostStreak > 0) {
+                        this.onStreakEnd(lostStreak);
+                    }
                 }
             }
             this.didMergeThisTurn = false;
