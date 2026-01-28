@@ -110,11 +110,13 @@ export class PhysicsSystem {
     getFloorY(x: number, height: number): number {
         const baseY = height - FLOOR_OFFSET;
 
-        let ix = Math.floor(x);
-        if (ix < 0) ix = 0;
-        else if (ix >= LUT_SIZE) ix = LUT_SIZE - 1;
+        const ix = Math.floor(x);
+        if (ix >= 0 && ix < LUT_SIZE) {
+            return baseY + WAVE_LUT[ix];
+        }
 
-        return baseY + WAVE_LUT[ix];
+        // Fallback for out-of-bounds or NaN (Preserves original behavior)
+        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
     updateContactCounts(ctx: PhysicsContext) {
