@@ -2,6 +2,13 @@ import { FruitTier } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
 import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET, SPAWN_Y_PERCENT } from '../../constants';
 
+// Optimization: Pre-calculate Floor Wave to avoid expensive Trig calls per particle per substep
+const LUT_SIZE = 800; // Covers V_WIDTH (600) + Padding
+const WAVE_LUT = new Float32Array(LUT_SIZE);
+for (let i = 0; i < LUT_SIZE; i++) {
+    WAVE_LUT[i] = Math.sin(i * 0.015) * 10 + Math.cos(i * 0.04) * 5;
+}
+
 export interface PhysicsContext {
     fruits: Particle[];
     activeTomatoes: TomatoEffect[];
@@ -102,7 +109,12 @@ export class PhysicsSystem {
 
     getFloorY(x: number, height: number): number {
         const baseY = height - FLOOR_OFFSET;
-        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
+
+        let ix = Math.floor(x);
+        if (ix < 0) ix = 0;
+        else if (ix >= LUT_SIZE) ix = LUT_SIZE - 1;
+
+        return baseY + WAVE_LUT[ix];
     }
 
     updateContactCounts(ctx: PhysicsContext) {
