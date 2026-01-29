@@ -152,8 +152,17 @@ export const GroundCanvas: React.FC<GroundCanvasProps> = React.memo(({
         // Re-render on window resize
         window.addEventListener('resize', resizeCanvas);
 
+        // Handle visibility changes to restore canvas
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                resizeCanvas();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
         return () => {
             window.removeEventListener('resize', resizeCanvas);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [gameAreaWidth, gameAreaHeight, containerTop, containerLeft]);
 

@@ -98,6 +98,8 @@ export class GameEngine {
     private _physicsCallbacks: PhysicsCallbacks;
 
     private spawnTimeout: any = null;
+    private wasPausedBySystem: boolean = false;
+    private visibilityHandler: () => void;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -198,6 +200,8 @@ export class GameEngine {
             onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
             onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
         };
+
+        this.visibilityHandler = this.handleVisibilityChange.bind(this);
     }
 
     setPaused(paused: boolean) {
@@ -269,6 +273,56 @@ export class GameEngine {
         this.app.stage.on('pointermove', this.onPointerMove.bind(this));
         this.app.stage.on('pointerup', this.onPointerUp.bind(this));
         this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
+
+        // Handle Visibility Changes (Context Loss Prevention)
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    handleVisibilityChange() {
+        if (document.hidden) {
+            console.log('[GameEngine] App backgrounded - pausing');
+            if (!this.paused) {
+                this.setPaused(true);
+                this.wasPausedBySystem = true;
+            } else {
+                this.wasPausedBySystem = false;
+            }
+            if (this.app) {
+                this.app.ticker.stop();
+            }
+        } else {
+            console.log('[GameEngine] App foregrounded - restoring');
+            // Restore Graphics (Textures might be lost)
+            this.restoreGraphics();
+
+            if (this.wasPausedBySystem) {
+                this.setPaused(false);
+                this.wasPausedBySystem = false;
+            }
+            if (this.app) {
+                this.app.ticker.start();
+            }
+        }
+    }
+
+    restoreGraphics() {
+        if (!this.app || !this.app.renderer) return;
+
+        console.log('[GameEngine] Restoring graphics context...');
+        this.renderSystem.refreshGraphics();
+
+        // Restore current fruit sprite
+        if (this.currentFruit) {
+            this.renderSystem.createSprite(this.currentFruit);
+        }
+
+        // Restore all active fruits
+        for (const p of this.fruits) {
+            this.renderSystem.createSprite(p);
+        }
+
+        // Redraw static elements
+        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
     }
 
     handleResize() {
@@ -1069,6 +1123,7 @@ export class GameEngine {
 
     cleanup() {
         this.destroyed = true;
+        document.removeEventListener('visibilitychange', this.visibilityHandler);
         this.audio.stop();
         if (!this.initializing && this.app) {
             try {

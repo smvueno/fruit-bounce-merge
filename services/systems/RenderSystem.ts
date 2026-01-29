@@ -89,6 +89,18 @@ export class RenderSystem {
         this.floorGraphics.clear(); // Will need redraw
     }
 
+    refreshGraphics() {
+        // 1. Destroy all current textures to free GPU memory
+        this.textures.forEach(tex => tex.destroy(true));
+        this.textures.clear();
+
+        // 2. Clear all existing sprites (they reference dead textures)
+        this.reset();
+
+        // 3. Re-initialize textures
+        this.initTextures();
+    }
+
     // --- Rendering Logic ---
 
     getFloorY(x: number, height: number) {
