@@ -34,6 +34,10 @@ export interface PhysicsCallbacks {
 
 export class PhysicsSystem {
 
+    // Optimization: Persistent buffers to avoid GC (allocations per frame)
+    private _sortedBuffer: Particle[] = [];
+    private _tomatoTargets: Map<number, FruitTier> = new Map();
+
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
         const gravity = GAME_CONFIG.gravity;
         const friction = GAME_CONFIG.friction;
@@ -91,7 +95,19 @@ export class PhysicsSystem {
 
         // 4. Solver Loop (Substeps)
         for (let s = 0; s < SUBSTEPS; s++) {
-            this.updateContactCounts(ctx); // Count contacts before resolving
+            // Optimization: Single Sort per Substep
+            // Clear and repopulate buffer
+            this._sortedBuffer.length = 0;
+            // Only add relevant particles to the sort buffer to reduce sort cost further?
+            // No, logic expects full list for other checks maybe.
+            // Using push loop is faster than spread operator for large arrays in many engines
+            for (let i = 0; i < ctx.fruits.length; i++) {
+                this._sortedBuffer.push(ctx.fruits[i]);
+            }
+            // Sort by X for Sweep and Prune
+            this._sortedBuffer.sort((a, b) => a.x - b.x);
+
+            this.updateContactCounts(ctx, this._sortedBuffer); // Pass sorted buffer
 
             // --- GLOBAL LOCKING FRICTION ---
             for (const p of ctx.fruits) {
@@ -105,7 +121,7 @@ export class PhysicsSystem {
                 }
             }
 
-            this.resolveCollisions(ctx, callbacks);
+            this.resolveCollisions(ctx, callbacks, this._sortedBuffer); // Pass sorted buffer
             this.resolveWalls(ctx);
         }
     }
@@ -122,7 +138,7 @@ export class PhysicsSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
-    updateContactCounts(ctx: PhysicsContext) {
+    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[]) {
         // Reset counts
         for (const p of ctx.fruits) {
             p.contactCount = 0;
@@ -139,8 +155,8 @@ export class PhysicsSystem {
         }
 
         // Check pairs (Sweep and Prune)
-        // Sort copy to maintain render order stability if needed
-        const sorted = [...ctx.fruits].sort((a, b) => a.x - b.x);
+        // Use the passed sorted buffer
+        const sorted = sortedFruits;
 
         for (let i = 0; i < sorted.length; i++) {
             const p1 = sorted[i];
@@ -325,19 +341,24 @@ export class PhysicsSystem {
         }
     }
 
-    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
+    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[]) {
         // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
         // Logic: activeTomatoes lookup O(1) inside N^2 loop
+
+        // Use reusable Map
+        this._tomatoTargets.clear();
         let tomatoTargets: Map<number, FruitTier> | null = null;
+
         if (ctx.activeTomatoes.length > 0) {
-            tomatoTargets = new Map();
+            tomatoTargets = this._tomatoTargets;
             for (const t of ctx.activeTomatoes) {
                 tomatoTargets.set(t.tomatoId, t.targetTier);
             }
         }
 
         // Optimization: Sweep and Prune
-        const sorted = [...ctx.fruits].sort((a, b) => a.x - b.x);
+        // Use passed sorted buffer
+        const sorted = sortedFruits;
 
         for (let i = 0; i < sorted.length; i++) {
             const p1 = sorted[i];
