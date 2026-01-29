@@ -314,6 +314,16 @@ export class PhysicsSystem {
     }
 
     resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
+        // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
+        // Logic: activeTomatoes lookup O(1) inside N^2 loop
+        let tomatoTargets: Map<number, FruitTier> | null = null;
+        if (ctx.activeTomatoes.length > 0) {
+            tomatoTargets = new Map();
+            for (const t of ctx.activeTomatoes) {
+                tomatoTargets.set(t.tomatoId, t.targetTier);
+            }
+        }
+
         for (let i = 0; i < ctx.fruits.length; i++) {
             for (let j = i + 1; j < ctx.fruits.length; j++) {
                 const p1 = ctx.fruits[i];
@@ -323,10 +333,12 @@ export class PhysicsSystem {
                 if (p1.isStatic && p2.isStatic) continue;
 
                 // Tomato Logic Pass-through
-                const tEffect = ctx.activeTomatoes.find(t => t.tomatoId === p1.id || t.tomatoId === p2.id);
-                if (tEffect) {
-                    const other = p1.id === tEffect.tomatoId ? p2 : p1;
-                    if (other.tier === tEffect.targetTier) continue;
+                if (tomatoTargets) {
+                    const t1 = tomatoTargets.get(p1.id);
+                    if (t1 !== undefined && p2.tier === t1) continue;
+
+                    const t2 = tomatoTargets.get(p2.id);
+                    if (t2 !== undefined && p1.tier === t2) continue;
                 }
 
                 const dx = p1.x - p2.x;
