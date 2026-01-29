@@ -9,6 +9,9 @@ for (let i = 0; i < LUT_SIZE; i++) {
     WAVE_LUT[i] = Math.sin(i * 0.015) * 10 + Math.cos(i * 0.04) * 5;
 }
 
+// Optimization: Max Radius for Sweep and Prune (Watermelon ~155)
+const MAX_RADIUS = 160;
+
 export interface PhysicsContext {
     fruits: Particle[];
     activeTomatoes: TomatoEffect[];
@@ -135,12 +138,21 @@ export class PhysicsSystem {
             }
         }
 
-        // Check pairs
-        for (let i = 0; i < ctx.fruits.length; i++) {
-            for (let j = i + 1; j < ctx.fruits.length; j++) {
-                const p1 = ctx.fruits[i];
-                const p2 = ctx.fruits[j];
-                if (p1.ignoreCollisions || p2.ignoreCollisions || p1.isStatic || p2.isStatic) continue;
+        // Check pairs (Sweep and Prune)
+        // Sort copy to maintain render order stability if needed
+        const sorted = [...ctx.fruits].sort((a, b) => a.x - b.x);
+
+        for (let i = 0; i < sorted.length; i++) {
+            const p1 = sorted[i];
+            if (p1.ignoreCollisions || p1.isStatic || p1.isCaught) continue;
+
+            for (let j = i + 1; j < sorted.length; j++) {
+                const p2 = sorted[j];
+
+                // Sweep & Prune Early Exit
+                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+
+                if (p2.ignoreCollisions || p2.isStatic || p2.isCaught) continue;
 
                 const dx = p1.x - p2.x;
                 const dy = p1.y - p2.y;
@@ -324,12 +336,20 @@ export class PhysicsSystem {
             }
         }
 
-        for (let i = 0; i < ctx.fruits.length; i++) {
-            for (let j = i + 1; j < ctx.fruits.length; j++) {
-                const p1 = ctx.fruits[i];
-                const p2 = ctx.fruits[j];
+        // Optimization: Sweep and Prune
+        const sorted = [...ctx.fruits].sort((a, b) => a.x - b.x);
 
-                if (p1.ignoreCollisions || p2.ignoreCollisions) continue;
+        for (let i = 0; i < sorted.length; i++) {
+            const p1 = sorted[i];
+            if (p1.ignoreCollisions || p1.isCaught) continue;
+
+            for (let j = i + 1; j < sorted.length; j++) {
+                const p2 = sorted[j];
+
+                // Prune
+                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+
+                if (p2.ignoreCollisions || p2.isCaught) continue;
                 if (p1.isStatic && p2.isStatic) continue;
 
                 // Tomato Logic Pass-through
