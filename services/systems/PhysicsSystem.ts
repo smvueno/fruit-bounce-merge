@@ -2,6 +2,13 @@ import { FruitTier } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
 import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET, SPAWN_Y_PERCENT } from '../../constants';
 
+// Optimization: Pre-calculate Floor Wave to avoid expensive Trig calls per particle per substep
+const LUT_SIZE = 800; // Covers V_WIDTH (600) + Padding
+const WAVE_LUT = new Float32Array(LUT_SIZE);
+for (let i = 0; i < LUT_SIZE; i++) {
+    WAVE_LUT[i] = Math.sin(i * 0.015) * 10 + Math.cos(i * 0.04) * 5;
+}
+
 export interface PhysicsContext {
     fruits: Particle[];
     activeTomatoes: TomatoEffect[];
@@ -102,6 +109,13 @@ export class PhysicsSystem {
 
     getFloorY(x: number, height: number): number {
         const baseY = height - FLOOR_OFFSET;
+
+        const ix = Math.floor(x);
+        if (ix >= 0 && ix < LUT_SIZE) {
+            return baseY + WAVE_LUT[ix];
+        }
+
+        // Fallback for out-of-bounds or NaN (Preserves original behavior)
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
@@ -300,6 +314,16 @@ export class PhysicsSystem {
     }
 
     resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
+        // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
+        // Logic: activeTomatoes lookup O(1) inside N^2 loop
+        let tomatoTargets: Map<number, FruitTier> | null = null;
+        if (ctx.activeTomatoes.length > 0) {
+            tomatoTargets = new Map();
+            for (const t of ctx.activeTomatoes) {
+                tomatoTargets.set(t.tomatoId, t.targetTier);
+            }
+        }
+
         for (let i = 0; i < ctx.fruits.length; i++) {
             for (let j = i + 1; j < ctx.fruits.length; j++) {
                 const p1 = ctx.fruits[i];
@@ -309,10 +333,12 @@ export class PhysicsSystem {
                 if (p1.isStatic && p2.isStatic) continue;
 
                 // Tomato Logic Pass-through
-                const tEffect = ctx.activeTomatoes.find(t => t.tomatoId === p1.id || t.tomatoId === p2.id);
-                if (tEffect) {
-                    const other = p1.id === tEffect.tomatoId ? p2 : p1;
-                    if (other.tier === tEffect.targetTier) continue;
+                if (tomatoTargets) {
+                    const t1 = tomatoTargets.get(p1.id);
+                    if (t1 !== undefined && p2.tier === t1) continue;
+
+                    const t2 = tomatoTargets.get(p2.id);
+                    if (t2 !== undefined && p1.tier === t2) continue;
                 }
 
                 const dx = p1.x - p2.x;
