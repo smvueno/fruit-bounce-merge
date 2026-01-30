@@ -986,9 +986,15 @@ export class GameEngine {
                     const p = this.fruits.find(f => f.id === id);
                     if (p) {
                         const tier = p.tier;
+
+                        // FIX: Cap the tier for score calculation to avoid overflow with special fruits (Bomb=98, etc)
+                        // Special fruits have high tier numbers (97+) which cause Math.pow(2, tier) to explode.
+                        // We treat them as Watermelon-tier (9) for scoring purposes to provide a reward without breaking the game.
+                        const safeTier = (tier > FruitTier.WATERMELON) ? FruitTier.WATERMELON : tier;
+
                         // Calculate Points (Base merge points for that tier)
                         // Double points for clearing!
-                        let points = (SCORE_BASE_MERGE * Math.pow(2, tier) * 2);
+                        let points = (SCORE_BASE_MERGE * Math.pow(2, safeTier) * 2);
 
                         this.scoreController.handleCelebration({ points: points });
 
