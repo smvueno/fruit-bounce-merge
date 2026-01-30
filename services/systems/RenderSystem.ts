@@ -48,16 +48,7 @@ export class RenderSystem {
             return map;
         }
 
-        // Attempt to reset renderer to ensure fresh state
-        try {
-            // @ts-ignore - reset method might exist on some renderer versions
-            if (this.app.renderer.reset) {
-                // @ts-ignore
-                this.app.renderer.reset();
-            }
-        } catch (e) {
-            console.warn('[RenderSystem] Failed to reset renderer:', e);
-        }
+        // Renderer reset block removed (Unsafe/Dead Code)
 
         Object.values(FRUIT_DEFS).forEach(def => {
             try {

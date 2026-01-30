@@ -112,9 +112,9 @@ export class GameEngine {
         Object.assign(this, callbacks);
 
         this.contextRestoredHandler = () => {
-             console.log('[GameEngine] WebGL Context Restored event detected.');
-             // Small delay to allow PixiJS to re-initialize its internal state
-             setTimeout(() => this.attemptRestoration(0), 100);
+            console.log('[GameEngine] WebGL Context Restored event detected.');
+            // Small delay to allow PixiJS to re-initialize its internal state
+            setTimeout(() => this.attemptRestoration(0), 100);
         };
 
         // Core PIXI Containers
@@ -159,15 +159,15 @@ export class GameEngine {
         };
 
         this.scoreController.onFeverTick = (remaining, total) => {
-             // Detect 500ms boundary crossing for tick sound
-             const prevTick = Math.floor(lastFeverTime / 500);
-             const currTick = Math.floor(remaining / 500);
+            // Detect 500ms boundary crossing for tick sound
+            const prevTick = Math.floor(lastFeverTime / 500);
+            const currTick = Math.floor(remaining / 500);
 
-             if (currTick < prevTick && lastFeverTime > 0) {
-                 const progress = 1.0 - (remaining / total);
-                 this.audio.playFrenzyTick(progress);
-             }
-             lastFeverTime = remaining;
+            if (currTick < prevTick && lastFeverTime > 0) {
+                const progress = 1.0 - (remaining / total);
+                this.audio.playFrenzyTick(progress);
+            }
+            lastFeverTime = remaining;
         };
 
         this.scoreController.onFeverEnd = (suckedPoints) => {
@@ -462,10 +462,7 @@ export class GameEngine {
         if (result && this.currentFruit) {
 
             // Notify ScoreController about turn end
-            this.scoreController.queueEvent({
-                type: 'TURN_END',
-                payload: { didMerge: this.didMergeThisTurn }
-            });
+            this.scoreController.handleTurnEnd({ didMerge: this.didMergeThisTurn });
             this.didMergeThisTurn = false;
 
             this.currentFruit.isStatic = false;
@@ -732,41 +729,18 @@ export class GameEngine {
         const midY = (p1.y + p2.y) / 2;
 
         // 1. Calculate Score via ScoreController
-        this.scoreController.queueEvent({
-            type: 'MERGE',
-            payload: { tier: nextTier }
-        });
+        const mergePoints = this.scoreController.handleMerge({ tier: nextTier });
         this.didMergeThisTurn = true;
 
         // 2. Sync Stats (Handled by Callbacks)
         this.stats.bestCombo = Math.max(this.stats.bestCombo, this.scoreController.getChainCount());
 
         // 3. Emit Events
-        // onCombo handled by ScoreController callback
-        // onPointEvent for visual popups specific to merge location
-        // We need to know points for onPointEvent?
-        // ScoreController handles points internally.
-        // But the UI might want a floating number at (midX, midY).
-        // The `onPointEvent` callback expects {points, tier}.
-        // I can calculate the *expected* points here for the visual,
-        // or ask ScoreController to return them (but it's async/queue based).
-        // Since `queueEvent` is synchronous in execution for now, I could inspect state?
-        // But pure decoupling suggests we just use a "Base Points" visual or wait for callback.
-        // However, `onPointEvent` is for floating text at X,Y.
-        // The Controller's `onScoreChange` doesn't know X,Y.
-
-        // Solution: Calculate visual points locally for the floating text ONLY.
-        // Or assume the floating text is "Base Points" and the HUD handles the real score.
-        // Let's calculate base points locally for the visual.
-        // Wait, if Fever is active, points are huge.
-        const mult = this.scoreController.getActiveMultiplier();
-        const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
-        const visualPoints = Math.floor(basePoints * mult);
-
+        // The visual popup now uses the exact points calculated by the controller.
         this.onPointEvent({
             x: midX,
             y: midY,
-            points: visualPoints,
+            points: mergePoints,
             tier: nextTier
         });
 
@@ -965,10 +939,7 @@ export class GameEngine {
         // We defer score addition to the POP phase
         // But the base "Celebration Bonus" (5000) happens now?
         // Old code: "Calculate Base Score for Celebration (5000)... addDirectPoints".
-        this.scoreController.queueEvent({
-            type: 'CELEBRATION',
-            payload: { points: 5000 }
-        });
+        this.scoreController.handleCelebration({ points: 5000 });
 
         this.onPopupUpdate({
             type: this.scoreController.isFever() ? PopUpType.FRENZY : PopUpType.WATERMELON_CRUSH,
@@ -1019,10 +990,7 @@ export class GameEngine {
                         // Double points for clearing!
                         let points = (SCORE_BASE_MERGE * Math.pow(2, tier) * 2);
 
-                        this.scoreController.queueEvent({
-                            type: 'CELEBRATION',
-                            payload: { points: points }
-                        });
+                        this.scoreController.handleCelebration({ points: points });
 
                         // Visual & Audio
                         this.effectSystem.createMergeEffect(p.x, p.y, FRUIT_DEFS[tier].color);
@@ -1036,16 +1004,6 @@ export class GameEngine {
                     if (state.popIndex >= state.capturedIds.length) {
                         this.celebrationEffect = null;
                         this.audio.playBombShrapnel(); // Final sound
-
-                        // ScoreController handles suck up logic internally via its state machine (or not?)
-                        // Wait, Celebration is just points.
-                        // The suck up happens when Normal Chain resets or Fever Ends.
-                        // In old code: "Trigger Suck Up logic IF NOT FEVER".
-                        // ScoreController doesn't know about "Celebration End".
-                        // I should probably manually trigger a "TURN_END" or "RESET CHAIN" if not in fever?
-                        // Or let the next fruit drop handle it?
-                        // Old code: "this.scoreSystem.resetNormalChain()..."
-                        // I'll leave it to the next turn or natural flow.
                     }
                 } else {
                     this.celebrationEffect = null;
@@ -1144,10 +1102,7 @@ export class GameEngine {
 
     addScore(amt: number) {
         // Direct score addition via Celebration logic (or cheats)
-        this.scoreController.queueEvent({
-            type: 'CELEBRATION',
-            payload: { points: amt }
-        });
+        this.scoreController.handleCelebration({ points: amt });
     }
 
     gameOver() {

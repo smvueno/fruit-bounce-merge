@@ -11,12 +11,6 @@ export type ScoreEventType =
   | 'CELEBRATION'
   | 'RESET';
 
-export interface ScoreEvent {
-  type: ScoreEventType;
-  payload?: any;
-  timestamp: number;
-}
-
 export interface ScoreState {
   // Real score (instant, hidden bank)
   totalScore: number;
@@ -46,18 +40,16 @@ export interface ScoreState {
 
 export class ScoreController {
   private state: ScoreState;
-  private eventQueue: ScoreEvent[] = [];
-  private isProcessing: boolean = false;
 
   // Callbacks (View Layer Bindings)
-  public onScoreChange: (totalScore: number, addedPoints: number) => void = () => {};
-  public onPopupUpdate: (currentStreak: number, multiplier: number, isFever: boolean) => void = () => {};
-  public onJuiceUpdate: (current: number, max: number) => void = () => {};
-  public onFeverStart: (totalMultiplier: number) => void = () => {};
-  public onFeverTick: (remaining: number, total: number) => void = () => {};
-  public onFeverEnd: (suckedPoints: number) => void = () => {};
-  public onStreakEnd: (suckedPoints: number, totalScore: number) => void = () => {};
-  public onChainReset: () => void = () => {}; // Visual reset of chain counter
+  public onScoreChange: (totalScore: number, addedPoints: number) => void = () => { };
+  public onPopupUpdate: (currentStreak: number, multiplier: number, isFever: boolean) => void = () => { };
+  public onJuiceUpdate: (current: number, max: number) => void = () => { };
+  public onFeverStart: (totalMultiplier: number) => void = () => { };
+  public onFeverTick: (remaining: number, total: number) => void = () => { };
+  public onFeverEnd: (suckedPoints: number) => void = () => { };
+  public onStreakEnd: (suckedPoints: number, totalScore: number) => void = () => { };
+  public onChainReset: () => void = () => { }; // Visual reset of chain counter
 
   constructor() {
     this.state = this.getInitialState();
@@ -86,8 +78,6 @@ export class ScoreController {
    */
   public reset() {
     this.state = this.getInitialState();
-    this.eventQueue = [];
-    this.isProcessing = false;
 
     // Trigger initial UI updates
     this.onScoreChange(0, 0);
@@ -107,66 +97,14 @@ export class ScoreController {
       this.onFeverTick(Math.max(0, this.state.feverTimeRemaining), FEVER_DURATION_MS);
 
       if (this.state.feverTimeRemaining <= 0) {
-        this.queueEvent({ type: 'FEVER_END', timestamp: Date.now() });
-      }
-    }
-  }
-
-  /**
-   * Enqueues an event to be processed synchronously/sequentially.
-   */
-  public queueEvent(event: Omit<ScoreEvent, 'timestamp'>) {
-    this.eventQueue.push({
-      ...event,
-      timestamp: Date.now()
-    });
-
-    if (!this.isProcessing) {
-      this.processQueue();
-    }
-  }
-
-  // --- Event Processing ---
-
-  private processQueue() {
-    this.isProcessing = true;
-
-    while (this.eventQueue.length > 0) {
-      const event = this.eventQueue.shift();
-      if (event) {
-        this.handleEvent(event);
-      }
-    }
-
-    this.isProcessing = false;
-  }
-
-  private handleEvent(event: ScoreEvent) {
-    switch (event.type) {
-      case 'MERGE':
-        this.handleMerge(event.payload);
-        break;
-      case 'TURN_END':
-        this.handleTurnEnd(event.payload);
-        break;
-      case 'FEVER_START':
-        this.handleFeverStart();
-        break;
-      case 'FEVER_END':
         this.handleFeverEnd();
-        break;
-      case 'CELEBRATION':
-        this.handleCelebration(event.payload);
-        break;
-      case 'RESET':
-        this.reset();
-        break;
+      }
     }
   }
 
   // --- Handlers ---
 
-  private handleMerge(payload: { tier: number, isWatermelon?: boolean }) {
+  public handleMerge(payload: { tier: number, isWatermelon?: boolean }): number {
     const { tier } = payload;
 
     // 1. Logic: Increment Chain (if Normal Mode)
@@ -200,7 +138,7 @@ export class ScoreController {
 
       // Check for Fever Trigger
       if (this.state.feverMeter >= JUICE_MAX) {
-        this.queueEvent({ type: 'FEVER_START', timestamp: Date.now() });
+        this.handleFeverStart();
       }
     }
 
@@ -210,11 +148,13 @@ export class ScoreController {
     const activeMult = this.getActiveMultiplier();
 
     if (this.state.feverActive || this.state.chainCount >= 2) {
-        this.onPopupUpdate(this.state.sessionAccumulator, activeMult, this.state.feverActive);
+      this.onPopupUpdate(this.state.sessionAccumulator, activeMult, this.state.feverActive);
     }
+
+    return points;
   }
 
-  private handleTurnEnd(payload: { didMerge: boolean }) {
+  public handleTurnEnd(payload: { didMerge: boolean }) {
     // If we are in Fever, turns don't matter for chaining.
     if (this.state.feverActive) return;
 
@@ -229,7 +169,7 @@ export class ScoreController {
     }
   }
 
-  private handleFeverStart() {
+  public handleFeverStart() {
     if (this.state.feverActive) return;
 
     // 1. Snapshot Chain State
@@ -259,7 +199,7 @@ export class ScoreController {
     this.onPopupUpdate(0, totalMult, true);
   }
 
-  private handleFeverEnd() {
+  public handleFeverEnd() {
     if (!this.state.feverActive) return;
 
     // 1. Suck up Fever Points
@@ -275,8 +215,8 @@ export class ScoreController {
 
     // 3. Restore Normal Chain & Stashed Accumulator
     if (this.state.stashedSessionAccumulator !== null) {
-        this.state.sessionAccumulator = this.state.stashedSessionAccumulator;
-        this.state.stashedSessionAccumulator = null;
+      this.state.sessionAccumulator = this.state.stashedSessionAccumulator;
+      this.state.stashedSessionAccumulator = null;
     }
 
     // Update Juice UI
@@ -292,7 +232,7 @@ export class ScoreController {
     // The player can continue from here.
   }
 
-  private handleCelebration(payload: { points: number }) {
+  public handleCelebration(payload: { points: number }) {
     // Celebrations (Watermelon Crush) are direct point injections.
     // "Points from Celebrations... always multiplied by the current active multiplier"
 
