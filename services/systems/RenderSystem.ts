@@ -33,18 +33,56 @@ export class RenderSystem {
         this.initTextures();
     }
 
-    initTextures() {
-        if (!this.app || !this.app.renderer) return;
+    generateAllTextures(): Map<FruitTier, PIXI.Texture> {
+        const map = new Map<FruitTier, PIXI.Texture>();
+        if (!this.app || !this.app.renderer) return map;
+
+        // Context Loss Check
+        // @ts-ignore - accessing internal gl context
+        const gl = this.app.renderer.gl || (this.app.renderer.context && this.app.renderer.context.gl);
+        if (gl && gl.isContextLost && gl.isContextLost()) {
+            console.warn('[RenderSystem] Cannot generate textures: WebGL Context is lost.');
+            return map;
+        }
+
+        // Attempt to reset renderer to ensure fresh state
+        try {
+            // @ts-ignore - reset method might exist on some renderer versions
+            if (this.app.renderer.reset) {
+                // @ts-ignore
+                this.app.renderer.reset();
+            }
+        } catch (e) {
+            console.warn('[RenderSystem] Failed to reset renderer:', e);
+        }
 
         Object.values(FRUIT_DEFS).forEach(def => {
-            const container = new PIXI.Container();
-            // Use the centralized rendering logic
-            def.renderPixiBody(container, def.radius);
+            try {
+                const container = new PIXI.Container();
+                def.renderPixiBody(container, def.radius);
 
-            const texture = this.app!.renderer.generateTexture({ target: container });
-            this.textures.set(def.tier, texture);
-            container.destroy({ children: true });
+                const size = (def.radius * 2) + 20;
+                const texture = PIXI.RenderTexture.create({
+                    width: size,
+                    height: size,
+                    resolution: this.app!.renderer.resolution || 2
+                });
+
+                container.position.set(size / 2, size / 2);
+                this.app!.renderer.render({ container, target: texture });
+
+                map.set(def.tier, texture);
+                container.destroy({ children: true });
+            } catch (e) {
+                console.error(`[RenderSystem] Failed to generate texture for tier ${def.tier}:`, e);
+            }
         });
+        return map;
+    }
+
+    initTextures() {
+        const newTextures = this.generateAllTextures();
+        newTextures.forEach((v, k) => this.textures.set(k, v));
     }
 
     createFace(tier: FruitTier, radius: number): PIXI.Container {
@@ -89,16 +127,34 @@ export class RenderSystem {
         this.floorGraphics.clear(); // Will need redraw
     }
 
-    refreshGraphics() {
-        // 1. Destroy all current textures to free GPU memory
-        this.textures.forEach(tex => tex.destroy(true));
-        this.textures.clear();
+    refreshGraphics(): boolean {
+        try {
+            console.log('[RenderSystem] Refreshing graphics...');
+            const newTextures = this.generateAllTextures();
 
-        // 2. Clear all existing sprites (they reference dead textures)
-        this.reset();
+            if (newTextures.size > 0) {
+                // 1. Destroy all current textures to free GPU memory
+                this.textures.forEach(tex => {
+                    if (tex.destroy) tex.destroy(true);
+                });
+                this.textures.clear();
 
-        // 3. Re-initialize textures
-        this.initTextures();
+                // 2. Swap in new textures
+                newTextures.forEach((v, k) => this.textures.set(k, v));
+
+                // 3. Reset sprites (re-create them with new textures)
+                this.reset();
+
+                console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.textures.size}`);
+                return true;
+            } else {
+                console.error('[RenderSystem] Failed to regenerate textures. Keeping old textures.');
+                return false;
+            }
+        } catch (e) {
+            console.error('[RenderSystem] Error refreshing graphics:', e);
+            return false;
+        }
     }
 
     // --- Rendering Logic ---

@@ -100,6 +100,7 @@ export class GameEngine {
     private spawnTimeout: any = null;
     private wasPausedBySystem: boolean = false;
     private visibilityHandler: () => void;
+    private contextRestoredHandler: () => void;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -109,6 +110,12 @@ export class GameEngine {
         this.canvasElement = canvas;
         this.settings = settings;
         Object.assign(this, callbacks);
+
+        this.contextRestoredHandler = () => {
+             console.log('[GameEngine] WebGL Context Restored event detected.');
+             // Small delay to allow PixiJS to re-initialize its internal state
+             setTimeout(() => this.attemptRestoration(0), 100);
+        };
 
         // Core PIXI Containers
         this.container = new PIXI.Container();
@@ -276,6 +283,7 @@ export class GameEngine {
 
         // Handle Visibility Changes (Context Loss Prevention)
         document.addEventListener('visibilitychange', this.visibilityHandler);
+        this.canvasElement.addEventListener('webglcontextrestored', this.contextRestoredHandler);
     }
 
     handleVisibilityChange() {
@@ -292,24 +300,50 @@ export class GameEngine {
             }
         } else {
             console.log('[GameEngine] App foregrounded - restoring');
-            // Restore Graphics (Textures might be lost)
-            this.restoreGraphics();
-
-            if (this.wasPausedBySystem) {
-                this.setPaused(false);
-                this.wasPausedBySystem = false;
-            }
-            if (this.app) {
-                this.app.ticker.start();
-            }
+            this.attemptRestoration(0);
         }
     }
 
-    restoreGraphics() {
-        if (!this.app || !this.app.renderer) return;
+    attemptRestoration(attempt: number) {
+        if (attempt > 4) {
+            console.error('[GameEngine] Failed to restore graphics after multiple attempts.');
+            // Resume anyway to allow logic to run
+            this.resumeAfterRestore();
+            return;
+        }
+
+        // Exponential backoff: 200, 400, 800, 1600...
+        const delay = 200 * Math.pow(2, attempt);
+        console.log(`[GameEngine] Restoration attempt ${attempt + 1} scheduled in ${delay}ms`);
+
+        setTimeout(() => {
+            const success = this.restoreGraphics();
+            if (success) {
+                console.log('[GameEngine] Restoration successful.');
+                this.resumeAfterRestore();
+            } else {
+                console.warn(`[GameEngine] Restoration attempt ${attempt + 1} failed (Context lost or error). Retrying...`);
+                this.attemptRestoration(attempt + 1);
+            }
+        }, delay);
+    }
+
+    resumeAfterRestore() {
+        if (this.wasPausedBySystem) {
+            this.setPaused(false);
+            this.wasPausedBySystem = false;
+        }
+        if (this.app) {
+            this.app.ticker.start();
+        }
+    }
+
+    restoreGraphics(): boolean {
+        if (!this.app || !this.app.renderer) return false;
 
         console.log('[GameEngine] Restoring graphics context...');
-        this.renderSystem.refreshGraphics();
+        const success = this.renderSystem.refreshGraphics();
+        if (!success) return false;
 
         // Restore current fruit sprite
         if (this.currentFruit) {
@@ -323,6 +357,8 @@ export class GameEngine {
 
         // Redraw static elements
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
+
+        return true;
     }
 
     handleResize() {
@@ -1124,6 +1160,7 @@ export class GameEngine {
     cleanup() {
         this.destroyed = true;
         document.removeEventListener('visibilitychange', this.visibilityHandler);
+        this.canvasElement.removeEventListener('webglcontextrestored', this.contextRestoredHandler);
         this.audio.stop();
         if (!this.initializing && this.app) {
             try {
