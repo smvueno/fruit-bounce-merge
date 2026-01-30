@@ -9,6 +9,9 @@ for (let i = 0; i < LUT_SIZE; i++) {
     WAVE_LUT[i] = Math.sin(i * 0.015) * 10 + Math.cos(i * 0.04) * 5;
 }
 
+// Optimization: Max Radius for Sweep and Prune (Watermelon ~155)
+const MAX_RADIUS = 160;
+
 export interface PhysicsContext {
     fruits: Particle[];
     activeTomatoes: TomatoEffect[];
@@ -30,6 +33,10 @@ export interface PhysicsCallbacks {
 }
 
 export class PhysicsSystem {
+
+    // Optimization: Persistent buffers to avoid GC (allocations per frame)
+    private _sortedBuffer: Particle[] = [];
+    private _tomatoTargets: Map<number, FruitTier> = new Map();
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
         const gravity = GAME_CONFIG.gravity;
@@ -88,7 +95,19 @@ export class PhysicsSystem {
 
         // 4. Solver Loop (Substeps)
         for (let s = 0; s < SUBSTEPS; s++) {
-            this.updateContactCounts(ctx); // Count contacts before resolving
+            // Optimization: Single Sort per Substep
+            // Clear and repopulate buffer
+            this._sortedBuffer.length = 0;
+            // Only add relevant particles to the sort buffer to reduce sort cost further?
+            // No, logic expects full list for other checks maybe.
+            // Using push loop is faster than spread operator for large arrays in many engines
+            for (let i = 0; i < ctx.fruits.length; i++) {
+                this._sortedBuffer.push(ctx.fruits[i]);
+            }
+            // Sort by X for Sweep and Prune
+            this._sortedBuffer.sort((a, b) => a.x - b.x);
+
+            this.updateContactCounts(ctx, this._sortedBuffer); // Pass sorted buffer
 
             // --- GLOBAL LOCKING FRICTION ---
             for (const p of ctx.fruits) {
@@ -102,7 +121,7 @@ export class PhysicsSystem {
                 }
             }
 
-            this.resolveCollisions(ctx, callbacks);
+            this.resolveCollisions(ctx, callbacks, this._sortedBuffer); // Pass sorted buffer
             this.resolveWalls(ctx);
         }
     }
@@ -119,7 +138,7 @@ export class PhysicsSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
-    updateContactCounts(ctx: PhysicsContext) {
+    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[]) {
         // Reset counts
         for (const p of ctx.fruits) {
             p.contactCount = 0;
@@ -135,12 +154,21 @@ export class PhysicsSystem {
             }
         }
 
-        // Check pairs
-        for (let i = 0; i < ctx.fruits.length; i++) {
-            for (let j = i + 1; j < ctx.fruits.length; j++) {
-                const p1 = ctx.fruits[i];
-                const p2 = ctx.fruits[j];
-                if (p1.ignoreCollisions || p2.ignoreCollisions || p1.isStatic || p2.isStatic) continue;
+        // Check pairs (Sweep and Prune)
+        // Use the passed sorted buffer
+        const sorted = sortedFruits;
+
+        for (let i = 0; i < sorted.length; i++) {
+            const p1 = sorted[i];
+            if (p1.ignoreCollisions || p1.isStatic || p1.isCaught) continue;
+
+            for (let j = i + 1; j < sorted.length; j++) {
+                const p2 = sorted[j];
+
+                // Sweep & Prune Early Exit
+                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+
+                if (p2.ignoreCollisions || p2.isStatic || p2.isCaught) continue;
 
                 const dx = p1.x - p2.x;
                 const dy = p1.y - p2.y;
@@ -313,23 +341,36 @@ export class PhysicsSystem {
         }
     }
 
-    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
+    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[]) {
         // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
         // Logic: activeTomatoes lookup O(1) inside N^2 loop
+
+        // Use reusable Map
+        this._tomatoTargets.clear();
         let tomatoTargets: Map<number, FruitTier> | null = null;
+
         if (ctx.activeTomatoes.length > 0) {
-            tomatoTargets = new Map();
+            tomatoTargets = this._tomatoTargets;
             for (const t of ctx.activeTomatoes) {
                 tomatoTargets.set(t.tomatoId, t.targetTier);
             }
         }
 
-        for (let i = 0; i < ctx.fruits.length; i++) {
-            for (let j = i + 1; j < ctx.fruits.length; j++) {
-                const p1 = ctx.fruits[i];
-                const p2 = ctx.fruits[j];
+        // Optimization: Sweep and Prune
+        // Use passed sorted buffer
+        const sorted = sortedFruits;
 
-                if (p1.ignoreCollisions || p2.ignoreCollisions) continue;
+        for (let i = 0; i < sorted.length; i++) {
+            const p1 = sorted[i];
+            if (p1.ignoreCollisions || p1.isCaught) continue;
+
+            for (let j = i + 1; j < sorted.length; j++) {
+                const p2 = sorted[j];
+
+                // Prune
+                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+
+                if (p2.ignoreCollisions || p2.isCaught) continue;
                 if (p1.isStatic && p2.isStatic) continue;
 
                 // Tomato Logic Pass-through

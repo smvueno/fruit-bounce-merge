@@ -98,6 +98,9 @@ export class GameEngine {
     private _physicsCallbacks: PhysicsCallbacks;
 
     private spawnTimeout: any = null;
+    private wasPausedBySystem: boolean = false;
+    private visibilityHandler: () => void;
+    private contextRestoredHandler: () => void;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -107,6 +110,12 @@ export class GameEngine {
         this.canvasElement = canvas;
         this.settings = settings;
         Object.assign(this, callbacks);
+
+        this.contextRestoredHandler = () => {
+            console.log('[GameEngine] WebGL Context Restored event detected.');
+            // Small delay to allow PixiJS to re-initialize its internal state
+            setTimeout(() => this.attemptRestoration(0), 100);
+        };
 
         // Core PIXI Containers
         this.container = new PIXI.Container();
@@ -150,15 +159,15 @@ export class GameEngine {
         };
 
         this.scoreController.onFeverTick = (remaining, total) => {
-             // Detect 500ms boundary crossing for tick sound
-             const prevTick = Math.floor(lastFeverTime / 500);
-             const currTick = Math.floor(remaining / 500);
+            // Detect 500ms boundary crossing for tick sound
+            const prevTick = Math.floor(lastFeverTime / 500);
+            const currTick = Math.floor(remaining / 500);
 
-             if (currTick < prevTick && lastFeverTime > 0) {
-                 const progress = 1.0 - (remaining / total);
-                 this.audio.playFrenzyTick(progress);
-             }
-             lastFeverTime = remaining;
+            if (currTick < prevTick && lastFeverTime > 0) {
+                const progress = 1.0 - (remaining / total);
+                this.audio.playFrenzyTick(progress);
+            }
+            lastFeverTime = remaining;
         };
 
         this.scoreController.onFeverEnd = (suckedPoints) => {
@@ -198,6 +207,8 @@ export class GameEngine {
             onTomatoCollision: (p1, p2) => this.handleTomatoCollision(p1, p2),
             onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
         };
+
+        this.visibilityHandler = this.handleVisibilityChange.bind(this);
     }
 
     setPaused(paused: boolean) {
@@ -269,6 +280,85 @@ export class GameEngine {
         this.app.stage.on('pointermove', this.onPointerMove.bind(this));
         this.app.stage.on('pointerup', this.onPointerUp.bind(this));
         this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
+
+        // Handle Visibility Changes (Context Loss Prevention)
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+        this.canvasElement.addEventListener('webglcontextrestored', this.contextRestoredHandler);
+    }
+
+    handleVisibilityChange() {
+        if (document.hidden) {
+            console.log('[GameEngine] App backgrounded - pausing');
+            if (!this.paused) {
+                this.setPaused(true);
+                this.wasPausedBySystem = true;
+            } else {
+                this.wasPausedBySystem = false;
+            }
+            if (this.app) {
+                this.app.ticker.stop();
+            }
+        } else {
+            console.log('[GameEngine] App foregrounded - restoring');
+            this.attemptRestoration(0);
+        }
+    }
+
+    attemptRestoration(attempt: number) {
+        if (attempt > 4) {
+            console.error('[GameEngine] Failed to restore graphics after multiple attempts.');
+            // Resume anyway to allow logic to run
+            this.resumeAfterRestore();
+            return;
+        }
+
+        // Exponential backoff: 200, 400, 800, 1600...
+        const delay = 200 * Math.pow(2, attempt);
+        console.log(`[GameEngine] Restoration attempt ${attempt + 1} scheduled in ${delay}ms`);
+
+        setTimeout(() => {
+            const success = this.restoreGraphics();
+            if (success) {
+                console.log('[GameEngine] Restoration successful.');
+                this.resumeAfterRestore();
+            } else {
+                console.warn(`[GameEngine] Restoration attempt ${attempt + 1} failed (Context lost or error). Retrying...`);
+                this.attemptRestoration(attempt + 1);
+            }
+        }, delay);
+    }
+
+    resumeAfterRestore() {
+        if (this.wasPausedBySystem) {
+            this.setPaused(false);
+            this.wasPausedBySystem = false;
+        }
+        if (this.app) {
+            this.app.ticker.start();
+        }
+    }
+
+    restoreGraphics(): boolean {
+        if (!this.app || !this.app.renderer) return false;
+
+        console.log('[GameEngine] Restoring graphics context...');
+        const success = this.renderSystem.refreshGraphics();
+        if (!success) return false;
+
+        // Restore current fruit sprite
+        if (this.currentFruit) {
+            this.renderSystem.createSprite(this.currentFruit);
+        }
+
+        // Restore all active fruits
+        for (const p of this.fruits) {
+            this.renderSystem.createSprite(p);
+        }
+
+        // Redraw static elements
+        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
+
+        return true;
     }
 
     handleResize() {
@@ -372,10 +462,7 @@ export class GameEngine {
         if (result && this.currentFruit) {
 
             // Notify ScoreController about turn end
-            this.scoreController.queueEvent({
-                type: 'TURN_END',
-                payload: { didMerge: this.didMergeThisTurn }
-            });
+            this.scoreController.handleTurnEnd({ didMerge: this.didMergeThisTurn });
             this.didMergeThisTurn = false;
 
             this.currentFruit.isStatic = false;
@@ -642,41 +729,18 @@ export class GameEngine {
         const midY = (p1.y + p2.y) / 2;
 
         // 1. Calculate Score via ScoreController
-        this.scoreController.queueEvent({
-            type: 'MERGE',
-            payload: { tier: nextTier }
-        });
+        const mergePoints = this.scoreController.handleMerge({ tier: nextTier });
         this.didMergeThisTurn = true;
 
         // 2. Sync Stats (Handled by Callbacks)
         this.stats.bestCombo = Math.max(this.stats.bestCombo, this.scoreController.getChainCount());
 
         // 3. Emit Events
-        // onCombo handled by ScoreController callback
-        // onPointEvent for visual popups specific to merge location
-        // We need to know points for onPointEvent?
-        // ScoreController handles points internally.
-        // But the UI might want a floating number at (midX, midY).
-        // The `onPointEvent` callback expects {points, tier}.
-        // I can calculate the *expected* points here for the visual,
-        // or ask ScoreController to return them (but it's async/queue based).
-        // Since `queueEvent` is synchronous in execution for now, I could inspect state?
-        // But pure decoupling suggests we just use a "Base Points" visual or wait for callback.
-        // However, `onPointEvent` is for floating text at X,Y.
-        // The Controller's `onScoreChange` doesn't know X,Y.
-
-        // Solution: Calculate visual points locally for the floating text ONLY.
-        // Or assume the floating text is "Base Points" and the HUD handles the real score.
-        // Let's calculate base points locally for the visual.
-        // Wait, if Fever is active, points are huge.
-        const mult = this.scoreController.getActiveMultiplier();
-        const basePoints = SCORE_BASE_MERGE * Math.pow(2, nextTier);
-        const visualPoints = Math.floor(basePoints * mult);
-
+        // The visual popup now uses the exact points calculated by the controller.
         this.onPointEvent({
             x: midX,
             y: midY,
-            points: visualPoints,
+            points: mergePoints,
             tier: nextTier
         });
 
@@ -875,10 +939,7 @@ export class GameEngine {
         // We defer score addition to the POP phase
         // But the base "Celebration Bonus" (5000) happens now?
         // Old code: "Calculate Base Score for Celebration (5000)... addDirectPoints".
-        this.scoreController.queueEvent({
-            type: 'CELEBRATION',
-            payload: { points: 5000 }
-        });
+        this.scoreController.handleCelebration({ points: 5000 });
 
         this.onPopupUpdate({
             type: this.scoreController.isFever() ? PopUpType.FRENZY : PopUpType.WATERMELON_CRUSH,
@@ -925,14 +986,17 @@ export class GameEngine {
                     const p = this.fruits.find(f => f.id === id);
                     if (p) {
                         const tier = p.tier;
+
+                        // FIX: Cap the tier for score calculation to avoid overflow with special fruits (Bomb=98, etc)
+                        // Special fruits have high tier numbers (97+) which cause Math.pow(2, tier) to explode.
+                        // We treat them as Watermelon-tier (9) for scoring purposes to provide a reward without breaking the game.
+                        const safeTier = (tier > FruitTier.WATERMELON) ? FruitTier.WATERMELON : tier;
+
                         // Calculate Points (Base merge points for that tier)
                         // Double points for clearing!
-                        let points = (SCORE_BASE_MERGE * Math.pow(2, tier) * 2);
+                        let points = (SCORE_BASE_MERGE * Math.pow(2, safeTier) * 2);
 
-                        this.scoreController.queueEvent({
-                            type: 'CELEBRATION',
-                            payload: { points: points }
-                        });
+                        this.scoreController.handleCelebration({ points: points });
 
                         // Visual & Audio
                         this.effectSystem.createMergeEffect(p.x, p.y, FRUIT_DEFS[tier].color);
@@ -946,16 +1010,6 @@ export class GameEngine {
                     if (state.popIndex >= state.capturedIds.length) {
                         this.celebrationEffect = null;
                         this.audio.playBombShrapnel(); // Final sound
-
-                        // ScoreController handles suck up logic internally via its state machine (or not?)
-                        // Wait, Celebration is just points.
-                        // The suck up happens when Normal Chain resets or Fever Ends.
-                        // In old code: "Trigger Suck Up logic IF NOT FEVER".
-                        // ScoreController doesn't know about "Celebration End".
-                        // I should probably manually trigger a "TURN_END" or "RESET CHAIN" if not in fever?
-                        // Or let the next fruit drop handle it?
-                        // Old code: "this.scoreSystem.resetNormalChain()..."
-                        // I'll leave it to the next turn or natural flow.
                     }
                 } else {
                     this.celebrationEffect = null;
@@ -1054,10 +1108,7 @@ export class GameEngine {
 
     addScore(amt: number) {
         // Direct score addition via Celebration logic (or cheats)
-        this.scoreController.queueEvent({
-            type: 'CELEBRATION',
-            payload: { points: amt }
-        });
+        this.scoreController.handleCelebration({ points: amt });
     }
 
     gameOver() {
@@ -1069,6 +1120,8 @@ export class GameEngine {
 
     cleanup() {
         this.destroyed = true;
+        document.removeEventListener('visibilitychange', this.visibilityHandler);
+        this.canvasElement.removeEventListener('webglcontextrestored', this.contextRestoredHandler);
         this.audio.stop();
         if (!this.initializing && this.app) {
             try {
