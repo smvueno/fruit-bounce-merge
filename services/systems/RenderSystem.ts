@@ -35,7 +35,10 @@ export class RenderSystem {
 
     generateAllTextures(): Map<FruitTier, PIXI.Texture> {
         const map = new Map<FruitTier, PIXI.Texture>();
-        if (!this.app || !this.app.renderer) return map;
+        if (!this.app || !this.app.renderer) {
+            console.warn('[RenderSystem] app or renderer is missing!');
+            return map;
+        }
 
         // Context Loss Check
         // @ts-ignore - accessing internal gl context
