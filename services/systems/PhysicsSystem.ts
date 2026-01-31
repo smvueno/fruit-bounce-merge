@@ -37,10 +37,19 @@ export class PhysicsSystem {
     // Optimization: Persistent buffers to avoid GC (allocations per frame)
     private _sortedBuffer: Particle[] = [];
     private _tomatoTargets: Map<number, FruitTier> = new Map();
+    private _bombCapturedIds: Set<number> = new Set();
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
         const gravity = GAME_CONFIG.gravity;
         const friction = GAME_CONFIG.friction;
+
+        // 0. Update Bomb Captured Set
+        this._bombCapturedIds.clear();
+        for (const b of ctx.activeBombs) {
+            for (const id of b.capturedIds) {
+                this._bombCapturedIds.add(id);
+            }
+        }
 
         // 1. Reset Collision Flags
         for (const p of ctx.fruits) {
@@ -390,53 +399,58 @@ export class PhysicsSystem {
                 if (distSq < radSum * radSum) {
                     const dist = Math.sqrt(distSq);
 
-                    // --- SPECIAL LOGIC: BOMB ---
-                    if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
-                        callbacks.onBombExplosion(p1.tier === FruitTier.BOMB ? p1 : p2);
-                    }
+                    // Check if either particle is captured by a bomb (doomed)
+                    const isBombCaptured = this._bombCapturedIds.has(p1.id) || this._bombCapturedIds.has(p2.id);
 
-                    // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
-                    let canMerge = false;
+                    if (!isBombCaptured) {
+                        // --- SPECIAL LOGIC: BOMB ---
+                        if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
+                            callbacks.onBombExplosion(p1.tier === FruitTier.BOMB ? p1 : p2);
+                        }
 
-                    // Case 1: Normal Same Tier
-                    if (p1.tier === p2.tier) {
-                        // Check Watermelon Celebration
-                        if (p1.tier === FruitTier.WATERMELON) {
-                            if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                                // SAFE: The callback removes particles from ctx.fruits, but we immediately
-                                // break from the inner loop. This prevents further iteration over the modified
-                                // array. The outer loop continues safely as it only needs valid indices.
-                                callbacks.onCelebrationMatch(p1, p2);
-                                break;
+                        // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
+                        let canMerge = false;
+
+                        // Case 1: Normal Same Tier
+                        if (p1.tier === p2.tier) {
+                            // Check Watermelon Celebration
+                            if (p1.tier === FruitTier.WATERMELON) {
+                                if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                                    // SAFE: The callback removes particles from ctx.fruits, but we immediately
+                                    // break from the inner loop. This prevents further iteration over the modified
+                                    // array. The outer loop continues safely as it only needs valid indices.
+                                    callbacks.onCelebrationMatch(p1, p2);
+                                    break;
+                                }
+                            }
+
+                            // Normal Merge
+                            if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
+                                canMerge = true;
                             }
                         }
 
-                        // Normal Merge
-                        if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
-                            canMerge = true;
+                        // Case 2: Rainbow + Anything (except specials)
+                        else if ((p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW)) {
+                            const validP1 = p1.tier < 90; // Not a special fruit
+                            const validP2 = p2.tier < 90;
+
+                            if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
+                                canMerge = true;
+                            } else if (validP1 || validP2) {
+                                canMerge = true;
+                            }
                         }
-                    }
 
-                    // Case 2: Rainbow + Anything (except specials)
-                    else if ((p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW)) {
-                        const validP1 = p1.tier < 90; // Not a special fruit
-                        const validP2 = p2.tier < 90;
-
-                        if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
-                            canMerge = true;
-                        } else if (validP1 || validP2) {
-                            canMerge = true;
-                        }
-                    }
-
-                    if (canMerge) {
-                        if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                            callbacks.onMerge(p1, p2);
-                            // If merged, one or both particles are removed. 
-                            // We should break inner loop as p1 (at i) might be gone.
-                            // However, we can't easily `i--` here if we don't control the loop correctly.
-                            // To stay safe: We break inner loop. P1 is done.
-                            break;
+                        if (canMerge) {
+                            if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                                callbacks.onMerge(p1, p2);
+                                // If merged, one or both particles are removed.
+                                // We should break inner loop as p1 (at i) might be gone.
+                                // However, we can't easily `i--` here if we don't control the loop correctly.
+                                // To stay safe: We break inner loop. P1 is done.
+                                break;
+                            }
                         }
                     }
 
