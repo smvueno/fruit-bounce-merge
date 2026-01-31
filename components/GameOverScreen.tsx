@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { GameStats, LeaderboardEntry, FruitTier } from '../types';
 import { Home, RotateCcw, Trophy, Clock } from 'lucide-react';
-import { FRUIT_DEFS } from '../constants';
+import { FRUIT_DEFS } from '../services/fruitConfig';
 import { RankingTable } from './RankingTable';
 
 interface GameOverScreenProps {

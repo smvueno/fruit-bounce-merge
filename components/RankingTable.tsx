@@ -1,6 +1,6 @@
 import React from 'react';
 import { LeaderboardEntry } from '../types';
-import { FRUIT_DEFS } from '../constants';
+import { FRUIT_DEFS } from '../services/fruitConfig';
 import { Trophy } from 'lucide-react';
 
 interface RankingTableProps {

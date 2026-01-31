@@ -91,19 +91,14 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
                 const drawY = globalOffsetY + (p.y * scale);
                 const drawSize = p.size * scale;
 
-                ctx.save();
                 ctx.globalAlpha = p.alpha;
 
-                // Convert Color (number or string)
-                let color = p.color;
-                if (typeof color === 'number') {
-                    // Convert 0xRRGGBB to #RRGGBB
-                    color = `#${color.toString(16).padStart(6, '0')}`;
-                }
-                ctx.fillStyle = color as string;
+                // Color is guaranteed string by EffectSystem
+                ctx.fillStyle = p.color as string;
 
                 if (p.type === 'star') {
                     // Draw Star
+                    ctx.save();
                     ctx.translate(drawX, drawY);
                     ctx.rotate(p.rotation);
                     ctx.beginPath();
@@ -121,6 +116,7 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
                     }
                     ctx.closePath();
                     ctx.fill();
+                    ctx.restore();
                 } else if (p.type === 'bomb-ghost') {
                     ctx.fillStyle = '#212121';
                     ctx.beginPath();
@@ -132,9 +128,8 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
                     ctx.arc(drawX, drawY, drawSize, 0, Math.PI * 2);
                     ctx.fill();
                 }
-
-                ctx.restore();
             }
+            ctx.globalAlpha = 1.0;
 
             animationFrameRef.current = requestAnimationFrame(render);
         };

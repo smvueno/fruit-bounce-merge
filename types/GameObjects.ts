@@ -31,14 +31,31 @@ export class Particle {
     isBlinking: boolean = false;
 
     constructor(x: number, y: number, def: FruitDef, id: number) {
+        this.reset(x, y, def, id);
+    }
+
+    reset(x: number, y: number, def: FruitDef, id: number) {
         this.x = x;
         this.y = y;
         this.vx = 0;
         this.vy = 0;
         this.radius = def.radius;
-        this.mass = 1.0; // Enforce equal mass for stability
+        this.mass = 1.0;
         this.tier = def.tier;
         this.id = id;
+        this.isStatic = false;
+        this.ignoreCollisions = false;
+        this.isCaught = false;
+        this.contactCount = 0;
+        this.stability = 0;
+        this.cooldownTimer = 0;
+        this.rotation = 0;
+        this.angularVelocity = 0;
+        this.scaleX = 1;
+        this.scaleY = 1;
+        this.alpha = 1;
+        this.blinkTimer = Math.random() * 200;
+        this.isBlinking = false;
     }
 }
 
@@ -109,14 +126,24 @@ export class EffectParticle {
     rotation: number = 0; // Added for spinning stars
 
     constructor(x: number, y: number, color: string | number, type: 'circle' | 'star' | 'suck' | 'bomb-ghost' = 'circle') {
+        this.reset(x, y, color, type);
+    }
+
+    reset(x: number, y: number, color: string | number, type: 'circle' | 'star' | 'suck' | 'bomb-ghost') {
         this.x = x;
         this.y = y;
         this.vx = 0;
         this.vy = 0;
-        this.color = color;
+        if (typeof color === 'number') {
+            this.color = `#${color.toString(16).padStart(6, '0')}`;
+        } else {
+            this.color = color;
+        }
         this.type = type;
         this.size = type === 'star' ? 10 + Math.random() * 10 : 3 + Math.random() * 5;
         this.life = 1.0;
         this.alpha = 1.0;
+        this.targetId = undefined;
+        this.rotation = 0;
     }
 }

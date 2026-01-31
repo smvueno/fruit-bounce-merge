@@ -1,5 +1,6 @@
 
-import { FruitTier, FruitDef } from '../services/fruitConfig';
+import { FruitDef } from '../services/fruitConfig';
+import { FruitTier } from './enums';
 
 export enum GameState {
   START,
