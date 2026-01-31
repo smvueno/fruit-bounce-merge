@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { FruitTier, FRUIT_DEFS } from '../services/fruitConfig';
+import { FRUIT_DEFS } from '../services/fruitConfig';
+import { FruitTier } from '../types';
 import { FruitSVG } from './FruitSVG';
 import { Clock } from 'lucide-react';
 

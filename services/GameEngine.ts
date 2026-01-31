@@ -1,8 +1,10 @@
 import * as PIXI from 'pixi.js';
 import { FruitDef, FruitTier, GameSettings, GameStats, PointEvent, PopupData, PopUpType } from '../types';
-import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { FRUIT_DEFS } from './fruitConfig';
 import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
+import { ObjectPool } from '../utils/ObjectPool';
 
 // Systems
 import { PhysicsSystem, PhysicsCallbacks, PhysicsContext } from './systems/PhysicsSystem';
@@ -96,6 +98,8 @@ export class GameEngine {
     // Optimization: Reused Objects
     private _physicsContext: PhysicsContext;
     private _physicsCallbacks: PhysicsCallbacks;
+    private particlePool: ObjectPool<Particle>;
+    private deadParticles: Particle[] = [];
 
     private spawnTimeout: any = null;
     private wasPausedBySystem: boolean = false;
@@ -188,6 +192,9 @@ export class GameEngine {
         this.audio = new MusicEngine(this.settings.musicEnabled, this.settings.sfxEnabled);
 
         // Optimization: Initialize reusable objects
+        // Pool factory uses dummy values; they are reset immediately upon use.
+        this.particlePool = new ObjectPool<Particle>(() => new Particle(0, 0, FRUIT_DEFS[FruitTier.CHERRY], 0), 50);
+
         this._physicsContext = {
             fruits: [],
             activeTomatoes: [],
@@ -535,6 +542,15 @@ export class GameEngine {
             scaleFactor: this.scaleFactor
         };
         this.renderSystem.renderSync(renderCtx);
+
+        this.flushDeadParticles();
+    }
+
+    flushDeadParticles() {
+        while (this.deadParticles.length > 0) {
+            const p = this.deadParticles.pop();
+            if (p) this.particlePool.return(p);
+        }
     }
 
     // --- Game Logic Methods ---
@@ -679,7 +695,8 @@ export class GameEngine {
 
         this.nextFruitTier = tier;
         this.canSwap = true;
-        this.currentFruit = new Particle(
+        this.currentFruit = this.particlePool.get();
+        this.currentFruit.reset(
             this.width / 2,
             this.height * SPAWN_Y_PERCENT,
             FRUIT_DEFS[tier],
@@ -699,10 +716,24 @@ export class GameEngine {
 
         this.renderSystem.removeSprite(this.currentFruit);
 
+        // Return old to pool? No, we reuse the object variable, but we should create a NEW one?
+        // Wait, current implementation created a new one.
+        // We should return the old one to the pool if we are replacing it.
+        this.particlePool.return(this.currentFruit);
+
         this.nextFruitTier = tier;
-        this.currentFruit = new Particle(
-            this.currentFruit.x,
-            this.currentFruit.y,
+
+        // Create new
+        const oldX = this.currentFruit.x; // Accessing after return? UNSAFE if pool reuses immediately.
+        // But pool.return just pushes.
+        // Better:
+        const x = this.currentFruit.x;
+        const y = this.currentFruit.y;
+
+        this.currentFruit = this.particlePool.get();
+        this.currentFruit.reset(
+            x,
+            y,
             FRUIT_DEFS[tier],
             this.nextId++
         );
@@ -748,7 +779,8 @@ export class GameEngine {
         this.removeParticle(p2);
 
         const nextDef = FRUIT_DEFS[nextTier as FruitTier];
-        const newP = new Particle(midX, midY, nextDef, this.nextId++);
+        const newP = this.particlePool.get();
+        newP.reset(midX, midY, nextDef, this.nextId++);
         this.fruits.push(newP);
         this.renderSystem.createSprite(newP);
 
@@ -879,7 +911,8 @@ export class GameEngine {
             const targetDef = FRUIT_DEFS[targetTier as FruitTier];
             if (targetDef) {
                 for (let i = 0; i < spawnCount; i++) {
-                    const newP = new Particle(fruitX, fruitY, targetDef, this.nextId++);
+                    const newP = this.particlePool.get();
+                    newP.reset(fruitX, fruitY, targetDef, this.nextId++);
 
                     const angle = (i / spawnCount) * Math.PI * 2 + Math.random() * 0.3;
                     const force = 5 + Math.random() * 3;
@@ -1109,6 +1142,7 @@ export class GameEngine {
         p.ignoreCollisions = true;
 
         this.renderSystem.removeSprite(p);
+        this.deadParticles.push(p);
     }
 
     addScore(amt: number) {

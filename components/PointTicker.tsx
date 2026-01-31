@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { PointEvent } from '../types';
-import { FRUIT_DEFS } from '../constants';
+import { FRUIT_DEFS } from '../services/fruitConfig';
 
 interface PointTickerProps {
     latestEvent: PointEvent | null;

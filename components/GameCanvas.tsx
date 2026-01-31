@@ -3,7 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
-import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../constants';
+import { DANGER_Y_PERCENT } from '../constants';
+import { FRUIT_DEFS } from '../services/fruitConfig';
 import { DebugMenu } from './DebugMenu';
 
 // Components

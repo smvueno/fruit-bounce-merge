@@ -10,7 +10,7 @@ for (let i = 0; i < LUT_SIZE; i++) {
 }
 
 // Optimization: Max Radius for Sweep and Prune (Watermelon ~155)
-const MAX_RADIUS = 160;
+// const MAX_RADIUS = 160; // Now dynamic
 
 export interface PhysicsContext {
     fruits: Particle[];
@@ -43,7 +43,13 @@ export class PhysicsSystem {
         const gravity = GAME_CONFIG.gravity;
         const friction = GAME_CONFIG.friction;
 
-        // 0. Update Bomb Captured Set
+        // 0. Calculate Dynamic Max Radius for Pruning
+        let currentMaxR = 20;
+        for (const p of ctx.fruits) {
+            if (p.radius > currentMaxR) currentMaxR = p.radius;
+        }
+
+        // 0b. Update Bomb Captured Set
         this._bombCapturedIds.clear();
         for (const b of ctx.activeBombs) {
             for (const id of b.capturedIds) {
@@ -116,7 +122,7 @@ export class PhysicsSystem {
             // Sort by X for Sweep and Prune
             this._sortedBuffer.sort((a, b) => a.x - b.x);
 
-            this.updateContactCounts(ctx, this._sortedBuffer); // Pass sorted buffer
+            this.updateContactCounts(ctx, this._sortedBuffer, currentMaxR);
 
             // --- GLOBAL LOCKING FRICTION ---
             for (const p of ctx.fruits) {
@@ -130,7 +136,7 @@ export class PhysicsSystem {
                 }
             }
 
-            this.resolveCollisions(ctx, callbacks, this._sortedBuffer); // Pass sorted buffer
+            this.resolveCollisions(ctx, callbacks, this._sortedBuffer, currentMaxR);
             this.resolveWalls(ctx);
         }
     }
@@ -147,7 +153,7 @@ export class PhysicsSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
-    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[]) {
+    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[], currentMaxR: number) {
         // Reset counts
         for (const p of ctx.fruits) {
             p.contactCount = 0;
@@ -175,7 +181,7 @@ export class PhysicsSystem {
                 const p2 = sorted[j];
 
                 // Sweep & Prune Early Exit
-                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+                if (p2.x - p1.x > p1.radius + currentMaxR) break;
 
                 if (p2.ignoreCollisions || p2.isStatic || p2.isCaught) continue;
 
@@ -350,7 +356,7 @@ export class PhysicsSystem {
         }
     }
 
-    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[]) {
+    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[], currentMaxR: number) {
         // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
         // Logic: activeTomatoes lookup O(1) inside N^2 loop
 
@@ -377,7 +383,7 @@ export class PhysicsSystem {
                 const p2 = sorted[j];
 
                 // Prune
-                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+                if (p2.x - p1.x > p1.radius + currentMaxR) break;
 
                 if (p2.ignoreCollisions || p2.isCaught) continue;
                 if (p1.isStatic && p2.isStatic) continue;

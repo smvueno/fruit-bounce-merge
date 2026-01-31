@@ -1,8 +1,6 @@
 
 import { FruitTier } from "./types";
 
-export { FRUIT_DEFS } from './services/fruitConfig';
-
 // Unified Physics Settings
 const PHYSICS_GRAVITY = 0.8;
 const PHYSICS_FRICTION = 0.98; // Air resistance

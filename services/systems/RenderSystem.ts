@@ -1,7 +1,8 @@
 import * as PIXI from 'pixi.js';
 import { FruitTier } from '../../types';
 import { Particle, EffectParticle } from '../../types/GameObjects';
-import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
+import { DANGER_Y_PERCENT } from '../../constants';
+import { FRUIT_DEFS } from '../fruitConfig';
 
 export interface RenderContext {
     fruits: Particle[];
@@ -15,11 +16,9 @@ export class RenderSystem {
     container: PIXI.Container | undefined;
     fruitSprites: Map<number, PIXI.Container> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
-    floorGraphics: PIXI.Graphics;
     dangerLine: PIXI.Graphics;
 
     constructor() {
-        this.floorGraphics = new PIXI.Graphics();
         this.dangerLine = new PIXI.Graphics();
     }
 
@@ -27,7 +26,6 @@ export class RenderSystem {
         this.app = app;
         this.container = container;
 
-        container.addChild(this.floorGraphics);
         container.addChild(this.dangerLine);
 
         this.initTextures();
@@ -118,7 +116,6 @@ export class RenderSystem {
             }
         });
         this.fruitSprites.clear();
-        this.floorGraphics.clear(); // Will need redraw
     }
 
     refreshGraphics(): boolean {
@@ -156,37 +153,6 @@ export class RenderSystem {
     getFloorY(x: number, height: number) {
         const baseY = height - 60;
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
-    }
-
-    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
-        this.floorGraphics.clear();
-
-        const bottomY = ((screenHeight - containerY) / scaleFactor) + 200;
-
-        // Calculate extended width to cover full screen
-        const virtualScreenWidth = screenWidth / scaleFactor;
-        const gameCenter = width / 2;
-        const startX = gameCenter - (virtualScreenWidth / 2);
-        const endX = gameCenter + (virtualScreenWidth / 2);
-
-        const step = 5;
-        this.floorGraphics.moveTo(startX, bottomY);
-        this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
-        for (let x = startX; x <= endX; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
-        }
-        this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
-        this.floorGraphics.lineTo(endX, bottomY);
-        this.floorGraphics.closePath();
-        this.floorGraphics.fill({ color: 0x76C043 });
-        this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
-
-        // Decorations - keep relative to game area center
-        this.floorGraphics.circle(50, height, 15);
-        this.floorGraphics.circle(80, height + 20, 20);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-        this.floorGraphics.circle(width - 100, height, 25);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
     }
 
     drawDangerLine(width: number, height: number, active: boolean) {
