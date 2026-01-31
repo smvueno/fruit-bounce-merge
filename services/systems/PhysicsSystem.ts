@@ -405,7 +405,11 @@ export class PhysicsSystem {
                     if (!isBombCaptured) {
                         // --- SPECIAL LOGIC: BOMB ---
                         if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
-                            callbacks.onBombExplosion(p1.tier === FruitTier.BOMB ? p1 : p2);
+                            const bomb = p1.tier === FruitTier.BOMB ? p1 : p2;
+                            callbacks.onBombExplosion(bomb);
+                            // Stop further processing for this pair since one is gone
+                            if (bomb === p1) break;
+                            else continue;
                         }
 
                         // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
@@ -424,8 +428,8 @@ export class PhysicsSystem {
                                 }
                             }
 
-                            // Normal Merge
-                            if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO && p1.tier !== FruitTier.RAINBOW) {
+                            // Normal Merge (Allow Rainbow+Rainbow to merge here)
+                            if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO) {
                                 canMerge = true;
                             }
                         }
