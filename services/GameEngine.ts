@@ -1103,6 +1103,11 @@ export class GameEngine {
     removeParticle(p: Particle) {
         const idx = this.fruits.indexOf(p);
         if (idx >= 0) this.fruits.splice(idx, 1);
+
+        // Mark as caught/dead for physics engine to ignore in same frame
+        p.isCaught = true;
+        p.ignoreCollisions = true;
+
         this.renderSystem.removeSprite(p);
     }
 
