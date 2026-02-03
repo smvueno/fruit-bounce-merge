@@ -291,8 +291,12 @@ export class GameEngine {
             this.rootContainer,
             this.gameContainer,
             this.backgroundContainer,
-            this.effectContainer
+            this.effectContainer,
+            () => this.swapSavedFruit()
         );
+
+        // Initial Resize to ensure everything is drawn
+        this.handleResize(); // Call this immediately after renderer setup
 
         // Start Game
         this.spawnNextFruit();
@@ -383,30 +387,62 @@ export class GameEngine {
         }
 
         // Redraw static elements
-        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
+
 
         return true;
     }
 
+    // Layout State
+    viewRect: { x: number, y: number, width: number, height: number } | null = null;
+
     handleResize() {
         if (!this.app || !this.app.screen) return;
 
+        // PIXI with autoDensity:true works in CSS pixels, not physical pixels.
+        // app.screen.width/height are CSS dimensions.
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
-        const viewW = actualW / 1.4;
-        const viewH = actualH / 1.4;
 
-        this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
+        let targetX = 0;
+        let targetY = 0;
+        let availableW = actualW;
+        let availableH = actualH;
+
+        // If we have an explicit DOM rect from React, use that.
+        // viewRect is already in CSS pixels from getBoundingClientRect().
+        if (this.viewRect) {
+            targetX = this.viewRect.x;
+            targetY = this.viewRect.y;
+            availableW = this.viewRect.width;
+            availableH = this.viewRect.height;
+        } else {
+            // Fallback: Use "Safe View" logic (Centered on screen)
+            const PADDING = 20;
+            targetX = PADDING;
+            targetY = PADDING;
+            availableW = actualW - (PADDING * 2);
+            availableH = actualH - (PADDING * 2);
+        }
+
+        // We calculate scale to fit the AVAILABLE area
+        this.scaleFactor = Math.min(availableW / V_WIDTH, availableH / V_HEIGHT);
+
         this.gameContainer.scale.set(this.scaleFactor);
 
-        // Center the container in the canvas
+        // Center the container within the Available Area
         const logicalW = V_WIDTH * this.scaleFactor;
         const logicalH = V_HEIGHT * this.scaleFactor;
 
-        const xOffset = (actualW - logicalW) / 2;
-        const yOffset = (actualH - logicalH) / 2;
+        // Offset within the available box to center it
+        const xCentering = (availableW - logicalW) / 2;
+        const yCentering = (availableH - logicalH) / 2;
 
-        this.gameContainer.position.set(xOffset, yOffset);
+        const finalX = targetX + xCentering;
+        const finalY = targetY + yCentering;
+
+        // console.log(`[GameEngine] Resize: ViewRect=${this.viewRect ? 'YES' : 'NO'} Avail=${availableW.toFixed(0)}x${availableH.toFixed(0)} Scale=${this.scaleFactor.toFixed(2)} Pos=${finalX.toFixed(0)},${finalY.toFixed(0)}`);
+
+        this.gameContainer.position.set(finalX, finalY);
 
         this.renderSystem.resize(
             V_WIDTH,
@@ -414,8 +450,24 @@ export class GameEngine {
             this.scaleFactor,
             actualW,
             actualH,
-            yOffset
+            finalY, // Container Y (Top of Game)
+            finalX  // Container X (Left of Game)
         );
+    }
+
+    setViewRect(rect: { x: number, y: number, width: number, height: number }) {
+        // Only update if changed significantly
+        if (this.viewRect &&
+            Math.abs(this.viewRect.x - rect.x) < 1 &&
+            Math.abs(this.viewRect.y - rect.y) < 1 &&
+            Math.abs(this.viewRect.width - rect.width) < 1 &&
+            Math.abs(this.viewRect.height - rect.height) < 1) {
+            return;
+        }
+
+        this.viewRect = rect;
+        // Trigger resize immediately
+        this.handleResize();
     }
 
     reset() {
@@ -486,7 +538,9 @@ export class GameEngine {
     onPointerDown(e: PIXI.FederatedPointerEvent) {
         if (this.paused) return;
         this.audio.resume();
-        this.inputSystem.onPointerDown(e, this.getInputContext());
+        const ctx = this.getInputContext();
+        console.log(`[GameEngine] Input Down: Global=${e.global.x.toFixed(1)},${e.global.y.toFixed(1)} Container=${ctx.containerX.toFixed(1)},${ctx.containerY.toFixed(1)} Scale=${ctx.scaleFactor.toFixed(2)}`);
+        this.inputSystem.onPointerDown(e, ctx);
     }
 
     onPointerMove(e: PIXI.FederatedPointerEvent) {
@@ -561,7 +615,7 @@ export class GameEngine {
         this.audio.update();
 
         // 5. Render
-        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
+
 
         // Sync Render State
         const renderCtx = {
@@ -569,7 +623,17 @@ export class GameEngine {
             currentFruit: this.currentFruit,
             feverActive: isFever,
             scaleFactor: this.scaleFactor,
-            effectParticles: this.effectSystem.visualParticles
+            effectParticles: this.effectSystem.visualParticles,
+            dt: dt,
+            // HUD Data
+            score: this.stats.score,
+            playTime: this.stats.timePlayed,
+            maxTier: this.stats.maxTier,
+            nextFruit: this.nextFruitQueue[0] ?? FruitTier.CHERRY, // Default if empty
+            savedFruit: this.savedFruitTier,
+            // Overlay Data
+            juice: this.scoreController.getFeverMeter(),
+            dangerActive: this.dangerActive
         };
         this.renderSystem.renderSync(renderCtx);
     }
@@ -774,6 +838,11 @@ export class GameEngine {
 
         // 3. Emit Events
         // The visual popup now uses the exact points calculated by the controller.
+
+        // Spawn Floating Text (Pixi)
+        this.renderSystem.spawnFloatingText(midX, midY, mergePoints, nextTier);
+
+        // Emit for legacy/React (if needed, or remove later)
         this.onPointEvent({
             x: midX,
             y: midY,

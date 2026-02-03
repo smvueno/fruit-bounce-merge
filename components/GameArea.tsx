@@ -7,17 +7,11 @@ interface GameAreaProps {
 
 export const GameArea: React.FC<GameAreaProps> = React.memo(({ children, canvasRef }) => {
     return (
-        <div className="relative w-full aspect-[4/5] bg-transparent overflow-visible">
+        <div className="fixed inset-0 w-full h-full bg-transparent overflow-hidden touch-none">
             {/* The Actual Game Canvas */}
             <canvas
                 ref={canvasRef}
-                className="absolute touch-none cursor-grab active:cursor-grabbing z-10 block"
-                style={{
-                    width: '140%',
-                    height: '140%',
-                    top: '-20%',
-                    left: '-20%'
-                }}
+                className="block w-full h-full touch-none cursor-grab active:cursor-grabbing z-10"
             />
 
             {/* Overlay Elements */}

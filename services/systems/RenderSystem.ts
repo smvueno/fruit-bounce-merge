@@ -5,6 +5,9 @@ import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
 import { GroundRenderer } from './renderers/GroundRenderer';
 import { WallRenderer } from './renderers/WallRenderer';
 import { EffectRenderer } from './renderers/EffectRenderer';
+import { FloatingTextRenderer } from './renderers/FloatingTextRenderer';
+import { HUDRenderer } from './renderers/HUDRenderer';
+import { OverlayRenderer } from './renderers/OverlayRenderer';
 
 export interface RenderContext {
     fruits: Particle[];
@@ -12,6 +15,16 @@ export interface RenderContext {
     feverActive: boolean;
     scaleFactor: number;
     effectParticles?: EffectParticle[];
+    dt: number;
+    // HUD Data
+    score: number;
+    playTime: number;
+    maxTier: FruitTier;
+    nextFruit: FruitTier;
+    savedFruit: FruitTier | null;
+    // Overlay Data
+    juice: number;
+    dangerActive: boolean;
 }
 
 export class RenderSystem {
@@ -20,6 +33,8 @@ export class RenderSystem {
     gameContainer: PIXI.Container | undefined;
     backgroundContainer: PIXI.Container | undefined;
     effectContainer: PIXI.Container | undefined;
+    floatingTextContainer: PIXI.Container | undefined; // NEW
+
     fruitSprites: Map<number, PIXI.Container> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
     effectTextures: Record<string, PIXI.Texture> = {};
@@ -28,10 +43,11 @@ export class RenderSystem {
     groundRenderer: GroundRenderer | undefined;
     wallRenderer: WallRenderer | undefined;
     effectRenderer: EffectRenderer | undefined;
-    dangerLine: PIXI.Graphics;
+    floatingTextRenderer: FloatingTextRenderer | undefined;
+    hudRenderer: HUDRenderer | undefined;
+    overlayRenderer: OverlayRenderer | undefined;
 
     constructor() {
-        this.dangerLine = new PIXI.Graphics();
     }
 
     initialize(
@@ -39,7 +55,8 @@ export class RenderSystem {
         root: PIXI.Container,
         gameContainer: PIXI.Container,
         backgroundContainer: PIXI.Container,
-        effectContainer: PIXI.Container
+        effectContainer: PIXI.Container,
+        onSwap: () => void
     ) {
         this.app = app;
         this.rootContainer = root;
@@ -55,7 +72,33 @@ export class RenderSystem {
         this.wallRenderer = new WallRenderer(backgroundContainer);
         this.effectRenderer = new EffectRenderer(effectContainer, this.effectTextures);
 
-        gameContainer.addChild(this.dangerLine);
+        // Overlay Renderer (Layer 15/25 - specific)
+        // Let's create a dedicated overlay container above Effects.
+        // Actually, Overlays might need to be below UI (Text, HUD) but above Game/Effects?
+        // Game (10), Effect (20).
+        // React Juice was z-15. So inside Game? No, inside Root but Z-ordered.
+        const overlayContainer = new PIXI.Container();
+        overlayContainer.zIndex = 25; // Above Effects (20)
+        this.rootContainer.addChild(overlayContainer);
+
+        this.overlayRenderer = new OverlayRenderer(app, overlayContainer);
+
+        // Initialize Text Renderer (Layer 30 - Above Overlays)
+        this.floatingTextContainer = new PIXI.Container();
+        this.floatingTextContainer.label = 'floating_text';
+        this.floatingTextContainer.zIndex = 30;
+        this.rootContainer.addChild(this.floatingTextContainer);
+
+        this.floatingTextRenderer = new FloatingTextRenderer(this.floatingTextContainer);
+
+        // Initialize UI Container (Layer 40 - Topmost)
+        const uiContainer = new PIXI.Container();
+        uiContainer.label = 'ui_container';
+        uiContainer.zIndex = 40;
+        this.rootContainer.addChild(uiContainer);
+
+        // Initialize HUD Renderer
+        this.hudRenderer = new HUDRenderer(uiContainer, this.textures, onSwap);
     }
 
     generateAllTextures(): Map<FruitTier, PIXI.Texture> {
@@ -92,7 +135,7 @@ export class RenderSystem {
                 map.set(def.tier, texture);
                 container.destroy({ children: true });
             } catch (e) {
-                console.error(`[RenderSystem] Failed to generate texture for tier ${def.tier}:`, e);
+                console.error(`[RenderSystem] Failed to generate texture for tier ${def.tier}: `, e);
             }
         });
 
@@ -198,7 +241,7 @@ export class RenderSystem {
                 // 3. Reset sprites (re-create them with new textures)
                 this.reset();
 
-                console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.textures.size}`);
+                console.log(`[RenderSystem] Graphics refreshed.Textures count: ${this.textures.size} `);
                 return true;
             } else {
                 console.error('[RenderSystem] Failed to regenerate textures. Keeping old textures.');
@@ -210,37 +253,57 @@ export class RenderSystem {
         }
     }
 
-    resize(width: number, height: number, scaleFactor: number, screenWidth: number, screenHeight: number, containerY: number) {
+    resize(width: number, height: number, scaleFactor: number, screenWidth: number, screenHeight: number, containerY: number, containerX: number) {
+        // Common Layout Calculations
+        const gameWidthScreen = width * scaleFactor;
+        // const containerLeft = (screenWidth - gameWidthScreen) / 2; // OLD Centered Logic
+        const containerLeft = containerX; // NEW Explicit Logic
+
         if (this.groundRenderer) {
-            this.groundRenderer.draw(width, height, scaleFactor, screenHeight, containerY, screenWidth);
+            this.groundRenderer.draw(width, height, scaleFactor, screenHeight, containerY, containerLeft, screenWidth);
         }
         if (this.wallRenderer) {
-            const gameWidthScreen = width * scaleFactor;
-            const containerLeft = (screenWidth - gameWidthScreen) / 2;
             this.wallRenderer.draw(gameWidthScreen, height * scaleFactor, containerY, containerLeft, screenWidth, screenHeight);
         }
 
         // Sync EffectContainer to match GameContainer
         if (this.effectContainer) {
-            const gameWidthScreen = width * scaleFactor;
-            const containerLeft = (screenWidth - gameWidthScreen) / 2;
-
             this.effectContainer.scale.set(scaleFactor);
             this.effectContainer.position.set(containerLeft, containerY);
+        }
+
+        // Sync FloatingTextContainer
+        if (this.floatingTextContainer) {
+            this.floatingTextContainer.scale.set(scaleFactor);
+            this.floatingTextContainer.position.set(containerLeft, containerY);
+        }
+
+        // Sync OverlayContainer (Juice/Danger)
+        if (this.overlayRenderer && this.overlayRenderer.container) {
+            this.overlayRenderer.container.scale.set(scaleFactor);
+            this.overlayRenderer.container.position.set(containerLeft, containerY);
+        }
+
+        // Resize HUD (Screen Space, but aligned to Game Container)
+        // User Requirement: "Restriction inside safe area"
+        if (this.hudRenderer) {
+            // Logic: Scale UI to match game scale
+            this.hudRenderer.container.scale.set(scaleFactor);
+
+            // Position at Top-Left of GAME CONTAINER (Safe Area)
+            // This ensures HUD elements stay within the V_WIDTH x V_HEIGHT box.
+            this.hudRenderer.container.position.set(containerLeft, containerY);
+
+            // Pass VIRTUAL Dimensions (V_WIDTH, V_HEIGHT) so layout logic works on 600x750 basis
+            this.hudRenderer.resize(width, height, scaleFactor, screenWidth, screenHeight);
         }
     }
 
     // --- Rendering Logic ---
 
-    drawDangerLine(width: number, height: number, active: boolean) {
-        this.dangerLine.clear();
-        const y = height * DANGER_Y_PERCENT;
-        this.dangerLine.moveTo(0, y);
-        this.dangerLine.lineTo(width, y);
-        if (active) {
-            this.dangerLine.stroke({ width: 4, color: 0xFF4444, alpha: 0.8 });
-        } else {
-            this.dangerLine.stroke({ width: 4, color: 0x000000, alpha: 0.2 });
+    spawnFloatingText(x: number, y: number, points: number, tier: FruitTier) {
+        if (this.floatingTextRenderer) {
+            this.floatingTextRenderer.spawn(x, y, points, tier);
         }
     }
 
@@ -256,6 +319,32 @@ export class RenderSystem {
 
         if (this.effectRenderer && ctx.effectParticles) {
             this.effectRenderer.render(ctx.effectParticles);
+        }
+
+        if (this.hudRenderer) {
+            this.hudRenderer.update(
+                ctx.dt,
+                ctx.score,
+                ctx.playTime,
+                ctx.maxTier,
+                ctx.nextFruit,
+                ctx.savedFruit
+            );
+        }
+
+        // Overlays
+        if (this.overlayRenderer) {
+            // We need Width/Height. Assume V_WIDTH/V_HEIGHT or screen?
+            // Since Juice is tied to Game Area, we should pass Game Dimensions.
+            // But RenderSystem doesn't easily store them except in resize.
+            // We can use 600/750 consts or derived.
+            const w = 600;
+            const h = 750;
+            this.overlayRenderer.update(ctx.dt, ctx.juice, ctx.feverActive, ctx.dangerActive, w, h);
+        }
+
+        if (this.floatingTextRenderer) {
+            this.floatingTextRenderer.update(ctx.dt);
         }
 
         // Current Fruit

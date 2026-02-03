@@ -8,17 +8,13 @@ import { DebugMenu } from './DebugMenu';
 
 // Components
 import { GameBackground } from './GameBackground';
-import { JuiceOverlay } from './JuiceOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
-import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
 // Canvas imports removed
-import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
 import { ScoreFlyEffect } from './ScoreFlyEffect';
-import { DangerOverlay } from './DangerOverlay';
 import { Pause } from 'lucide-react';
 
 interface GameCanvasProps {
@@ -136,6 +132,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     top: rect.top,
                     left: rect.left
                 });
+
+                // Sync with Engine
+                if (engineRef.current) {
+                    engineRef.current.setViewRect({
+                        x: rect.left,
+                        y: rect.top,
+                        width: rect.width,
+                        height: rect.height
+                    });
+                }
             }
         };
 
@@ -152,10 +158,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         const engine = new GameEngine(canvasRef.current, settings, {
             // Score Updates
             onScore: (amt: number, total: number) => {
-                // We intentionally ignore 'total' here to keep the HUD detached
-                // The HUD only updates via Suck Up (onStreakEnd)
-                // However, if total is 0 (reset), we should sync.
+                // Legacy state update removed for performance.
+                // Pixi HUD handles rendering.
                 if (total === 0) {
+                    // Keep reset sync for Game Over stats if needed, or remove.
                     setCurrentStateScore(0);
                     setScore(0);
                 }
@@ -163,7 +169,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
             // Core Game Events
             onGameOver: (stats: GameStats) => {
-                // Force sync HUD to Real Score on Game Over to ensure no points are lost
                 setCurrentStateScore(stats.score);
                 setScore(stats.score);
                 onGameOver(stats);
@@ -177,9 +182,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             },
             onFeverEnd: (finalScore?: number) => {
                 setFever(false);
-                // Legacy support cleanup
-                // We don't use this for score sync anymore (GameEngine calls onStreakEnd)
-                // But we keep it to ensure fever state is cleared in UI
             },
 
             // New Score System Events
@@ -189,27 +191,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             onPopupRestore: (data: PopupData) => {
                 setPopupData(data); // Restore popup
             },
-            // Updated signature to accept totalRealScore
             onStreakEnd: (amount: number, totalRealScore: number) => {
                 triggerSuckUp(amount, totalRealScore);
             },
 
-            // Visuals
-            onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
-            onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
-            onNextFruit: (t: FruitTier) => setNextFruit(t),
+            // Visuals - React State Updates Removed (Handled by Pixi)
+            onDanger: (active: boolean, ms: number) => {
+                // setLimitTime(active ? ms : 0); // Removed
+                // Only keep if TextPopup needs it? 
+                // TextPopup uses limitTime > 0 to show DANGER popup.
+                // Pixi DangerOverlay handles the line.
+                // Does Pixi handle the "DANGER!" text? No.
+                // So we MUST keep setLimitTime if we want "DANGER!" text popup.
+                setLimitTime(active ? ms : 0);
+            },
+            onJuiceUpdate: (j: number, max: number) => { /* setJuice((j / max) * 100); */ },
+            onNextFruit: (t: FruitTier) => { /* setNextFruit(t); */ },
             onMaxFruit: (t: FruitTier) => {
                 if (FRUIT_DEFS[t]) setBgColor(FRUIT_DEFS[t].patternColor);
-                setMaxTier(prev => Math.max(prev, t));
+                // setMaxTier(prev => Math.max(prev, t)); // Keep maxTier for leaderboard?
+                // Actually maxTier in React is used for GameHUD level badge.
+                // Pixi HUD handles it.
             },
-            onTimeUpdate: (ms: number) => setPlayTime(ms),
-            onSaveUpdate: (t: FruitTier | null) => setSavedFruit(t),
+            onTimeUpdate: (ms: number) => { /* setPlayTime(ms); */ },
+            onSaveUpdate: (t: FruitTier | null) => { /* setSavedFruit(t); */ },
             onCelebration: () => {
                 setShowCelebration(true);
                 setTimeout(() => setShowCelebration(false), 4000);
             },
             onPointEvent: (event: PointEvent) => {
-                setLatestPointEvent(event);
+                // setLatestPointEvent(event); // Removed (Pixi FloatingText)
             },
             onPopupUpdate: (data: PopupData) => {
                 setPopupData(data);
@@ -224,7 +235,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             }
         });
 
-        engine.initialize().catch(e => console.error("Game init failed", e));
+        engine.initialize().then(() => {
+            // CRITICAL: After engine initializes, sync the ViewRect immediately
+            // The engine's handleResize() called during init uses fallback (full screen)
+            // We must re-trigger with the correct DOM bounds
+            if (gameAreaRef.current) {
+                const rect = gameAreaRef.current.getBoundingClientRect();
+                engine.setViewRect({
+                    x: rect.left,
+                    y: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                });
+            }
+        }).catch(e => console.error("Game init failed", e));
         engineRef.current = engine;
         return () => {
             engine.cleanup();
@@ -281,20 +305,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
             {/* 1.7. Effect Canvas - REMOVED (Ported to Pixi) */}
 
-            {/* 1.8. Point Ticker - Overlay for score popups */}
-            {gameAreaDimensions.width > 0 && (
-                <div
-                    className="fixed z-20 pointer-events-none"
-                    style={{
-                        width: gameAreaDimensions.width,
-                        height: gameAreaDimensions.height,
-                        top: gameAreaDimensions.top,
-                        left: gameAreaDimensions.left
-                    }}
-                >
-                    <PointTicker latestEvent={latestPointEvent} settings={settings} />
-                </div>
-            )}
+            {/* 1.8. Point Ticker - REMOVED (Pixi) */}
 
             {/* 1.9 Text Popup (Master Popup) - DANGER PRIORITY */}
             <TextPopup
@@ -325,35 +336,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
             )}
 
-            {/* 2. Main Layout Container */}
+            {/* 2. Main Game Area (Canvas) - Fixed Full Screen */}
+            <GameArea canvasRef={canvasRef}>
+                {/* Overlays moved to Pixi */}
+            </GameArea>
+
+            {/* 3. Main Layout Container (UI Only) */}
             <LayoutContainer>
 
-                {/* TOP UI (HUD) - Flexible spacer with 20px top padding as requested */}
+                {/* TOP UI (HUD) - Replaced with Dummy Target for ScoreFlyEffect */}
                 <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1">
-                    <GameHUD
-                        score={currentStateScore}
-                        playTime={playTime}
-                        maxTier={maxTier}
-                        nextFruit={nextFruit}
-                        savedFruit={savedFruit}
-                        onSwap={() => engineRef.current?.swapSavedFruit()}
-                    />
+                    {/* Dummy anchor for ScoreFlyEffect. Pixi handles visual score. */}
+                    <div id="hud-score-display" className="absolute top-[35px] left-[50px] w-10 h-10 opacity-0 pointer-events-none" />
                 </div>
 
-                {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
-                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
-                    <GameArea canvasRef={canvasRef}>
-                        {/* Overlays moved to root level for correct z-index stacking */}
-                        {/* New Danger Overlay sits INSIDE the game area scaling context */}
-                        <DangerOverlay dangerTime={limitTime} />
-                    </GameArea>
+                {/* CENTER SPACE (Transparent, allows clicking through to canvas) */}
+                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10 pointer-events-none">
+                    {/* Scale anchor for calculations only */}
                 </div>
 
                 {/* BOTTOM UI - Fixed height spacer. */}
                 <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
                     <button
                         onClick={handlePauseToggle}
-                        className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                        className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform pointer-events-auto"
                         aria-label="Pause Game"
                     >
                         <Pause size={24} fill="currentColor" />
@@ -362,26 +368,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
             </LayoutContainer>
 
-            {/* 1.15 Juice/Water Overlay - Moved OUT of GameArea to be betwen Background and Ground */}
-            {/* Placed here in DOM order: After Background, but z-index controlled to be < Ground (z-5) */}
-            {gameAreaDimensions.width > 0 && (
-                <div
-                    className="fixed overflow-hidden rounded-t-3xl pointer-events-none"
-                    style={{
-                        zIndex: 2, // Above Background (0), Below Ground (5)
-                        width: gameAreaDimensions.width,
-                        height: gameAreaDimensions.height,
-                        top: gameAreaDimensions.top,
-                        left: gameAreaDimensions.left
-                    }}
-                >
-                    <JuiceOverlay
-                        fever={fever}
-                        juice={juice}
-                        dangerYPercent={DANGER_Y_PERCENT}
-                    />
-                </div>
-            )}
+            {/* 1.15 Juice/Water Overlay - REMOVED (Pixi) */}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
