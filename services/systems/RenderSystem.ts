@@ -2,12 +2,16 @@ import * as PIXI from 'pixi.js';
 import { FruitTier } from '../../types';
 import { Particle, EffectParticle } from '../../types/GameObjects';
 import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
+import { GroundRenderer } from './renderers/GroundRenderer';
+import { WallRenderer } from './renderers/WallRenderer';
+import { EffectRenderer } from './renderers/EffectRenderer';
 
 export interface RenderContext {
     fruits: Particle[];
     currentFruit: Particle | null;
     feverActive: boolean;
     scaleFactor: number;
+    effectParticles?: EffectParticle[];
 }
 
 export class RenderSystem {
@@ -18,11 +22,15 @@ export class RenderSystem {
     effectContainer: PIXI.Container | undefined;
     fruitSprites: Map<number, PIXI.Container> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
-    floorGraphics: PIXI.Graphics;
+    effectTextures: Record<string, PIXI.Texture> = {};
+
+    // Renderers
+    groundRenderer: GroundRenderer | undefined;
+    wallRenderer: WallRenderer | undefined;
+    effectRenderer: EffectRenderer | undefined;
     dangerLine: PIXI.Graphics;
 
     constructor() {
-        this.floorGraphics = new PIXI.Graphics();
         this.dangerLine = new PIXI.Graphics();
     }
 
@@ -39,10 +47,15 @@ export class RenderSystem {
         this.backgroundContainer = backgroundContainer;
         this.effectContainer = effectContainer;
 
-        backgroundContainer.addChild(this.floorGraphics);
-        gameContainer.addChild(this.dangerLine);
-
         this.initTextures();
+
+        // Initialize Sub-Renderers
+        // Order matters: Ground (0), Walls (1) inside backgroundContainer
+        this.groundRenderer = new GroundRenderer(backgroundContainer);
+        this.wallRenderer = new WallRenderer(backgroundContainer);
+        this.effectRenderer = new EffectRenderer(effectContainer, this.effectTextures);
+
+        gameContainer.addChild(this.dangerLine);
     }
 
     generateAllTextures(): Map<FruitTier, PIXI.Texture> {
@@ -60,8 +73,7 @@ export class RenderSystem {
             return map;
         }
 
-        // Renderer reset block removed (Unsafe/Dead Code)
-
+        // Fruit Textures
         Object.values(FRUIT_DEFS).forEach(def => {
             try {
                 const container = new PIXI.Container();
@@ -83,7 +95,42 @@ export class RenderSystem {
                 console.error(`[RenderSystem] Failed to generate texture for tier ${def.tier}:`, e);
             }
         });
+
+        // Effect Textures
+        this.generateEffectTextures();
+
         return map;
+    }
+
+    generateEffectTextures() {
+        if (!this.app || !this.app.renderer) return;
+
+        const createTexture = (draw: (g: PIXI.Graphics) => void, width: number, height: number): PIXI.Texture => {
+            const g = new PIXI.Graphics();
+            draw(g);
+            const texture = PIXI.RenderTexture.create({ width, height, resolution: this.app!.renderer.resolution || 2 });
+            // Center graphics in texture
+            g.position.set(width / 2, height / 2);
+            this.app!.renderer.render({ container: g, target: texture });
+            return texture;
+        };
+
+        // 1. Circle/Glow (White filled circle, used for particles and tinting)
+        this.effectTextures['circle'] = createTexture((g) => {
+            g.circle(0, 0, 32);
+            g.fill({ color: 0xFFFFFF });
+        }, 64, 64);
+
+        // 2. Star
+        this.effectTextures['star'] = createTexture((g) => {
+            g.star(0, 0, 5, 32, 14); // 5 points, outer 32, inner 14
+            g.fill({ color: 0xFFFFFF });
+        }, 64, 64);
+
+        // Update renderer if it exists
+        if (this.effectRenderer) {
+            this.effectRenderer.textures = this.effectTextures;
+        }
     }
 
     initTextures() {
@@ -130,7 +177,7 @@ export class RenderSystem {
             }
         });
         this.fruitSprites.clear();
-        this.floorGraphics.clear(); // Will need redraw
+        // groundRenderer handles its own clear/draw via resize
     }
 
     refreshGraphics(): boolean {
@@ -163,43 +210,27 @@ export class RenderSystem {
         }
     }
 
-    // --- Rendering Logic ---
-
-    getFloorY(x: number, height: number) {
-        const baseY = height - 60;
-        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
-    }
-
-    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
-        this.floorGraphics.clear();
-
-        const bottomY = ((screenHeight - containerY) / scaleFactor) + 200;
-
-        // Calculate extended width to cover full screen
-        const virtualScreenWidth = screenWidth / scaleFactor;
-        const gameCenter = width / 2;
-        const startX = gameCenter - (virtualScreenWidth / 2);
-        const endX = gameCenter + (virtualScreenWidth / 2);
-
-        const step = 5;
-        this.floorGraphics.moveTo(startX, bottomY);
-        this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
-        for (let x = startX; x <= endX; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
+    resize(width: number, height: number, scaleFactor: number, screenWidth: number, screenHeight: number, containerY: number) {
+        if (this.groundRenderer) {
+            this.groundRenderer.draw(width, height, scaleFactor, screenHeight, containerY, screenWidth);
         }
-        this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
-        this.floorGraphics.lineTo(endX, bottomY);
-        this.floorGraphics.closePath();
-        this.floorGraphics.fill({ color: 0x76C043 });
-        this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
+        if (this.wallRenderer) {
+            const gameWidthScreen = width * scaleFactor;
+            const containerLeft = (screenWidth - gameWidthScreen) / 2;
+            this.wallRenderer.draw(gameWidthScreen, height * scaleFactor, containerY, containerLeft, screenWidth, screenHeight);
+        }
 
-        // Decorations - keep relative to game area center
-        this.floorGraphics.circle(50, height, 15);
-        this.floorGraphics.circle(80, height + 20, 20);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-        this.floorGraphics.circle(width - 100, height, 25);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
+        // Sync EffectContainer to match GameContainer
+        if (this.effectContainer) {
+            const gameWidthScreen = width * scaleFactor;
+            const containerLeft = (screenWidth - gameWidthScreen) / 2;
+
+            this.effectContainer.scale.set(scaleFactor);
+            this.effectContainer.position.set(containerLeft, containerY);
+        }
     }
+
+    // --- Rendering Logic ---
 
     drawDangerLine(width: number, height: number, active: boolean) {
         this.dangerLine.clear();
@@ -221,6 +252,10 @@ export class RenderSystem {
             const pulse = Math.sin((time / 250) * Math.PI) * 0.05;
             rhythmicScaleX = 1 + pulse;
             rhythmicScaleY = 1 - pulse;
+        }
+
+        if (this.effectRenderer && ctx.effectParticles) {
+            this.effectRenderer.render(ctx.effectParticles);
         }
 
         // Current Fruit
@@ -263,5 +298,4 @@ export class RenderSystem {
             }
         }
     }
-
 }

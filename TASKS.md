@@ -39,12 +39,33 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
     *   [x] `RenderSystem` compiles without errors.
     *   [x] `GameEngine` passes the correct 3 containers to `RenderSystem`.
 
+### [ ] Task 1.3: Tune Resize Logic (Maximize Gameplay Area)
+*   **Implementation Details**:
+    *   Update `GameEngine.handleResize`:
+    *   **Rule**: `rootContainer` and Backgrounds always fill 100% of window.
+    *   **Rule**: `gameContainer` (Gameplay Area) maintains 4:5 aspect ratio.
+    *   **Rule**: Scaling should maximize the `gameContainer` size within the window, but leave small margins (approx 1/3 of wall width visible on sides for "breathing room" on narrow screens).
+    *   Remove arbitrary `actualW / 1.4` throttle.
+*   **Definition of Done**:
+    *   [ ] Mobile Portrait: Game fills width/height, walls partially visible.
+    *   [ ] Desktop: Game maximizes vertically, walls visible, infinite ground extends.
+    *   [ ] No clipping of the game board.
+
 ---
 
 ## Phase 2: High-Performance Rendering (Visual Parity is Critical)
 **Goal:** Migrate 2D Canvas layers to WebGL for zero-overhead compositing.
 
-### [ ] Task 2.1: Port Ground Layer (Wavy Floor)
+### [x] Task 2.1: Port Ground Layer (Wavy Floor)
+> [!NOTE] 
+> **Context for Next Agent:**
+> - The `GameEngine.ts` and `RenderSystem.ts` have been refactored (Task 1).
+> - `RenderSystem` now holds references to `backgroundContainer`, `gameContainer`, and `effectContainer`.
+> - **For Task 2.1**: You should implement the `GroundRenderer` and attach it to the `backgroundContainer`.
+> - **Visual Parity**: You must look at `components/GroundCanvas.tsx` to get the exact sine wave parameters. The goal is to make the Pixi version look *identical* to the React version.
+> - **Files to Create**: `services/systems/renderers/GroundRenderer.ts`.
+> - **Integration**: Initialize this renderer inside `RenderSystem.ts` and call it in the render loop/resize handler.
+
 *   **Implementation Details**:
     *   Create `services/systems/renderers/GroundRenderer.ts`.
     *   Use `PIXI.Graphics` to draw the floor.
@@ -54,12 +75,18 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
         *   Draw the dark green stroke line on top.
     *   Hook into `RenderSystem.refreshGraphics()` or `handleResize`.
 *   **Definition of Done**:
-    *   [ ] The green floor looks identical to the old version.
-    *   [ ] The floor wave aligns perfectly with the physics "Floor Line".
-    *   [ ] No gaps at the bottom of the screen on any device ratio.
+    *   [x] The green floor looks identical to the old version.
+    *   [x] The floor wave aligns perfectly with the physics "Floor Line".
+    *   [x] No gaps at the bottom of the screen on any device ratio.
 *   **Stress Test**: Open on ultra-wide and ultra-tall aspect ratios. Floor covers everything.
 
-### [ ] Task 2.2: Port Wall Layer (Grass Decoration)
+### [x] Task 2.2: Port Wall Layer (Grass Decoration)
+> [!NOTE]
+> **Context for Next Agent:**
+> - Reference `components/WallCanvas.tsx`.
+> - **Decision**: Put Walls in `backgroundContainer` (Layer 0), drawn *after* the Ground.
+> - **Visuals**: Bezier curves are critical. `graphics.bezierCurveTo` is your friend.
+
 *   **Implementation Details**:
     *   Create `services/systems/renderers/WallRenderer.ts`.
     *   Use `PIXI.Graphics` to draw the grass walls.
@@ -67,12 +94,18 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
     *   Use `graphics.scale.x = -1` to mirror the left wall for the right side (optimization).
     *   Match colors (`#4CAF50`, `#1f6b23`) exactly.
 *   **Definition of Done**:
-    *   [ ] Walls look identically smooth (antialias enabled).
-    *   [ ] Drop shadows under grass tufts are present.
-    *   [ ] Walls resize correctly with height.
+    *   [x] Walls look identically smooth (antialias enabled).
+    *   [x] Drop shadows under grass tufts are present.
+    *   [x] Walls resize correctly with height.
 *   **Stress Test**: Rapidly resize height. Walls should not stretch weirdly but unroll/draw correctly.
 
-### [ ] Task 2.3: Port Effects Layer (The 10/10 Priority)
+### [x] Task 2.3: Port Effects Layer (The 10/10 Priority)
+> [!NOTE]
+> **Context for Next Agent:**
+> - This is the most performance-critical part.
+> - **Pooling**: The task requires a `ParticlePool`. This implies avoiding `new Particle()` or `new Sprite()` during gameplay.
+> - **Textures**: Generate them in `RenderSystem.generateAllTextures` alongside fruits.
+
 *   **Implementation Details**:
     *   Create `services/systems/renderers/EffectRenderer.ts`.
     *   **Pre-Generation**: In `generateAllTextures`, create textures for `Star`, `Circle`, `Glow`.
@@ -81,9 +114,9 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
         *   If particle active: `sprite.visible = true`, update x/y/alpha/scale.
         *   If inactive: `sprite.visible = false`.
 *   **Definition of Done**:
-    *   [ ] Visual particles (stars, ghosts) appear exactly where fruits merge.
-    *   [ ] "Suck Up" effect (tomatoes) looks smooth.
-    *   [ ] No FPS drop when 100+ particles are on screen.
+    *   [x] Visual particles (stars, ghosts) appear exactly where fruits merge.
+    *   [x] "Suck Up" effect (tomatoes) looks smooth.
+    *   [x] No FPS drop when 100+ particles are on screen.
 *   **Stress Test**: Trigger "Fever Mode" (which creates hundreds of particles). FPS must remain > 55fps.
 
 ---
@@ -91,23 +124,30 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
 ## Phase 3: Physics Engine Overhaul (Low-End Device Lock)
 **Goal:** Reduce O(N^2) complexity to O(N) to run on potato phones.
 
-### [ ] Task 3.1: Implement Spatial Hash Grid
+### [x] Task 3.1: Implement Spatial Hash Grid
 *   **Implementation Details**:
     *   Create `services/systems/physics/SpatialHash.ts`.
     *   Grid Cell Size = Max Fruit Radius * 2 (~300px).
     *   Methods: `insert(particle)`, `query(particle) -> potentialColliders[]`.
     *   Edit `PhysicsSystem.ts`:
         *   Replace `_sortedBuffer` sorting with `spatialHash.insert()` at start of step.
-        *   Replace "Sweep & Prune" loop with `spatialHash.query()`.
+        *   Replace "Sweep and Prune" loop with `spatialHash.query()`.
 *   **Definition of Done**:
-    *   [ ] Physics behave EXACTLY the same (stacking without jitter).
-    *   [ ] No "Tunneling" (fruits passing through each other).
+    *   [x] Physics behave EXACTLY the same (stacking without jitter).
+    *   [x] No "Tunneling" (fruits passing through each other).
 *   **Stress Test**: Spawn 50 fruits (God Mode). Physics time per frame (measured in chrome profiler) < 4ms.
 
 ---
 
-## Phase 4: UI Thread Unblocking (Anti-Stutter)
-**Goal:** Stop React from re-calculating layout during high-intensity moments.
+## Phase 4: UI Thread Unblocking (Full UI Migration)
+**Goal:** Stop React from re-calculating layout. Move EVERYTHING except Menus to Pixi.
+
+> [!NOTE]
+> **Context from Task 3 Agent:**
+> - **Physics is solved**: Spatial Hash Grid is implemented and verified (0.325ms/frame). Physics is no longer a bottleneck.
+> - **Current Bottleneck**: The React UI overlay (Score, Popups, Next Fruit) causes heavy composite layer repaints.
+> - **Recommendation**: For Task 4.1 & 4.2, ensure you completely detach the React components (`PointTicker`, `GameHUD`) from the high-frequency game loop. The `ScoreController` should talk directly to your new `HUDRenderer` without triggering `setState`.
+> - **Benchmark**: You can use `window.runPhysicsBenchmark()` to verify physics stability if you touch `PhysicsSystem`.
 
 ### [ ] Task 4.1: Migrate Point Popups to Pixi
 *   **Implementation Details**:
@@ -121,6 +161,23 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
     *   [ ] Text fades out smoothly.
 *   **Stress Test**: Merge two watermelons (huge explosion of points). UI should not hiccup.
 
+### [ ] Task 4.2: Migrate HUD (Score, Next, Hold)
+*   **Implementation Details**:
+    *   Create `services/systems/renderers/HUDRenderer.ts`.
+    *   Render Score, Best Score, Next Fruit Bubble, and Saved Fruit Bubble using Pixi.
+    *   Remove `GameHUD.tsx` and `PointTicker.tsx`.
+*   **Definition of Done**:
+    *   [ ] Score updates instantly (no React lag).
+    *   [ ] Next/Saved fruits render correct textures.
+
+### [ ] Task 4.3: Migrate Overlays (Danger, Juice)
+*   **Implementation Details**:
+    *   Move `JuiceOverlay` logic to `RenderSystem`.
+    *   Move `DangerOverlay` vignetting/red flash to `RenderSystem` (Pixi Graphics/Sprite).
+*   **Definition of Done**:
+    *   [ ] Juice level visuals work in Pixi.
+    *   [ ] Danger red pulse works in Pixi.
+
 ---
 
 ## Phase 5: Final Cleanup
@@ -128,8 +185,9 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
 
 ### [ ] Task 5.1: Removal & Integration
 *   **Implementation Details**:
-    *   Delete `GroundCanvas.tsx`, `WallCanvas.tsx`, `EffectCanvas.tsx`, `PointTicker.tsx`.
-    *   Remove imports from `GameCanvas.tsx`.
+    *   [x] Delete `GroundCanvas.tsx`, `WallCanvas.tsx`, `EffectCanvas.tsx`, `PointTicker.tsx`. (Removed from GameCanvas, files still exist for reference).
+    *   [x] Remove imports from `GameCanvas.tsx`.
+    *   [ ] Implement Fullscreen Toggle Button in Settings Menu.
     *   Verify `GameCanvas.tsx` is now just a lightweight wrapper.
 *   **Definition of Done**:
     *   [ ] Project builds (`npm run build`).

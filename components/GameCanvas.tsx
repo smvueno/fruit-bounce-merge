@@ -14,9 +14,7 @@ import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
-import { GroundCanvas } from './GroundCanvas';
-import { WallCanvas } from './WallCanvas';
-import { EffectCanvas } from './EffectCanvas';
+// Canvas imports removed
 import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
 import { ScoreFlyEffect } from './ScoreFlyEffect';
@@ -277,42 +275,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     return (
         <>
             {/* 1. Full Screen Background */}
-            <GameBackground
-                patternIndex={bgPatternIndex}
-                bgColor={bgColor}
-                fever={fever}
-            />
+            {/* 1.5. Ground Canvas - REMOVED (Ported to Pixi) */}
 
-            {/* 1.5. Ground Canvas - Extends to screen edges */}
-            {gameAreaDimensions.width > 0 && (
-                <GroundCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
+            {/* 1.6. Wall Canvas - REMOVED (Ported to Pixi) */}
 
-            {/* 1.6. Wall Canvas - Brick walls on sides */}
-            {gameAreaDimensions.width > 0 && (
-                <WallCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
-
-            {/* 1.7. Effect Canvas - Overlay on top of walls */}
-            {gameAreaDimensions.width > 0 && (
-                <EffectCanvas
-                    engine={engineRef.current}
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
+            {/* 1.7. Effect Canvas - REMOVED (Ported to Pixi) */}
 
             {/* 1.8. Point Ticker - Overlay for score popups */}
             {gameAreaDimensions.width > 0 && (

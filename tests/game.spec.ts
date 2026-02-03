@@ -12,7 +12,7 @@ test.describe('Fruit Bounce Merge', () => {
         // Better yet, let's use the 'webServer' config in playwright.config.ts if it existed.
         // Since it doesn't, I will try to visit the likely URL.
 
-        await page.goto('http://localhost:4173/'); // Vite preview default port
+        await page.goto('/'); // Use baseURL from config
 
         // 2. Expect Game Canvas
         const canvas = page.locator('canvas');

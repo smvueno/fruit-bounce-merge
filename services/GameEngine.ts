@@ -407,6 +407,15 @@ export class GameEngine {
         const yOffset = (actualH - logicalH) / 2;
 
         this.gameContainer.position.set(xOffset, yOffset);
+
+        this.renderSystem.resize(
+            V_WIDTH,
+            V_HEIGHT,
+            this.scaleFactor,
+            actualW,
+            actualH,
+            yOffset
+        );
     }
 
     reset() {
@@ -559,7 +568,8 @@ export class GameEngine {
             fruits: this.fruits,
             currentFruit: this.currentFruit,
             feverActive: isFever,
-            scaleFactor: this.scaleFactor
+            scaleFactor: this.scaleFactor,
+            effectParticles: this.effectSystem.visualParticles
         };
         this.renderSystem.renderSync(renderCtx);
     }

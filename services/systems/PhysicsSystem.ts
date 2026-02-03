@@ -1,6 +1,7 @@
 import { FruitTier } from '../../types';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../../types/GameObjects';
 import { GAME_CONFIG, SUBSTEPS, WALL_DAMPING, FLOOR_DAMPING, FRICTION_SLIDE, FRICTION_LOCK, FLOOR_OFFSET, SPAWN_Y_PERCENT } from '../../constants';
+import { SpatialHash } from './physics/SpatialHash';
 
 // Optimization: Pre-calculate Floor Wave to avoid expensive Trig calls per particle per substep
 const LUT_SIZE = 800; // Covers V_WIDTH (600) + Padding
@@ -9,8 +10,9 @@ for (let i = 0; i < LUT_SIZE; i++) {
     WAVE_LUT[i] = Math.sin(i * 0.015) * 10 + Math.cos(i * 0.04) * 5;
 }
 
-// Optimization: Max Radius for Sweep and Prune (Watermelon ~155)
+// Optimization: Max Radius for Spatial Hash Cell Size (Watermelon ~155 * 2 + buffer)
 const MAX_RADIUS = 160;
+const SPATIAL_CELL_SIZE = 320;
 
 export interface PhysicsContext {
     fruits: Particle[];
@@ -34,8 +36,8 @@ export interface PhysicsCallbacks {
 
 export class PhysicsSystem {
 
-    // Optimization: Persistent buffers to avoid GC (allocations per frame)
-    private _sortedBuffer: Particle[] = [];
+    // Optimization: Spatial Hash for O(N) collision queries
+    private spatialHash: SpatialHash = new SpatialHash(SPATIAL_CELL_SIZE);
     private _tomatoTargets: Map<number, FruitTier> = new Map();
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
@@ -95,19 +97,16 @@ export class PhysicsSystem {
 
         // 4. Solver Loop (Substeps)
         for (let s = 0; s < SUBSTEPS; s++) {
-            // Optimization: Single Sort per Substep
-            // Clear and repopulate buffer
-            this._sortedBuffer.length = 0;
-            // Only add relevant particles to the sort buffer to reduce sort cost further?
-            // No, logic expects full list for other checks maybe.
-            // Using push loop is faster than spread operator for large arrays in many engines
-            for (let i = 0; i < ctx.fruits.length; i++) {
-                this._sortedBuffer.push(ctx.fruits[i]);
-            }
-            // Sort by X for Sweep and Prune
-            this._sortedBuffer.sort((a, b) => a.x - b.x);
 
-            this.updateContactCounts(ctx, this._sortedBuffer); // Pass sorted buffer
+            // Rebuild Spatial Hash
+            this.spatialHash.clear();
+            for (const p of ctx.fruits) {
+                if (!p.isCaught) { // Don't collide caught items
+                    this.spatialHash.insert(p);
+                }
+            }
+
+            this.updateContactCounts(ctx);
 
             // --- GLOBAL LOCKING FRICTION ---
             for (const p of ctx.fruits) {
@@ -121,7 +120,7 @@ export class PhysicsSystem {
                 }
             }
 
-            this.resolveCollisions(ctx, callbacks, this._sortedBuffer); // Pass sorted buffer
+            this.resolveCollisions(ctx, callbacks);
             this.resolveWalls(ctx);
         }
     }
@@ -138,7 +137,7 @@ export class PhysicsSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
-    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[]) {
+    updateContactCounts(ctx: PhysicsContext) {
         // Reset counts
         for (const p of ctx.fruits) {
             p.contactCount = 0;
@@ -154,19 +153,16 @@ export class PhysicsSystem {
             }
         }
 
-        // Check pairs (Sweep and Prune)
-        // Use the passed sorted buffer
-        const sorted = sortedFruits;
-
-        for (let i = 0; i < sorted.length; i++) {
-            const p1 = sorted[i];
+        // Check pairs (Spatial Hash Query)
+        for (const p1 of ctx.fruits) {
             if (p1.ignoreCollisions || p1.isStatic || p1.isCaught) continue;
 
-            for (let j = i + 1; j < sorted.length; j++) {
-                const p2 = sorted[j];
+            const neighbors = this.spatialHash.query(p1);
 
-                // Sweep & Prune Early Exit
-                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+            for (const p2 of neighbors) {
+                // Determine uniqueness and identity
+                if (p1 === p2) continue;
+                if (p1.id >= p2.id) continue; // Ensure unique pairs (Low ID checks High ID)
 
                 if (p2.ignoreCollisions || p2.isStatic || p2.isCaught) continue;
 
@@ -174,6 +170,7 @@ export class PhysicsSystem {
                 const dy = p1.y - p2.y;
                 const distSq = dx * dx + dy * dy;
                 const radSum = p1.radius + p2.radius;
+
                 if (distSq < radSum * radSum) {
                     p1.contactCount++;
                     p2.contactCount++;
@@ -341,7 +338,7 @@ export class PhysicsSystem {
         }
     }
 
-    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[]) {
+    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
         // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
         // Logic: activeTomatoes lookup O(1) inside N^2 loop
 
@@ -356,19 +353,17 @@ export class PhysicsSystem {
             }
         }
 
-        // Optimization: Sweep and Prune
-        // Use passed sorted buffer
-        const sorted = sortedFruits;
+        // Optimization: Spatial Hash Query instead of Sweep and Prune loop
 
-        for (let i = 0; i < sorted.length; i++) {
-            const p1 = sorted[i];
+        for (const p1 of ctx.fruits) {
             if (p1.ignoreCollisions || p1.isCaught) continue;
 
-            for (let j = i + 1; j < sorted.length; j++) {
-                const p2 = sorted[j];
+            const neighbors = this.spatialHash.query(p1);
 
-                // Prune
-                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+            for (const p2 of neighbors) {
+                // Check Uniqueness (p1 < p2) to prevent double checks
+                if (p1 === p2) continue;
+                if (p1.id >= p2.id) continue;
 
                 if (p2.ignoreCollisions || p2.isCaught) continue;
                 if (p1.isStatic && p2.isStatic) continue;
@@ -403,11 +398,12 @@ export class PhysicsSystem {
                         // Check Watermelon Celebration
                         if (p1.tier === FruitTier.WATERMELON) {
                             if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                                // SAFE: The callback removes particles from ctx.fruits, but we immediately
-                                // break from the inner loop. This prevents further iteration over the modified
-                                // array. The outer loop continues safely as it only needs valid indices.
                                 callbacks.onCelebrationMatch(p1, p2);
-                                break;
+                                // p1/p2 might be removed, but we are inside query loop.
+                                // We can continue; since we process p1 vs neighbors.
+                                // If p1 is removed, we should technically stop processing p1.
+                                // But JS references persist locally.
+                                break; // Stop checking p1 against others
                             }
                         }
 
@@ -432,11 +428,7 @@ export class PhysicsSystem {
                     if (canMerge) {
                         if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
                             callbacks.onMerge(p1, p2);
-                            // If merged, one or both particles are removed. 
-                            // We should break inner loop as p1 (at i) might be gone.
-                            // However, we can't easily `i--` here if we don't control the loop correctly.
-                            // To stay safe: We break inner loop. P1 is done.
-                            break;
+                            break; // Stop checking p1
                         }
                     }
 
@@ -444,11 +436,6 @@ export class PhysicsSystem {
                     if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
                         callbacks.onTomatoCollision(p1, p2);
                         continue;
-                        // In `resolveCollisions`, it was a void function. `return` would skip ALL other collisions for ALL fruits.
-                        // That seems buggy in original code or I misread context.
-                        // Looking at original line 1130: `return;` inside proper logic.
-                        // Wait, it says `return;` inside the loop. That aborts the ENTIRE collision resolution for this substep.
-                        // That sounds efficient but maybe side-effect prone. I will preserve it.
                     }
 
                     if (dist === 0) continue;
