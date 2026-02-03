@@ -12,7 +12,10 @@ export interface RenderContext {
 
 export class RenderSystem {
     app: PIXI.Application | undefined;
-    container: PIXI.Container | undefined;
+    rootContainer: PIXI.Container | undefined;
+    gameContainer: PIXI.Container | undefined;
+    backgroundContainer: PIXI.Container | undefined;
+    effectContainer: PIXI.Container | undefined;
     fruitSprites: Map<number, PIXI.Container> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
     floorGraphics: PIXI.Graphics;
@@ -23,12 +26,21 @@ export class RenderSystem {
         this.dangerLine = new PIXI.Graphics();
     }
 
-    initialize(app: PIXI.Application, container: PIXI.Container) {
+    initialize(
+        app: PIXI.Application,
+        root: PIXI.Container,
+        gameContainer: PIXI.Container,
+        backgroundContainer: PIXI.Container,
+        effectContainer: PIXI.Container
+    ) {
         this.app = app;
-        this.container = container;
+        this.rootContainer = root;
+        this.gameContainer = gameContainer;
+        this.backgroundContainer = backgroundContainer;
+        this.effectContainer = effectContainer;
 
-        container.addChild(this.floorGraphics);
-        container.addChild(this.dangerLine);
+        backgroundContainer.addChild(this.floorGraphics);
+        gameContainer.addChild(this.dangerLine);
 
         this.initTextures();
     }
@@ -88,7 +100,7 @@ export class RenderSystem {
     }
 
     createSprite(p: Particle) {
-        if (!this.container || !this.textures.has(p.tier)) return;
+        if (!this.gameContainer || !this.textures.has(p.tier)) return;
         const tex = this.textures.get(p.tier)!;
         const sprite = new PIXI.Container();
         const body = new PIXI.Sprite(tex);
@@ -98,7 +110,7 @@ export class RenderSystem {
         face.label = "face";
         sprite.addChild(face);
         this.fruitSprites.set(p.id, sprite);
-        this.container.addChild(sprite);
+        this.gameContainer.addChild(sprite);
     }
 
     removeSprite(p: Particle) {

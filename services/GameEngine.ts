@@ -20,7 +20,10 @@ const V_HEIGHT = 750;
 export class GameEngine {
     // PIXI references (Managed by RenderSystem mainly, but Engine holds App for Lifecycle)
     app: PIXI.Application | undefined;
-    container: PIXI.Container;
+    rootContainer: PIXI.Container;
+    gameContainer: PIXI.Container;
+    backgroundContainer: PIXI.Container;
+    effectContainer: PIXI.Container;
 
     // Systems
     physicsSystem: PhysicsSystem;
@@ -118,7 +121,25 @@ export class GameEngine {
         };
 
         // Core PIXI Containers
-        this.container = new PIXI.Container();
+        this.rootContainer = new PIXI.Container();
+        this.rootContainer.label = 'root';
+        this.rootContainer.sortableChildren = true;
+
+        this.backgroundContainer = new PIXI.Container();
+        this.backgroundContainer.label = 'background';
+        this.backgroundContainer.zIndex = 0;
+
+        this.gameContainer = new PIXI.Container();
+        this.gameContainer.label = 'game';
+        this.gameContainer.zIndex = 10;
+
+        this.effectContainer = new PIXI.Container();
+        this.effectContainer.label = 'effect';
+        this.effectContainer.zIndex = 20;
+
+        this.rootContainer.addChild(this.backgroundContainer);
+        this.rootContainer.addChild(this.gameContainer);
+        this.rootContainer.addChild(this.effectContainer);
 
         // Initialize Systems
         this.physicsSystem = new PhysicsSystem();
@@ -262,10 +283,16 @@ export class GameEngine {
         // Initial Resize
         this.handleResize();
 
-        this.app.stage.addChild(this.container);
+        this.app.stage.addChild(this.rootContainer);
 
         // Initialize Render System
-        this.renderSystem.initialize(this.app, this.container);
+        this.renderSystem.initialize(
+            this.app,
+            this.rootContainer,
+            this.gameContainer,
+            this.backgroundContainer,
+            this.effectContainer
+        );
 
         // Start Game
         this.spawnNextFruit();
@@ -370,7 +397,7 @@ export class GameEngine {
         const viewH = actualH / 1.4;
 
         this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
-        this.container.scale.set(this.scaleFactor);
+        this.gameContainer.scale.set(this.scaleFactor);
 
         // Center the container in the canvas
         const logicalW = V_WIDTH * this.scaleFactor;
@@ -379,7 +406,7 @@ export class GameEngine {
         const xOffset = (actualW - logicalW) / 2;
         const yOffset = (actualH - logicalH) / 2;
 
-        this.container.position.set(xOffset, yOffset);
+        this.gameContainer.position.set(xOffset, yOffset);
     }
 
     reset() {
@@ -436,8 +463,8 @@ export class GameEngine {
 
     getInputContext() {
         return {
-            containerX: this.container.position.x,
-            containerY: this.container.position.y,
+            containerX: this.gameContainer.position.x,
+            containerY: this.gameContainer.position.y,
             scaleFactor: this.scaleFactor,
             width: this.width,
             height: this.height,
