@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, RotateCcw, Home, Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Globe, User } from 'lucide-react';
+import { Play, RotateCcw, Home, Music, Music4, Volume2, VolumeX, Vibrate, VibrateOff, Globe, User, Maximize, Minimize } from 'lucide-react';
 import { GameSettings, LeaderboardEntry } from '../types';
 import { RankingTable } from './RankingTable';
 
@@ -36,6 +36,20 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
     const toggleSfx = () => onUpdateSettings({ ...settings, sfxEnabled: !settings.sfxEnabled });
     const toggleHaptics = () => onUpdateSettings({ ...settings, hapticsEnabled: !settings.hapticsEnabled });
     const toggleLeaderboardMode = () => onUpdateSettings({ ...settings, showLocalOnly: !settings.showLocalOnly });
+
+    const toggleFullscreen = async () => {
+        try {
+            if (!document.fullscreenElement) {
+                await document.documentElement.requestFullscreen();
+                onUpdateSettings({ ...settings, fullscreenEnabled: true });
+            } else {
+                await document.exitFullscreen();
+                onUpdateSettings({ ...settings, fullscreenEnabled: false });
+            }
+        } catch (err) {
+            console.warn('Fullscreen toggle failed:', err);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-md animate-fade-in font-['Fredoka']">
@@ -100,6 +114,10 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                     <button onClick={toggleLeaderboardMode} className={`flex-1 p-2.5 md:p-3 rounded-xl md:rounded-2xl shadow-md transition-all active:scale-95 flex justify-center items-center ${!settings.showLocalOnly ? 'bg-teal-500 text-white hover:bg-teal-400' : 'bg-gray-200 text-gray-400'}`}>
                         {!settings.showLocalOnly ? <Globe size={24} className="hidden md:block" /> : <User size={24} className="hidden md:block" />}
                         {!settings.showLocalOnly ? <Globe size={20} className="block md:hidden" /> : <User size={20} className="block md:hidden" />}
+                    </button>
+                    <button onClick={toggleFullscreen} className={`flex-1 p-2.5 md:p-3 rounded-xl md:rounded-2xl shadow-md transition-all active:scale-95 flex justify-center items-center ${document.fullscreenElement ? 'bg-indigo-500 text-white hover:bg-indigo-400' : 'bg-gray-200 text-gray-400'}`}>
+                        {document.fullscreenElement ? <Minimize size={24} className="hidden md:block" /> : <Maximize size={24} className="hidden md:block" />}
+                        {document.fullscreenElement ? <Minimize size={20} className="block md:hidden" /> : <Maximize size={20} className="block md:hidden" />}
                     </button>
                 </div>
             </div>

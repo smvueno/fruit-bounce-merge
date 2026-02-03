@@ -15,6 +15,7 @@ export interface GameSettings {
   hapticsEnabled: boolean;
   reducedParticles: boolean;
   showLocalOnly: boolean;
+  fullscreenEnabled: boolean;
 }
 
 export interface LeaderboardEntry {

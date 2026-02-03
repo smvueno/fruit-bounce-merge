@@ -12,6 +12,7 @@ const DEFAULT_DATA: SavedData = {
     hapticsEnabled: true,
     reducedParticles: false,
     showLocalOnly: false,
+    fullscreenEnabled: false,
   },
   tutorialSeen: false,
 };
