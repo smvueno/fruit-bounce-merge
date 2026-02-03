@@ -72,13 +72,11 @@ export class RenderSystem {
         this.wallRenderer = new WallRenderer(backgroundContainer);
         this.effectRenderer = new EffectRenderer(effectContainer, this.effectTextures);
 
-        // Overlay Renderer (Layer 15/25 - specific)
-        // Let's create a dedicated overlay container above Effects.
-        // Actually, Overlays might need to be below UI (Text, HUD) but above Game/Effects?
-        // Game (10), Effect (20).
-        // React Juice was z-15. So inside Game? No, inside Root but Z-ordered.
+        // Overlay Renderer (Layer 5 - Below Fruits)
+        // Juice/wave should be behind fruits but above background
+        // Layer order: background(0) < overlay(5) < fruits(10) < effects(20) < text(30) < UI(40)
         const overlayContainer = new PIXI.Container();
-        overlayContainer.zIndex = 25; // Above Effects (20)
+        overlayContainer.zIndex = 5; // Behind Game (10), above Background (0)
         this.rootContainer.addChild(overlayContainer);
 
         this.overlayRenderer = new OverlayRenderer(app, overlayContainer);

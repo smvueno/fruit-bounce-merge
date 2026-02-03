@@ -5,13 +5,12 @@ export class OverlayRenderer {
     container: PIXI.Container;
     app: PIXI.Application;
 
-    // Juice
+    // Juice - Simple unified approach
     private juiceContainer: PIXI.Container;
-    private waveSprite: PIXI.TilingSprite;
-    private juiceFill: PIXI.Graphics;
-    private waveTexture: PIXI.Texture;
+    private juiceGraphics: PIXI.Graphics;
 
-    private readonly WAVE_HEIGHT = 20;
+    private readonly WAVE_AMPLITUDE = 8;  // Height of wave peaks
+    private readonly WAVE_FREQUENCY = 0.04; // How many waves across the width
     private readonly GAME_HEIGHT = 750; // Virtual Height
     private readonly GAME_WIDTH = 600; // Virtual Width
 
@@ -20,29 +19,22 @@ export class OverlayRenderer {
     private dangerLine: PIXI.Graphics;
     private dangerGlow: PIXI.Graphics;
 
+    // Animation state
+    private waveOffset = 0;
+
     constructor(app: PIXI.Application, container: PIXI.Container) {
         this.app = app;
         this.container = container;
 
         // --- Juice Setup ---
+        // Use a single Graphics object for the entire juice area (wave + fill)
         this.juiceContainer = new PIXI.Container();
         this.juiceContainer.label = 'juice_overlay';
-        this.juiceContainer.alpha = 0.4; // Match React opacity-40
+        this.juiceContainer.alpha = 0.4; // Semi-transparent
         this.container.addChild(this.juiceContainer);
 
-        // Generate Wave Texture
-        this.waveTexture = this.generateWaveTexture();
-
-        this.waveSprite = new PIXI.TilingSprite({
-            texture: this.waveTexture,
-            width: this.GAME_WIDTH,
-            height: this.WAVE_HEIGHT
-        });
-
-        this.juiceFill = new PIXI.Graphics();
-
-        this.juiceContainer.addChild(this.juiceFill);
-        this.juiceContainer.addChild(this.waveSprite);
+        this.juiceGraphics = new PIXI.Graphics();
+        this.juiceContainer.addChild(this.juiceGraphics);
 
         // --- Danger Setup ---
         this.dangerContainer = new PIXI.Container();
@@ -50,84 +42,76 @@ export class OverlayRenderer {
         this.container.addChild(this.dangerContainer);
 
         this.dangerGlow = new PIXI.Graphics();
-        this.dangerGlow.filters = [new PIXI.BlurFilter({ strength: 10, quality: 2 })]; // Glow effect
+        this.dangerGlow.filters = [new PIXI.BlurFilter({ strength: 10, quality: 2 })];
         this.dangerContainer.addChild(this.dangerGlow);
 
         this.dangerLine = new PIXI.Graphics();
         this.dangerContainer.addChild(this.dangerLine);
     }
 
-    private generateWaveTexture(): PIXI.Texture {
-        const w = 100;
-        const h = 20;
-        const g = new PIXI.Graphics();
-        g.moveTo(0, h);
-        g.lineTo(0, h / 2);
-        // SVG Input: M0 20 L0 10 Q25 0 50 10 T100 10 L100 20 Z
-        // In Pixi quadraticCurveTo(cpX, cpY, toX, toY)
-        // Q25 0 50 10 -> Start (0,10), Control(25,0), End(50,10)
-        g.moveTo(0, 10);
-        g.quadraticCurveTo(25, 3, 50, 10); // Tweaked control point y=3 to keep inside bounds? SVG was 0 is top.
-        // T100 10 -> Smooth curve to 100,10.
-        // Implicit control point is reflection of previous relative to current point.
-        // Prev CP was (25,0) relative to (0,10)? No, abs is (25,0). Previous point (0,10).
-        // Current point (50,10). Reflected CP is (75, 20).
-        g.quadraticCurveTo(75, 17, 100, 10);
-
-        g.lineTo(100, 20);
-        g.lineTo(0, 20);
-        g.fill({ color: 0xFFFFFF });
-
-        const texture = this.app.renderer.generateTexture(g);
-        return texture;
-    }
-
     update(dt: number, juice: number, fever: boolean, dangerActive: boolean, width: number, height: number) {
+        // --- Update Wave Animation ---
+        this.waveOffset += dt * 50; // Smooth scrolling animation
+
         // --- Update Juice ---
-        // Color
-        const color = fever ? 0xA855F7 : 0x60A5FA;
-        this.juiceFill.tint = color;
-        this.waveSprite.tint = color;
+        const color = fever ? 0xA855F7 : 0x60A5FA; // Purple for fever, blue normally
 
-        // Animation
-        this.waveSprite.tilePosition.x += dt * 60; // speed
-
-        // Height Calc
+        // Height Calculation
+        // Danger line is at DANGER_Y_PERCENT from top
+        // Juice fills from bottom UP TO danger line when at 100%
         const dangerY = height * DANGER_Y_PERCENT;
-        const visibleHeight = height - dangerY;
-        const targetHeight = (juice / 100) * visibleHeight;
+        const maxJuiceHeight = height - dangerY;
+
+        const clampedJuice = Math.min(100, Math.max(0, juice));
+        const targetHeight = (clampedJuice / 100) * maxJuiceHeight;
+
+        // Clear and redraw
+        this.juiceGraphics.clear();
 
         if (targetHeight <= 0.1) {
             this.juiceContainer.visible = false;
         } else {
             this.juiceContainer.visible = true;
 
-            // Position
-            // Fill Rect from bottom to (top - waveHeight)
-            const fillHeight = Math.max(0, targetHeight - this.WAVE_HEIGHT);
-            const fillTop = height - fillHeight;
+            // Calculate juice top position
+            let juiceTop = height - targetHeight;
+            // Clamp to never go above danger line
+            juiceTop = Math.max(dangerY, juiceTop);
 
-            this.juiceFill.clear().rect(0, fillTop, width, fillHeight).fill({ color: 0xFFFFFF }); // White, tinted by container/sprite tint? No, Graphics tint works differently. 
-            // Actually Graphics can't easily be tinted unless we use tint property on the instance.
-            // But we set this.juiceFill.tint = color above. So drawing white is correct.
+            // Draw the juice as a single path: wavy top + filled body
+            this.juiceGraphics.beginPath();
 
-            // Wave on top
-            this.waveSprite.width = width;
-            this.waveSprite.y = fillTop - this.WAVE_HEIGHT + 1; // +1 to overlap
-            this.waveSprite.visible = true;
+            // Start at bottom-left
+            this.juiceGraphics.moveTo(0, height);
 
-            // If juice is very low, maybe hide wave or clip?
-            if (targetHeight < this.WAVE_HEIGHT) {
-                // simple hack: hide wave if very small
-                this.waveSprite.visible = false;
-                this.juiceFill.clear().rect(0, height - targetHeight, width, targetHeight).fill(0xFFFFFF);
+            // Go up to the left edge of the wave
+            const leftEdgeY = juiceTop + Math.sin(this.waveOffset * this.WAVE_FREQUENCY) * this.WAVE_AMPLITUDE;
+            this.juiceGraphics.lineTo(0, leftEdgeY);
+
+            // Draw wavy top edge across the width
+            const step = 8; // Draw point every 8 pixels for smoothness
+            for (let x = 0; x <= width; x += step) {
+                // Sinusoidal wave animation
+                const waveY = juiceTop + Math.sin((x + this.waveOffset) * this.WAVE_FREQUENCY) * this.WAVE_AMPLITUDE;
+                this.juiceGraphics.lineTo(x, waveY);
             }
+
+            // Ensure we reach the right edge
+            const rightEdgeY = juiceTop + Math.sin((width + this.waveOffset) * this.WAVE_FREQUENCY) * this.WAVE_AMPLITUDE;
+            this.juiceGraphics.lineTo(width, rightEdgeY);
+
+            // Go down to bottom-right and close
+            this.juiceGraphics.lineTo(width, height);
+            this.juiceGraphics.closePath();
+
+            // Fill with the juice color
+            this.juiceGraphics.fill({ color });
         }
 
         // --- Update Danger ---
         const y = height * DANGER_Y_PERCENT;
 
-        // Glow
+        // Glow (subtle red glow)
         this.dangerGlow.clear();
         this.dangerGlow.moveTo(0, y).lineTo(width, y).stroke({ width: 6, color: 0xFF0000, alpha: 0.6 });
 
@@ -135,8 +119,6 @@ export class OverlayRenderer {
         this.dangerLine.clear();
         this.dangerLine.moveTo(0, y).lineTo(width, y);
         if (dangerActive) {
-            // Pulse opacity?
-            const pulse = 0.5 + Math.sin(Date.now() / 100) * 0.5;
             this.dangerLine.stroke({ width: 4, color: 0xFF0000, alpha: 0.8 });
         } else {
             this.dangerLine.stroke({ width: 4, color: 0x000000, alpha: 0.2 });

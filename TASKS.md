@@ -149,34 +149,34 @@ Each task is designed to be executed by a dedicated agent. **Start from 1.1 and 
 > - **Recommendation**: For Task 4.1 & 4.2, ensure you completely detach the React components (`PointTicker`, `GameHUD`) from the high-frequency game loop. The `ScoreController` should talk directly to your new `HUDRenderer` without triggering `setState`.
 > - **Benchmark**: You can use `window.runPhysicsBenchmark()` to verify physics stability if you touch `PhysicsSystem`.
 
-### [ ] Task 4.1: Migrate Point Popups to Pixi
+### [x] Task 4.1: Migrate Point Popups to Pixi
 *   **Implementation Details**:
     *   Create `services/systems/renderers/FloatingTextRenderer.ts`.
     *   Use `PIXI.Text` or `PIXI.BitmapText` (BitmapText is preferred for performance).
     *   Style: Font "Fredoka", White Fill, Black Stroke (6px).
     *   Animation: Replicate the `animate-float-fade` CSS keyframes using manual Tween logic in `update()`.
 *   **Definition of Done**:
-    *   [ ] Numbers pop up exactly over the merge location.
-    *   [ ] Text scaling (larger for combos) works.
-    *   [ ] Text fades out smoothly.
+    *   [x] Numbers pop up exactly over the merge location.
+    *   [x] Text scaling (larger for combos) works.
+    *   [x] Text fades out smoothly.
 *   **Stress Test**: Merge two watermelons (huge explosion of points). UI should not hiccup.
 
-### [ ] Task 4.2: Migrate HUD (Score, Next, Hold)
+### [x] Task 4.2: Migrate HUD (Score, Next, Hold)
 *   **Implementation Details**:
     *   Create `services/systems/renderers/HUDRenderer.ts`.
     *   Render Score, Best Score, Next Fruit Bubble, and Saved Fruit Bubble using Pixi.
     *   Remove `GameHUD.tsx` and `PointTicker.tsx`.
 *   **Definition of Done**:
-    *   [ ] Score updates instantly (no React lag).
-    *   [ ] Next/Saved fruits render correct textures.
+    *   [x] Score updates instantly (no React lag).
+    *   [x] Next/Saved fruits render correct textures.
 
-### [ ] Task 4.3: Migrate Overlays (Danger, Juice)
+### [x] Task 4.3: Migrate Overlays (Danger, Juice)
 *   **Implementation Details**:
     *   Move `JuiceOverlay` logic to `RenderSystem`.
     *   Move `DangerOverlay` vignetting/red flash to `RenderSystem` (Pixi Graphics/Sprite).
 *   **Definition of Done**:
-    *   [ ] Juice level visuals work in Pixi.
-    *   [ ] Danger red pulse works in Pixi.
+    *   [x] Juice level visuals work in Pixi.
+    *   [x] Danger red pulse works in Pixi.
 
 ---
 
