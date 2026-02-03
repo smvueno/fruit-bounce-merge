@@ -62,8 +62,11 @@ export class OverlayRenderer {
         const dangerY = height * DANGER_Y_PERCENT;
         const maxJuiceHeight = height - dangerY;
 
-        const clampedJuice = Math.min(100, Math.max(0, juice));
-        const targetHeight = (clampedJuice / 100) * maxJuiceHeight;
+        // juice is a raw value (0-1500), convert to percentage (0-100)
+        // JUICE_MAX = 1500, so percentage = (juice / 1500) * 100
+        const JUICE_MAX = 1500; // Match constants.ts
+        const juicePercent = Math.min(100, Math.max(0, (juice / JUICE_MAX) * 100));
+        const targetHeight = (juicePercent / 100) * maxJuiceHeight;
 
         // Clear and redraw
         this.juiceGraphics.clear();

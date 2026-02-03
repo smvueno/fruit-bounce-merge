@@ -796,7 +796,15 @@ export class GameEngine {
     }
 
     forceCurrentFruit(tier: FruitTier) {
-        if (!this.currentFruit) return;
+        // If there's no current fruit, set the next fruit in queue instead
+        if (!this.currentFruit) {
+            if (this.nextFruitQueue.length > 0) {
+                this.nextFruitQueue[0] = tier;
+            } else {
+                this.nextFruitQueue.push(tier);
+            }
+            return;
+        }
 
         this.renderSystem.removeSprite(this.currentFruit);
 

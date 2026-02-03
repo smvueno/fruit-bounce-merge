@@ -72,12 +72,16 @@ export class RenderSystem {
         this.wallRenderer = new WallRenderer(backgroundContainer);
         this.effectRenderer = new EffectRenderer(effectContainer, this.effectTextures);
 
-        // Overlay Renderer (Layer 5 - Below Fruits)
-        // Juice/wave should be behind fruits but above background
-        // Layer order: background(0) < overlay(5) < fruits(10) < effects(20) < text(30) < UI(40)
+        // Overlay Renderer (Layer -5 - Behind Ground)
+        // Juice/wave should be behind ground/background but still visible
+        // Layer order: overlay(-5) < background/ground(0) < fruits(10) < effects(20) < text(30) < UI(40)
         const overlayContainer = new PIXI.Container();
-        overlayContainer.zIndex = 5; // Behind Game (10), above Background (0)
-        this.rootContainer.addChild(overlayContainer);
+        overlayContainer.label = 'juice_layer';
+        overlayContainer.zIndex = -5; // Behind Background (0)
+        // Add at index 0 to ensure it's drawn first (behind everything)
+        this.rootContainer.addChildAt(overlayContainer, 0);
+        // Force sort to ensure z-order is applied
+        this.rootContainer.sortChildren();
 
         this.overlayRenderer = new OverlayRenderer(app, overlayContainer);
 
