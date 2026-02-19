@@ -50,6 +50,7 @@ export class MusicEngine {
     soundQueue: number[] = []; // Stores Tier IDs to play
     nextSfxTime: number = 0;
     readonly MIN_SFX_GAP = 0.06; // 60ms gap for "machine gun" feel without overlapping mess
+    readonly MAX_QUEUE_LENGTH = 4; // Drop oldest sounds when queue is full (prevents audio node storm on mobile)
 
     constructor(musicEnabled: boolean, sfxEnabled: boolean) {
         this.musicEnabled = musicEnabled;
@@ -233,6 +234,10 @@ export class MusicEngine {
 
     playMergeSound(tier: number) {
         if (!this.sfxEnabled) return;
+        // Drop oldest sound if queue is full — prevents unbounded AudioContext node creation on mobile
+        if (this.soundQueue.length >= this.MAX_QUEUE_LENGTH) {
+            this.soundQueue.shift();
+        }
         this.soundQueue.push(tier);
     }
 
@@ -258,7 +263,7 @@ export class MusicEngine {
             duration = 0.4;
             volume = 0.6;
 
-            // Sub-Bass Oomph for Bomb/Special
+            // Sub-Bass Oomph for Bomb/Special (LFO node removed — saves 2 nodes per special merge)
             const sub = this.ctx.createOscillator();
             const subGain = this.ctx.createGain();
             sub.type = 'sine';
@@ -270,15 +275,6 @@ export class MusicEngine {
             subGain.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
             sub.start(time);
             sub.stop(time + 0.4);
-
-            const lfo = this.ctx.createOscillator();
-            lfo.frequency.value = 20;
-            const lfoGain = this.ctx.createGain();
-            lfoGain.gain.value = 50;
-            lfo.connect(lfoGain);
-            lfoGain.connect(osc.frequency);
-            lfo.start(time);
-            lfo.stop(time + duration);
         }
         // --- LARGE (8, 9, 10) ---
         else if (tier >= 8) {
@@ -408,9 +404,9 @@ export class MusicEngine {
         if (!this.sfxEnabled || !this.ctx || !this.masterGain) return;
         const now = this.ctx.currentTime;
 
-        // Machine gun bubbles
-        const count = 5;
-        const gap = 0.04;
+        // Reduced from 5 to 2 nodes — machine-gun feel preserved, node creation halved
+        const count = 2;
+        const gap = 0.06;
 
         for (let i = 0; i < count; i++) {
             const t = now + (i * gap);

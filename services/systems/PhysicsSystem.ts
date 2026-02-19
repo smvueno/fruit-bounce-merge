@@ -38,10 +38,18 @@ export class PhysicsSystem {
     private _sortedBuffer: Particle[] = [];
     private _tomatoTargets: Map<number, FruitTier> = new Map();
     private _bombCapturedIds: Set<number> = new Set();
+    // Optimization: O(1) fruit lookup — replaces O(N) find() calls inside tomato/bomb/celebration loops
+    private _fruitMap: Map<number, Particle> = new Map();
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
         const gravity = GAME_CONFIG.gravity;
         const friction = GAME_CONFIG.friction;
+
+        // Optimization: Build O(1) lookup map once per frame — replaces O(N) find() in tomato/bomb/celebration loops
+        this._fruitMap.clear();
+        for (const p of ctx.fruits) {
+            this._fruitMap.set(p.id, p);
+        }
 
         // 0. Update Bomb Captured Set
         this._bombCapturedIds.clear();
@@ -223,7 +231,7 @@ export class PhysicsSystem {
 
     updateTomatoPhysics(ctx: PhysicsContext) {
         for (const t of ctx.activeTomatoes) {
-            const tomato = ctx.fruits.find(p => p.id === t.tomatoId);
+            const tomato = this._fruitMap.get(t.tomatoId);
 
             this.forEachEffectTarget(
                 ctx,
@@ -258,7 +266,7 @@ export class PhysicsSystem {
 
     updateBombPhysics(ctx: PhysicsContext) {
         for (const b of ctx.activeBombs) {
-            const bomb = ctx.fruits.find(p => p.id === b.bombId);
+            const bomb = this._fruitMap.get(b.bombId);
 
             this.forEachEffectTarget(
                 ctx,
@@ -298,7 +306,7 @@ export class PhysicsSystem {
 
             for (const id of state.capturedIds) {
 
-                const p = ctx.fruits.find(f => f.id === id);
+                const p = this._fruitMap.get(id);
                 if (!p) continue;
 
                 const dx = targetX - p.x;
@@ -316,7 +324,7 @@ export class PhysicsSystem {
             }
         } else if (state.phase === 'hold' || state.phase === 'pop') {
             for (const id of state.capturedIds) {
-                const p = ctx.fruits.find(f => f.id === id);
+                const p = this._fruitMap.get(id);
                 if (!p) continue;
                 p.vx *= 0.8;
                 p.vy *= 0.8;
