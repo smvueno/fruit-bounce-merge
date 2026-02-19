@@ -790,7 +790,10 @@ export class GameEngine {
     merge(p1: Particle, p2: Particle) {
         let nextTier: number;
 
-        if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
+        // Secret: two bombs merge into a Watermelon
+        if (p1.tier === FruitTier.BOMB && p2.tier === FruitTier.BOMB) {
+            nextTier = FruitTier.WATERMELON;
+        } else if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
             nextTier = FruitTier.WATERMELON;
         } else if (p1.tier === FruitTier.RAINBOW) {
             nextTier = p2.tier + 1;
