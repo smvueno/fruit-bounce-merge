@@ -51,9 +51,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [debugMode, setDebugMode] = useState(false);
     const [pauseTapCount, setPauseTapCount] = useState(0);
 
-    // Performance overlay state — polled every 500ms, zero-cost when not shown
-    const [perfStats, setPerfStats] = useState<{ fps: number; frameTimeMs: number; fruitCount: number; particleCount: number; audioQueueLength: number } | null>(null);
-    const [showPerfOverlay, setShowPerfOverlay] = useState(false);
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
 
@@ -130,17 +127,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         }, 25000);
         return () => clearInterval(interval);
     }, []);
-
-    // --- Performance Overlay Poll (every 500ms, only when shown) ---
-    useEffect(() => {
-        if (!showPerfOverlay) return;
-        const interval = setInterval(() => {
-            if (engineRef.current) {
-                setPerfStats({ ...engineRef.current.perfStats });
-            }
-        }, 500);
-        return () => clearInterval(interval);
-    }, [showPerfOverlay]);
 
     // --- Track Game Area Position for Ground Canvas ---
     useEffect(() => {
@@ -407,14 +393,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                         >
                             <Pause size={24} fill="currentColor" />
                         </button>
-                        <button
-                            onClick={() => setShowPerfOverlay(p => !p)}
-                            className="w-8 h-8 bg-black/50 text-white text-xs rounded-full flex items-center justify-center border border-white/30"
-                            aria-label="Toggle Performance Overlay"
-                            title="Toggle perf overlay"
-                        >
-                            fps
-                        </button>
                     </div>
                 </div>
 
@@ -438,22 +416,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                         juice={juice}
                         dangerYPercent={DANGER_Y_PERCENT}
                     />
-                </div>
-            )}
-
-            {/* Performance Overlay */}
-            {showPerfOverlay && perfStats && (
-                <div
-                    className="fixed top-2 right-2 z-[200] bg-black/80 text-white text-xs font-mono rounded p-2 pointer-events-none leading-5"
-                    style={{ minWidth: 140 }}
-                >
-                    <div style={{ color: perfStats.fps >= 55 ? '#4ade80' : perfStats.fps >= 40 ? '#facc15' : '#f87171' }}>
-                        FPS: {perfStats.fps}
-                    </div>
-                    <div>Frame: {perfStats.frameTimeMs}ms</div>
-                    <div>Fruits: {perfStats.fruitCount}</div>
-                    <div>Particles: {perfStats.particleCount}</div>
-                    <div>Audio Q: {perfStats.audioQueueLength}</div>
                 </div>
             )}
 

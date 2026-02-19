@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { FruitDef, FruitTier, GameSettings, GameStats, PointEvent, PopupData, PopUpType } from '../types';
-import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX, SUBSTEPS } from '../constants';
 import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
 
@@ -100,10 +100,14 @@ export class GameEngine {
         fruitCount: 0,
         particleCount: 0,
         audioQueueLength: 0,
+        heapUsedMB: 0,
+        heapTotalMB: 0,
+        substeps: 0,
     };
     private _perfLastTime: number = 0;
     private _perfFrameCount: number = 0;
     private _perfFpsAccumulator: number = 0;
+    private _perfMemoryAccumulator: number = 0;
 
     // Optimization: Reused Objects
     private _physicsContext: PhysicsContext;
@@ -530,17 +534,30 @@ export class GameEngine {
             const elapsed = _perfNow - this._perfLastTime;
             this._perfFpsAccumulator += elapsed;
             this._perfFrameCount++;
+            this._perfMemoryAccumulator += elapsed;
+
             if (this._perfFpsAccumulator >= 500) {
                 this.perfStats.fps = Math.round((this._perfFrameCount * 1000) / this._perfFpsAccumulator);
                 this.perfStats.frameTimeMs = Math.round(this._perfFpsAccumulator / this._perfFrameCount * 10) / 10;
                 this._perfFpsAccumulator = 0;
                 this._perfFrameCount = 0;
             }
+
+            // Sample memory every 2s — performance.memory only updates periodically anyway
+            if (this._perfMemoryAccumulator >= 2000) {
+                this._perfMemoryAccumulator = 0;
+                const mem = (performance as any).memory;
+                if (mem) {
+                    this.perfStats.heapUsedMB = Math.round(mem.usedJSHeapSize / 1048576 * 10) / 10;
+                    this.perfStats.heapTotalMB = Math.round(mem.totalJSHeapSize / 1048576 * 10) / 10;
+                }
+            }
         }
         this._perfLastTime = _perfNow;
         this.perfStats.fruitCount = this.fruits.length;
         this.perfStats.particleCount = this.effectSystem.visualParticles.length;
         this.perfStats.audioQueueLength = this.audio.soundQueue.length;
+        this.perfStats.substeps = SUBSTEPS;
 
         // Optimization: Build O(1) fruit lookup Map once per frame
         this._fruitsById.clear();
