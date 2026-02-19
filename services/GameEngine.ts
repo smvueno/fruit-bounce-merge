@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { FruitDef, FruitTier, GameSettings, GameStats, PointEvent, PopupData, PopUpType } from '../types';
-import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX } from '../constants';
+import { FRUIT_DEFS, GAME_CONFIG, DANGER_TIME_MS, DANGER_Y_PERCENT, SPAWN_Y_PERCENT, SCORE_BASE_MERGE, FEVER_DURATION_MS, JUICE_MAX, SUBSTEPS } from '../constants';
 import { MusicEngine } from './MusicEngine';
 import { Particle, TomatoEffect, BombEffect, CelebrationState } from '../types/GameObjects';
 
@@ -93,9 +93,29 @@ export class GameEngine {
     consecutiveNonSpecialCount: number = 0;
     generatedFruitCount: number = 0;
 
+    // Performance Stats (updated every frame, read by UI overlay)
+    perfStats = {
+        fps: 0,
+        frameTimeMs: 0,
+        fruitCount: 0,
+        particleCount: 0,
+        audioQueueLength: 0,
+        heapUsedMB: 0,
+        heapTotalMB: 0,
+        substeps: 0,
+    };
+    private _perfLastTime: number = 0;
+    private _perfFrameCount: number = 0;
+    private _perfFpsAccumulator: number = 0;
+    private _perfMemoryAccumulator: number = 0;
+
     // Optimization: Reused Objects
     private _physicsContext: PhysicsContext;
     private _physicsCallbacks: PhysicsCallbacks;
+    private _effectContext: { fruits: Particle[]; activeTomatoes: TomatoEffect[]; currentFruit: Particle | null; feverActive: boolean; width: number; height: number };
+    private _timeUpdateAccumulator: number = 0; // Throttle onTimeUpdate to 4x/s instead of 60x/s
+    // Optimization: O(1) fruit lookups in updateGameLogic (replaces .find() per active effect per frame)
+    private _fruitsById: Map<number, Particle> = new Map();
 
     private spawnTimeout: any = null;
     private wasPausedBySystem: boolean = false;
@@ -208,6 +228,16 @@ export class GameEngine {
             onCelebrationMatch: (p1, p2) => this.triggerCelebration(p1, p2)
         };
 
+        // Optimization: Persistent effectContext to avoid new object allocation every frame
+        this._effectContext = {
+            fruits: [],
+            activeTomatoes: [],
+            currentFruit: null,
+            feverActive: false,
+            width: this.width,
+            height: this.height
+        };
+
         this.visibilityHandler = this.handleVisibilityChange.bind(this);
     }
 
@@ -232,13 +262,20 @@ export class GameEngine {
         this.app = new PIXI.Application();
 
         try {
+            // Optimization: Cap pixel ratio at 2 on mobile (iPhone 15 Pro = 3× = 3× GPU work)
+            // Capping at 2 cuts GPU pixel fill by ~55% with near-invisible quality difference
+            const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+            const cappedDpr = isMobile
+                ? Math.min(window.devicePixelRatio || 1, 2)
+                : (window.devicePixelRatio || 1);
+
             await this.app.init({
                 canvas: this.canvasElement,
                 backgroundAlpha: 0,
                 width: this.canvasElement.clientWidth,
                 height: this.canvasElement.clientHeight,
-                antialias: true,
-                resolution: window.devicePixelRatio || 1,
+                antialias: !isMobile, // Disable antialias on mobile — saves GPU passes
+                resolution: cappedDpr,
                 autoDensity: true,
                 preference: 'webgl',
                 resizeTo: this.canvasElement
@@ -491,6 +528,41 @@ export class GameEngine {
         const dt = 1 / 60;
         const dtMs = dt * 1000;
 
+        // --- Performance Tracking ---
+        const _perfNow = performance.now();
+        if (this._perfLastTime > 0) {
+            const elapsed = _perfNow - this._perfLastTime;
+            this._perfFpsAccumulator += elapsed;
+            this._perfFrameCount++;
+            this._perfMemoryAccumulator += elapsed;
+
+            if (this._perfFpsAccumulator >= 500) {
+                this.perfStats.fps = Math.round((this._perfFrameCount * 1000) / this._perfFpsAccumulator);
+                this.perfStats.frameTimeMs = Math.round(this._perfFpsAccumulator / this._perfFrameCount * 10) / 10;
+                this._perfFpsAccumulator = 0;
+                this._perfFrameCount = 0;
+            }
+
+            // Sample memory every 2s — performance.memory only updates periodically anyway
+            if (this._perfMemoryAccumulator >= 2000) {
+                this._perfMemoryAccumulator = 0;
+                const mem = (performance as any).memory;
+                if (mem) {
+                    this.perfStats.heapUsedMB = Math.round(mem.usedJSHeapSize / 1048576 * 10) / 10;
+                    this.perfStats.heapTotalMB = Math.round(mem.totalJSHeapSize / 1048576 * 10) / 10;
+                }
+            }
+        }
+        this._perfLastTime = _perfNow;
+        this.perfStats.fruitCount = this.fruits.length;
+        this.perfStats.particleCount = this.effectSystem.visualParticles.length;
+        this.perfStats.audioQueueLength = this.audio.soundQueue.length;
+        this.perfStats.substeps = SUBSTEPS;
+
+        // Optimization: Build O(1) fruit lookup Map once per frame
+        this._fruitsById.clear();
+        for (const p of this.fruits) this._fruitsById.set(p.id, p);
+
         // 1. Update Game Logic (Timers, Stats, Fever)
         this.updateGameLogic(dtMs);
 
@@ -510,16 +582,15 @@ export class GameEngine {
         this.physicsSystem.update(dt, this._physicsContext, this._physicsCallbacks);
 
         // 3. Update Effects
+        // Optimization: Reuse persistent context object — avoids GC allocation every frame
         const isFever = this.scoreController.isFever();
-        const effectContext = {
-            fruits: this.fruits,
-            activeTomatoes: this.activeTomatoes,
-            currentFruit: this.currentFruit,
-            feverActive: isFever,
-            width: this.width,
-            height: this.height
-        };
-        this.effectSystem.update(dt, effectContext);
+        this._effectContext.fruits = this.fruits;
+        this._effectContext.activeTomatoes = this.activeTomatoes;
+        this._effectContext.currentFruit = this.currentFruit;
+        this._effectContext.feverActive = isFever;
+        this._effectContext.width = this.width;
+        this._effectContext.height = this.height;
+        this.effectSystem.update(dt, this._effectContext);
 
         // 4. Audio
         this.audio.update();
@@ -541,7 +612,13 @@ export class GameEngine {
 
     updateGameLogic(dtMs: number) {
         this.stats.timePlayed += dtMs;
-        this.onTimeUpdate(this.stats.timePlayed);
+
+        // Optimization: Throttle time callback to 4x/s — firing at 60x/s causes 60 React renders/s just for the timer
+        this._timeUpdateAccumulator += dtMs;
+        if (this._timeUpdateAccumulator >= 250) {
+            this._timeUpdateAccumulator = 0;
+            this.onTimeUpdate(this.stats.timePlayed);
+        }
 
         // Update ScoreController (Fever Timer)
         this.scoreController.update(dtMs);
@@ -559,7 +636,7 @@ export class GameEngine {
             }
 
             t.timer -= dtMs / 1000;
-            const tomatoParticle = this.fruits.find(p => p.id === t.tomatoId);
+            const tomatoParticle = this._fruitsById.get(t.tomatoId);
             if (tomatoParticle) {
                 const progress = 1 - (t.timer / t.maxTime);
                 tomatoParticle.scaleX = 1 + (progress * 0.3);
@@ -589,7 +666,7 @@ export class GameEngine {
                 }
             }
 
-            const bombParticle = this.fruits.find(p => p.id === b.bombId);
+            const bombParticle = this._fruitsById.get(b.bombId);
             if (bombParticle) {
                 const flashTiming = b.timer % 1.0;
                 if (flashTiming > 0.7) {
@@ -713,7 +790,10 @@ export class GameEngine {
     merge(p1: Particle, p2: Particle) {
         let nextTier: number;
 
-        if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
+        // Secret: two bombs merge into a Watermelon
+        if (p1.tier === FruitTier.BOMB && p2.tier === FruitTier.BOMB) {
+            nextTier = FruitTier.WATERMELON;
+        } else if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
             nextTier = FruitTier.WATERMELON;
         } else if (p1.tier === FruitTier.RAINBOW) {
             nextTier = p2.tier + 1;
@@ -959,7 +1039,7 @@ export class GameEngine {
             const targetY = this.height * SPAWN_Y_PERCENT;
 
             for (const id of state.capturedIds) {
-                const p = this.fruits.find(f => f.id === id);
+                const p = this._fruitsById.get(id);
                 if (!p) continue;
                 if (Math.abs(p.y - targetY) > 50) {
                     allArrived = false;
@@ -983,7 +1063,7 @@ export class GameEngine {
                     const id = state.capturedIds[state.popIndex];
                     state.popIndex++;
 
-                    const p = this.fruits.find(f => f.id === id);
+                    const p = this._fruitsById.get(id);
                     if (p) {
                         const tier = p.tier;
 

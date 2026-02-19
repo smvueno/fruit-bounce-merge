@@ -15,7 +15,10 @@ export const GAME_CONFIG = {
 };
 
 // Physics Engine Constants
-export const SUBSTEPS = 6; // Reduced to 6 for performance on low-end devices
+// Optimization: 4 substeps on mobile vs 6 on desktop — saves ~33% CPU per frame
+// (4 × 60fps = 240 physics iters/s vs 6 × 60 = 360; collision quality still solid)
+const _isMobileDevice = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+export const SUBSTEPS = _isMobileDevice ? 4 : 6;
 // BOUNCE SETTINGS - Increased for fun factor!
 export const WALL_DAMPING = 0.5; // (Was 0.3) Retains 50% velocity on wall hit
 export const FLOOR_DAMPING = 0.4; // (Was 0.2) Retains 40% velocity on floor hit

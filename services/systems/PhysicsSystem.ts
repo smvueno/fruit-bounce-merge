@@ -38,10 +38,18 @@ export class PhysicsSystem {
     private _sortedBuffer: Particle[] = [];
     private _tomatoTargets: Map<number, FruitTier> = new Map();
     private _bombCapturedIds: Set<number> = new Set();
+    // Optimization: O(1) fruit lookup — replaces O(N) find() calls inside tomato/bomb/celebration loops
+    private _fruitMap: Map<number, Particle> = new Map();
 
     update(dt: number, ctx: PhysicsContext, callbacks: PhysicsCallbacks) {
         const gravity = GAME_CONFIG.gravity;
         const friction = GAME_CONFIG.friction;
+
+        // Optimization: Build O(1) lookup map once per frame — replaces O(N) find() in tomato/bomb/celebration loops
+        this._fruitMap.clear();
+        for (const p of ctx.fruits) {
+            this._fruitMap.set(p.id, p);
+        }
 
         // 0. Update Bomb Captured Set
         this._bombCapturedIds.clear();
@@ -223,7 +231,7 @@ export class PhysicsSystem {
 
     updateTomatoPhysics(ctx: PhysicsContext) {
         for (const t of ctx.activeTomatoes) {
-            const tomato = ctx.fruits.find(p => p.id === t.tomatoId);
+            const tomato = this._fruitMap.get(t.tomatoId);
 
             this.forEachEffectTarget(
                 ctx,
@@ -258,7 +266,7 @@ export class PhysicsSystem {
 
     updateBombPhysics(ctx: PhysicsContext) {
         for (const b of ctx.activeBombs) {
-            const bomb = ctx.fruits.find(p => p.id === b.bombId);
+            const bomb = this._fruitMap.get(b.bombId);
 
             this.forEachEffectTarget(
                 ctx,
@@ -298,7 +306,7 @@ export class PhysicsSystem {
 
             for (const id of state.capturedIds) {
 
-                const p = ctx.fruits.find(f => f.id === id);
+                const p = this._fruitMap.get(id);
                 if (!p) continue;
 
                 const dx = targetX - p.x;
@@ -316,7 +324,7 @@ export class PhysicsSystem {
             }
         } else if (state.phase === 'hold' || state.phase === 'pop') {
             for (const id of state.capturedIds) {
-                const p = ctx.fruits.find(f => f.id === id);
+                const p = this._fruitMap.get(id);
                 if (!p) continue;
                 p.vx *= 0.8;
                 p.vy *= 0.8;
@@ -399,46 +407,54 @@ export class PhysicsSystem {
                 if (distSq < radSum * radSum) {
                     const dist = Math.sqrt(distSq);
 
-                    // Check if either particle is captured by a bomb (doomed)
-                    const isBombCaptured = this._bombCapturedIds.has(p1.id) || this._bombCapturedIds.has(p2.id);
-
-                    if (!isBombCaptured) {
-                        // --- SPECIAL LOGIC: BOMB ---
-                        if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
+                    // --- BOMB + BOMB → Secret Watermelon (must come before single-bomb check) ---
+                    if (p1.tier === FruitTier.BOMB && p2.tier === FruitTier.BOMB) {
+                        if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                            callbacks.onMerge(p1, p2);
+                            break; // p1 consumed — exit inner loop
+                        }
+                    }
+                    // --- Single BOMB touching anything → explode ---
+                    // Guard with isBombCaptured to prevent double-explosion recursion
+                    // when an active bomb overlaps with a fruit that was already captured
+                    else if (p1.tier === FruitTier.BOMB || p2.tier === FruitTier.BOMB) {
+                        const isBombCaptured = this._bombCapturedIds.has(p1.id) || this._bombCapturedIds.has(p2.id);
+                        if (!isBombCaptured) {
                             const bomb = p1.tier === FruitTier.BOMB ? p1 : p2;
                             callbacks.onBombExplosion(bomb);
-                            // Stop further processing for this pair since one is gone
                             if (bomb === p1) break;
                             else continue;
                         }
+                    }
+                    // --- Normal fruit logic (tomato, rainbow, merge) ---
+                    // Bomb-captured fruits ARE allowed to merge here. If two fruits near a bomb
+                    // merge before the explosion, the new merged fruit (new id) escapes the blast.
+                    else {
+                        // Tomato pass-through
+                        if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
+                            callbacks.onTomatoCollision(p1, p2);
+                            continue;
+                        }
 
-                        // --- SPECIAL LOGIC: RAINBOW (Wildcard) ---
                         let canMerge = false;
 
-                        // Case 1: Normal Same Tier
+                        // Case 1: Same tier
                         if (p1.tier === p2.tier) {
-                            // Check Watermelon Celebration
                             if (p1.tier === FruitTier.WATERMELON) {
                                 if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                                    // SAFE: The callback removes particles from ctx.fruits, but we immediately
-                                    // break from the inner loop. This prevents further iteration over the modified
-                                    // array. The outer loop continues safely as it only needs valid indices.
                                     callbacks.onCelebrationMatch(p1, p2);
                                     break;
                                 }
                             }
-
-                            // Normal Merge (Allow Rainbow+Rainbow to merge here)
-                            if (p1.tier !== FruitTier.WATERMELON && p1.tier !== FruitTier.TOMATO) {
+                            // Note: TOMATO is already handled by the early-continue above
+                            if (p1.tier !== FruitTier.WATERMELON) {
                                 canMerge = true;
                             }
                         }
-
-                        // Case 2: Rainbow + Anything (except specials)
-                        else if ((p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW)) {
-                            const validP1 = p1.tier < 90; // Not a special fruit
+                        // Case 2: Rainbow + anything
+                        else if (p1.tier === FruitTier.RAINBOW || p2.tier === FruitTier.RAINBOW) {
+                            const validP1 = p1.tier < 90;
                             const validP2 = p2.tier < 90;
-
                             if (p1.tier === FruitTier.RAINBOW && p2.tier === FruitTier.RAINBOW) {
                                 canMerge = true;
                             } else if (validP1 || validP2) {
@@ -446,27 +462,10 @@ export class PhysicsSystem {
                             }
                         }
 
-                        if (canMerge) {
-                            if (p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
-                                callbacks.onMerge(p1, p2);
-                                // If merged, one or both particles are removed.
-                                // We should break inner loop as p1 (at i) might be gone.
-                                // However, we can't easily `i--` here if we don't control the loop correctly.
-                                // To stay safe: We break inner loop. P1 is done.
-                                break;
-                            }
+                        if (canMerge && p1.cooldownTimer <= 0 && p2.cooldownTimer <= 0) {
+                            callbacks.onMerge(p1, p2);
+                            break;
                         }
-                    }
-
-                    // --- RESTORED TOMATO LOGIC ---
-                    if (p1.tier === FruitTier.TOMATO || p2.tier === FruitTier.TOMATO) {
-                        callbacks.onTomatoCollision(p1, p2);
-                        continue;
-                        // In `resolveCollisions`, it was a void function. `return` would skip ALL other collisions for ALL fruits.
-                        // That seems buggy in original code or I misread context.
-                        // Looking at original line 1130: `return;` inside proper logic.
-                        // Wait, it says `return;` inside the loop. That aborts the ENTIRE collision resolution for this substep.
-                        // That sounds efficient but maybe side-effect prone. I will preserve it.
                     }
 
                     if (dist === 0) continue;

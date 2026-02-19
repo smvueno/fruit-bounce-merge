@@ -10,11 +10,26 @@ export interface EffectContext {
     height: number;
 }
 
+// Optimization: Detect mobile once at class load time
+const _effectIsMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+// Mobile: 150 max particles total / 150 max suck; Desktop: 400 / 300
+const MAX_PARTICLES = _effectIsMobile ? 150 : 400;
+const MAX_SUCK_PARTICLES = _effectIsMobile ? 150 : 300;
+// Mobile: 8 particles per merge burst; Desktop: 15
+const MERGE_PARTICLE_COUNT = _effectIsMobile ? 8 : 15;
+
 export class EffectSystem {
     visualParticles: EffectParticle[] = [];
+    // Optimization: Persistent Map to avoid O(N) fruit lookups inside particle loop every frame
+    private _fruitMap: Map<number, Particle> = new Map();
+    // Optimization: Persistent Map for tomato lookup (replaces O(N) find() in hot particle loop)
+    private _tomatoMap: Map<number, TomatoEffect> = new Map();
+    // Optimization: Track suck particle count directly instead of .filter() every frame
+    private _suckCount: number = 0;
 
     reset() {
         this.visualParticles = [];
+        this._suckCount = 0;
     }
 
     spawnPassiveTomatoParticle(x: number, y: number, radius: number) {
@@ -55,7 +70,8 @@ export class EffectSystem {
     }
 
     createMergeEffect(x: number, y: number, color: string | number) {
-        for (let i = 0; i < 15; i++) {
+        // Optimization: Fewer particles on mobile (8 vs 15) — still satisfying but ~47% less GPU work
+        for (let i = 0; i < MERGE_PARTICLE_COUNT; i++) {
             const p = new EffectParticle(x, y, color, Math.random() > 0.5 ? 'circle' : 'star');
             const angle = Math.random() * Math.PI * 2;
             const force = Math.random() * 10 + 5;
@@ -81,15 +97,26 @@ export class EffectSystem {
         const activeTomatoes = ctx.activeTomatoes;
         const hasActive = activeTomatoes.length > 0;
 
+        // Optimization: Build O(1) fruit lookup map once per frame instead of O(N) find() per particle
+        this._fruitMap.clear();
+        for (const f of ctx.fruits) {
+            this._fruitMap.set(f.id, f);
+        }
+
+        // Optimization: Build O(1) tomato lookup map — replaces O(N) find() inside particle loop
+        this._tomatoMap.clear();
+        for (const t of activeTomatoes) {
+            this._tomatoMap.set(t.tomatoId, t);
+        }
+
         // 1. SPAWN PARTICLES
 
         // A. Active Tomato "Event Horizon" Spawning
+        // Optimization: Use _suckCount instead of .filter() every frame
         if (hasActive) {
-            if (this.visualParticles.filter(p => p.type === 'suck').length < 300) {
+            if (this._suckCount < MAX_SUCK_PARTICLES) {
                 for (const t of activeTomatoes) {
-                    // Fix: Use actual particle position for spawning center
-                    const tomatoParticle = ctx.fruits.find(f => f.id === t.tomatoId);
-                    // Fallback to t.x/t.y if particle somehow missing, though it should exist
+                    const tomatoParticle = this._fruitMap.get(t.tomatoId);
                     const centerX = tomatoParticle ? tomatoParticle.x : t.x;
                     const centerY = tomatoParticle ? tomatoParticle.y : t.y;
 
@@ -105,6 +132,7 @@ export class EffectSystem {
                         p.size = 3 + Math.random() * 3;
                         p.alpha = 0; // Fade in
                         this.visualParticles.push(p);
+                        this._suckCount++;
                     }
                 }
             }
@@ -169,7 +197,9 @@ export class EffectSystem {
 
         // D. Fever Particles
         if (ctx.feverActive) {
-            if (Math.random() < 0.3) {
+            // Optimization: Halve spawn rate on mobile — fever sparkles are decorative
+            const feverSpawnChance = _effectIsMobile ? 0.15 : 0.3;
+            if (Math.random() < feverSpawnChance) {
                 const sparkle = new EffectParticle(Math.random() * ctx.width, ctx.height + 20, 0xFFD700, 'star');
                 sparkle.vy = -Math.random() * 2 - 3; // Slightly faster upward (-3 to -5)
                 sparkle.vx = (Math.random() - 0.5) * 1;
@@ -178,24 +208,39 @@ export class EffectSystem {
             }
         }
 
+        // Optimization: Hard cap on total particles — if we exceed MAX_PARTICLES, cull oldest
+        // (oldest = front of array, since we swap-remove from back on death)
+        // We skip culling during normal play but kick in under stress (bomb explosion, etc.)
+        if (this.visualParticles.length > MAX_PARTICLES) {
+            const excess = this.visualParticles.length - MAX_PARTICLES;
+            // Remove from front (oldest particles first) — splice is O(N) but this is rare
+            for (let ci = 0; ci < excess; ci++) {
+                const removed = this.visualParticles.shift();
+                if (removed && removed.type === 'suck') this._suckCount--;
+            }
+        }
+
         // 2. UPDATE PARTICLES
-        for (let i = this.visualParticles.length - 1; i >= 0; i--) {
+        // Optimization: Forward loop with swap-remove (O(1) per deletion vs O(N) splice)
+        // Optimization: Use pre-built _fruitMap for O(1) tomato lookup instead of O(N) find()
+        let i = 0;
+        while (i < this.visualParticles.length) {
             const p = this.visualParticles[i];
             let targetTomato: TomatoEffect | null = null;
+            let shouldRemove = false;
 
-            // Find associated tomato for 'suck' particles
+            // Find associated tomato for 'suck' particles — O(1) Map lookup (was O(N) find())
             if (p.type === 'suck' && hasActive && p.targetId !== undefined) {
-                targetTomato = activeTomatoes.find(t => t.tomatoId === p.targetId) || null;
+                targetTomato = this._tomatoMap.get(p.targetId) || null;
                 if (!targetTomato) {
-                    this.visualParticles.splice(i, 1);
-                    continue;
+                    shouldRemove = true;
                 }
             }
 
-            if (targetTomato) {
+            if (!shouldRemove && targetTomato) {
                 // --- EVENT HORIZON MODE ---
-                // Fix: Use actual particle position as target
-                const tomatoParticle = ctx.fruits.find(f => f.id === targetTomato!.tomatoId);
+                // Optimization: O(1) Map lookup instead of O(N) find()
+                const tomatoParticle = this._fruitMap.get(targetTomato.tomatoId);
                 const centerX = tomatoParticle ? tomatoParticle.x : targetTomato.x;
                 const centerY = tomatoParticle ? tomatoParticle.y : targetTomato.y;
 
@@ -205,22 +250,21 @@ export class EffectSystem {
                 const currentAngle = Math.atan2(dy, dx);
 
                 if (dist < 20) {
-                    this.visualParticles.splice(i, 1);
-                    continue;
+                    shouldRemove = true;
+                } else {
+                    const radialSpeed = 3 + (200 / (dist + 10));
+                    const tangentialSpeed = 0.15;
+
+                    const nextAngle = currentAngle + tangentialSpeed;
+                    const nextRadius = dist - radialSpeed;
+
+                    p.x = centerX + Math.cos(nextAngle) * nextRadius;
+                    p.y = centerY + Math.sin(nextAngle) * nextRadius;
+                    p.color = 0xFF0000;
+                    if (p.alpha < 1.0) p.alpha += 0.05;
                 }
 
-                const radialSpeed = 3 + (200 / (dist + 10));
-                const tangentialSpeed = 0.15;
-
-                const nextAngle = currentAngle + tangentialSpeed;
-                const nextRadius = dist - radialSpeed;
-
-                p.x = centerX + Math.cos(nextAngle) * nextRadius;
-                p.y = centerY + Math.sin(nextAngle) * nextRadius;
-                p.color = 0xFF0000;
-                if (p.alpha < 1.0) p.alpha += 0.05;
-
-            } else {
+            } else if (!shouldRemove) {
                 // --- PASSIVE / STANDARD MODE ---
                 if (p.type === 'bomb-ghost') {
                     p.size += 4;
@@ -245,8 +289,21 @@ export class EffectSystem {
                 }
 
                 if (p.life <= 0 || p.alpha <= 0 || p.y < -100 || p.y > ctx.height + 100) {
-                    this.visualParticles.splice(i, 1);
+                    shouldRemove = true;
                 }
+            }
+
+            if (shouldRemove) {
+                // Optimization: Swap-remove O(1) instead of splice O(N)
+                if (p.type === 'suck') this._suckCount--;
+                const last = this.visualParticles.length - 1;
+                if (i < last) {
+                    this.visualParticles[i] = this.visualParticles[last];
+                }
+                this.visualParticles.pop();
+                // Don't increment i — re-check the swapped element
+            } else {
+                i++;
             }
         }
     }

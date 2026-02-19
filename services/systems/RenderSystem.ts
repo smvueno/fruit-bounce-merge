@@ -14,9 +14,13 @@ export class RenderSystem {
     app: PIXI.Application | undefined;
     container: PIXI.Container | undefined;
     fruitSprites: Map<number, PIXI.Container> = new Map();
+    // Optimization: Cache face+eyes refs to avoid getChildByLabel() scan every frame
+    faceRefs: Map<number, { face: PIXI.Container; eyes: PIXI.DisplayObject | null }> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
     floorGraphics: PIXI.Graphics;
     dangerLine: PIXI.Graphics;
+    // Optimization: Only redraw danger line when active state changes
+    private _lastDangerActive: boolean | null = null;
 
     constructor() {
         this.floorGraphics = new PIXI.Graphics();
@@ -99,6 +103,10 @@ export class RenderSystem {
         sprite.addChild(face);
         this.fruitSprites.set(p.id, sprite);
         this.container.addChild(sprite);
+
+        // Optimization: Cache face+eyes refs so renderSync() avoids getChildByLabel() every frame
+        const eyes = face.getChildByLabel ? face.getChildByLabel("eyes") : null;
+        this.faceRefs.set(p.id, { face, eyes });
     }
 
     removeSprite(p: Particle) {
@@ -107,6 +115,7 @@ export class RenderSystem {
             if (sprite.parent) sprite.parent.removeChild(sprite);
             sprite.destroy();
             this.fruitSprites.delete(p.id);
+            this.faceRefs.delete(p.id);
         }
     }
 
@@ -118,6 +127,8 @@ export class RenderSystem {
             }
         });
         this.fruitSprites.clear();
+        this.faceRefs.clear();
+        this._lastDangerActive = null; // Force danger line redraw after reset
         this.floorGraphics.clear(); // Will need redraw
     }
 
@@ -190,6 +201,10 @@ export class RenderSystem {
     }
 
     drawDangerLine(width: number, height: number, active: boolean) {
+        // Optimization: Skip redraw if state hasn't changed — PIXI.Graphics clear+draw is not free
+        if (this._lastDangerActive === active) return;
+        this._lastDangerActive = active;
+
         this.dangerLine.clear();
         const y = height * DANGER_Y_PERCENT;
         this.dangerLine.moveTo(0, y);
@@ -234,15 +249,12 @@ export class RenderSystem {
                     p.scaleY * rhythmicScaleY
                 );
 
-                const face = sprite.getChildByLabel("face") as PIXI.Container;
-                if (face) {
-                    const eyes = face.getChildByLabel("eyes");
+                // Optimization: Use cached face/eyes refs — avoids getChildByLabel() O(N) scan per fruit per frame
+                const refs = this.faceRefs.get(p.id);
+                if (refs) {
+                    const { face, eyes } = refs;
                     if (eyes) {
-                        if (p.isBlinking) {
-                            eyes.scale.y = 0.1;
-                        } else {
-                            eyes.scale.y = 1;
-                        }
+                        eyes.scale.y = p.isBlinking ? 0.1 : 1;
                     }
                     const lookX = Math.min(10, Math.max(-10, p.vx));
                     const lookY = Math.min(10, Math.max(-10, p.vy));

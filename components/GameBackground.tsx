@@ -33,10 +33,23 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
     }
 
     // Animation Loop (purely for SCROLLING)
+    // Optimization: Throttle to 30fps — background scroll is decorative, not gameplay-critical
+    // This halves the CPU cost of this loop on mobile without any visible difference
     useEffect(() => {
+        const TARGET_INTERVAL = 1000 / 30; // 30fps = 33.3ms per frame
+        let lastFrameTime = 0;
+
         const loop = (time: number) => {
+            animationFrameRef.current = requestAnimationFrame(loop);
+
+            // Throttle: skip frames to maintain ~30fps
+            const elapsed = time - lastFrameTime;
+            if (elapsed < TARGET_INTERVAL) return;
+            // Use actual elapsed so scroll speed is wall-clock accurate even at 30fps
+            const dt = elapsed / 1000;
+            lastFrameTime = time - (elapsed % TARGET_INTERVAL);
+
             if (lastTimeRef.current === 0) lastTimeRef.current = time;
-            const dt = (time - lastTimeRef.current) / 1000;
             lastTimeRef.current = time;
 
             // 1. Update Scroll Speed
@@ -46,20 +59,14 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
 
             // 2. Update Scroll Position
             scrollPosRef.current += currentSpeedRef.current * dt;
-            // Modulo to keep numbers sane, logic works infinitely
             const wrappedScroll = scrollPosRef.current % 80;
 
             // 3. Apply to ALL DOM Elements
-            // We update all of them even if invisible, because checking visibility 
-            // via DOM or ref is costlier than just setting the style string.
-            // And browsers are smart about not repainting opacity:0 layers.
             layerRefs.current.forEach(layer => {
                 if (layer) {
                     layer.style.backgroundPosition = `-${wrappedScroll}px 0px`;
                 }
             });
-
-            animationFrameRef.current = requestAnimationFrame(loop);
         };
 
         animationFrameRef.current = requestAnimationFrame(loop);
