@@ -300,8 +300,8 @@
 
   /* NEW ADDITIONS FOR CLOUDS */
   @keyframes float-right-linear {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(600px); }
+    0% { transform: translateX(0); }
+    100% { transform: translateX(120vw); }
   }
 
   .animate-float-right-fast {

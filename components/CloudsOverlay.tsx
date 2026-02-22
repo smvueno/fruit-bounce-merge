@@ -63,34 +63,34 @@ export const CloudsOverlay: React.FC<CloudsOverlayProps> = ({ gameAreaDimensions
             className="fixed pointer-events-none z-0 overflow-hidden"
             style={{
                 top: cloudZoneTop,
-                left: gameAreaDimensions.left,
-                width: gameAreaDimensions.width,
+                left: 0,
+                width: '100%',
                 height: cloudZoneHeight,
                 // backgroundColor: 'rgba(0,0,255,0.1)', // DEBUG ZONE
             }}
         >
             {/* Cloud 1: Big, Fast, Top */}
-            <div className="absolute animate-float-right-fast" style={{ top: '10%', left: '-20%', animationDuration: '15s' }}>
+            <div className="absolute animate-float-right-fast" style={{ top: '10%', left: '-20vw', animationDuration: '15s' }}>
                 <CloudShape scale={1.2} opacity={0.6} />
             </div>
 
             {/* Cloud 2: Small, Slow, Lower */}
-            <div className="absolute animate-float-right-slow" style={{ top: '60%', left: '-20%', animationDuration: '25s', animationDelay: '5s' }}>
+            <div className="absolute animate-float-right-slow" style={{ top: '60%', left: '-20vw', animationDuration: '25s', animationDelay: '5s' }}>
                 <CloudShape scale={0.7} opacity={0.4} />
             </div>
 
             {/* Cloud 3: Medium, Medium, Middle */}
-            <div className="absolute animate-float-right-medium" style={{ top: '35%', left: '-20%', animationDuration: '20s', animationDelay: '2s' }}>
+            <div className="absolute animate-float-right-medium" style={{ top: '35%', left: '-20vw', animationDuration: '20s', animationDelay: '2s' }}>
                 <CloudShape scale={0.9} opacity={0.5} />
             </div>
 
              {/* Cloud 4: Big, Very Fast, Top-Offset */}
-             <div className="absolute animate-float-right-fast" style={{ top: '5%', left: '-20%', animationDuration: '12s', animationDelay: '8s' }}>
+             <div className="absolute animate-float-right-fast" style={{ top: '5%', left: '-20vw', animationDuration: '12s', animationDelay: '8s' }}>
                 <CloudShape scale={1.3} opacity={0.55} />
             </div>
 
              {/* Cloud 5: Tiny, Very Slow, Bottom */}
-             <div className="absolute animate-float-right-slow" style={{ top: '75%', left: '-20%', animationDuration: '30s', animationDelay: '0s' }}>
+             <div className="absolute animate-float-right-slow" style={{ top: '75%', left: '-20vw', animationDuration: '30s', animationDelay: '0s' }}>
                 <CloudShape scale={0.5} opacity={0.3} />
             </div>
         </div>
