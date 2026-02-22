@@ -32,6 +32,13 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
         layerRefs.current = Array(BACKGROUND_PATTERNS.length).fill(null);
     }
 
+    // Ref to track fever state without re-triggering the effect
+    const feverRef = useRef(fever);
+
+    useEffect(() => {
+        feverRef.current = fever;
+    }, [fever]);
+
     // Animation Loop (purely for SCROLLING)
     // Optimization: Throttle to 30fps — background scroll is decorative, not gameplay-critical
     // This halves the CPU cost of this loop on mobile without any visible difference
@@ -41,6 +48,12 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
 
         const loop = (time: number) => {
             animationFrameRef.current = requestAnimationFrame(loop);
+
+            // Initialize lastFrameTime on the very first frame to avoid huge dt
+            if (lastFrameTime === 0) {
+                lastFrameTime = time;
+                return;
+            }
 
             // Throttle: skip frames to maintain ~30fps
             const elapsed = time - lastFrameTime;
@@ -53,7 +66,7 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
             lastTimeRef.current = time;
 
             // 1. Update Scroll Speed
-            const targetSpeed = fever ? FEVER_SPEED : BASE_SPEED;
+            const targetSpeed = feverRef.current ? FEVER_SPEED : BASE_SPEED;
             const speedDiff = targetSpeed - currentSpeedRef.current;
             currentSpeedRef.current += speedDiff * 3.0 * dt;
 
@@ -71,7 +84,7 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
 
         animationFrameRef.current = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(animationFrameRef.current);
-    }, [fever]); // Only re-bind if fever changes (for speed target)
+    }, []); // Run once on mount
 
     // Current effective pattern index (safe modulo)
     const safePatternIdx = Math.abs(patternIndex) % BACKGROUND_PATTERNS.length;
@@ -81,7 +94,7 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
             className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#FFF8E1]"
             style={{
                 backgroundColor: bgColor, // CSS Transition handles this container color
-                opacity: 0.3,
+                opacity: 0.35,
                 transition: 'background-color 2s ease'
             }}
         >
