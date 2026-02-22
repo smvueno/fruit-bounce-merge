@@ -297,4 +297,32 @@
     will-change: transform;
     transform: translateZ(0);
   }
+
+  /* NEW ADDITIONS FOR CLOUDS */
+  @keyframes float-right-linear {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(600px); }
+  }
+
+  .animate-float-right-fast {
+    animation: float-right-linear linear infinite;
+  }
+
+  .animate-float-right-medium {
+    animation: float-right-linear linear infinite;
+  }
+
+  .animate-float-right-slow {
+    animation: float-right-linear linear infinite;
+  }
+
+  /* Ensure animate-pop exists */
+  @keyframes pop {
+    0% { transform: scale(0.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .animate-pop {
+    animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
 }

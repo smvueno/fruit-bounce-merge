@@ -9,6 +9,7 @@ import { DebugMenu } from './DebugMenu';
 // Components
 import { GameBackground } from './GameBackground';
 import { JuiceOverlay } from './JuiceOverlay';
+import { CloudsOverlay } from './CloudsOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
@@ -358,6 +359,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     />
                 </div>
             )}
+
+            {/* 1.2 Clouds Overlay - Above background/juice, below game */}
+            <CloudsOverlay
+                gameAreaDimensions={gameAreaDimensions}
+            />
 
             {/* 2. Main Layout Container */}
             <LayoutContainer>
