@@ -9,6 +9,11 @@ interface EffectCanvasProps {
     containerLeft: number;
 }
 
+// Optimization: Cache last known canvas dims to avoid resize thrashing every frame
+let _cachedW = 0;
+let _cachedH = 0;
+let _cachedDpr = 0;
+
 export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
     engine,
     gameAreaWidth,
@@ -23,8 +28,11 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
         const canvas = canvasRef.current;
         if (!canvas) return;
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         if (!ctx) return;
+
+        // Optimization: Cap DPR at 2 on mobile — iPhone 15 Pro is 3× = 3× pixels = 3× fill cost
+        const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
         const render = () => {
             if (!engine || !engine.effectSystem) {
@@ -32,109 +40,146 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
                 return;
             }
 
-            // 1. Setup Canvas
-            const dpr = window.devicePixelRatio || 1;
+            const particles = engine.effectSystem.visualParticles;
+
+            // --- Resize only when dims change (not every frame) ---
+            const rawDpr = window.devicePixelRatio || 1;
+            const dpr = isMobile ? Math.min(rawDpr, 2) : rawDpr;
             const width = window.innerWidth;
             const height = window.innerHeight;
 
-            // Resize if needed (check logic to avoid thrashing)
-            if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-                canvas.width = width * dpr;
-                canvas.height = height * dpr;
+            if (width !== _cachedW || height !== _cachedH || dpr !== _cachedDpr) {
+                canvas.width = Math.round(width * dpr);
+                canvas.height = Math.round(height * dpr);
                 canvas.style.width = `${width}px`;
                 canvas.style.height = `${height}px`;
-                ctx.scale(dpr, dpr);
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                _cachedW = width;
+                _cachedH = height;
+                _cachedDpr = dpr;
             }
 
-            // Clear
             ctx.clearRect(0, 0, width, height);
 
-            // 2. Get Coordinate System from Engine
-            // The engine coords are virtual (V_WIDTH x V_HEIGHT).
-            // They are scaled by engine.scaleFactor.
-            // They are offset by engine.container.position.x/y relative to the Canvas element.
-            // BUT, our "GroundCanvas/WallCanvas" logic uses `bottomY` relative to screen.
-
-            // Actually, let's look at how WallCanvas acts: it overlays perfectly on the screen.
-            // The GameArea (Div) is where the Pixi canvas lives. `containerLeft`/`containerTop` is where that Div is.
-            // Inside Pixi, there is `engine.container.position` (centering offset) and `engine.scaleFactor`.
-
-            // To map a particle (p.x, p.y) from Virtual Game Space to Screen Space:
-            // ScreenX = containerLeft + engine.container.x + (p.x * engine.scaleFactor)
-            // ScreenY = containerTop + engine.container.y + (p.y * engine.scaleFactor)
-
-            const particles = engine.effectSystem.visualParticles;
             if (particles.length === 0) {
                 animationFrameRef.current = requestAnimationFrame(render);
                 return;
             }
 
+            // --- Coordinate system ---
             const scale = engine.scaleFactor;
             const offsetX = engine.container.position.x;
             const offsetY = engine.container.position.y;
-
-            // CSS Offset Correction:
-            // The canvas is styled with width/height: 140% and top/left: -20% of the game area.
-            // gameAreaWidth/Height represents the 100% (Viewport).
-            // So the canvas physically starts at: containerLeft - 0.2 * gameAreaWidth.
-            // We need to pass the Top-Left of the CANVAS to this calc, because 'offsetX/Y' are valid relative to that.
-
             const canvasLeft = containerLeft - (gameAreaWidth * 0.2);
             const canvasTop = containerTop - (gameAreaHeight * 0.2);
+            const gx = canvasLeft + offsetX;
+            const gy = canvasTop + offsetY;
 
-            const globalOffsetX = canvasLeft + offsetX;
-            const globalOffsetY = canvasTop + offsetY;
+            // --- Batched rendering: group by type to minimise ctx state changes ---
+            // We do one pass: circles, then stars, then ghosts.
+            // For each group we set fillStyle once per unique color (sorted-ish).
+            // This slashes ctx.save()/restore() from N calls → 0 calls.
 
-            // 3. Render Particles
-            for (const p of particles) {
-                const drawX = globalOffsetX + (p.x * scale);
-                const drawY = globalOffsetY + (p.y * scale);
-                const drawSize = p.size * scale;
+            // --- Pass 1: Circles (most common — merge burst + suck + passive) ---
+            let lastColor = '';
+            let lastAlpha = -1;
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                if (p.type !== 'circle' && p.type !== 'suck') continue;
 
+                const drawX = gx + p.x * scale;
+                const drawY = gy + p.y * scale;
+                const drawR = p.size * scale;
+                if (drawR <= 0) continue;
+
+                // Optimization: Convert color once — stored as number in EffectParticle
+                const colorStr = typeof p.color === 'number'
+                    ? `#${(p.color as number).toString(16).padStart(6, '0')}`
+                    : p.color as string;
+
+                // Only change alpha when it differs by more than 0.01
+                const alpha = Math.max(0, Math.min(1, p.alpha));
+                if (Math.abs(alpha - lastAlpha) > 0.01) {
+                    ctx.globalAlpha = alpha;
+                    lastAlpha = alpha;
+                }
+                if (colorStr !== lastColor) {
+                    ctx.fillStyle = colorStr;
+                    lastColor = colorStr;
+                }
+
+                ctx.beginPath();
+                ctx.arc(drawX, drawY, drawR, 0, 6.2832); // 2π pre-computed
+                ctx.fill();
+            }
+
+            // --- Pass 2: Stars (rotation required — use save/restore but only for this type) ---
+            ctx.globalAlpha = 1;
+            lastAlpha = 1;
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                if (p.type !== 'star') continue;
+
+                const drawX = gx + p.x * scale;
+                const drawY = gy + p.y * scale;
+                const outerR = p.size * scale;
+                if (outerR <= 0) continue;
+
+                const alpha = Math.max(0, Math.min(1, p.alpha));
+                if (Math.abs(alpha - lastAlpha) > 0.01) {
+                    ctx.globalAlpha = alpha;
+                    lastAlpha = alpha;
+                }
+
+                const colorStr = typeof p.color === 'number'
+                    ? `#${(p.color as number).toString(16).padStart(6, '0')}`
+                    : p.color as string;
+                if (colorStr !== lastColor) {
+                    ctx.fillStyle = colorStr;
+                    lastColor = colorStr;
+                }
+
+                const innerR = outerR * 0.4;
                 ctx.save();
-                ctx.globalAlpha = p.alpha;
-
-                // Convert Color (number or string)
-                let color = p.color;
-                if (typeof color === 'number') {
-                    // Convert 0xRRGGBB to #RRGGBB
-                    color = `#${color.toString(16).padStart(6, '0')}`;
+                ctx.translate(drawX, drawY);
+                ctx.rotate(p.rotation);
+                ctx.beginPath();
+                for (let s = 0; s < 10; s++) {
+                    const r = s % 2 === 0 ? outerR : innerR;
+                    const angle = (Math.PI * s) / 5;
+                    if (s === 0) ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                    else ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
                 }
-                ctx.fillStyle = color as string;
-
-                if (p.type === 'star') {
-                    // Draw Star
-                    ctx.translate(drawX, drawY);
-                    ctx.rotate(p.rotation);
-                    ctx.beginPath();
-                    const spikes = 5;
-                    const outerRadius = drawSize;
-                    const innerRadius = drawSize * 0.4;
-
-                    for (let i = 0; i < spikes * 2; i++) {
-                        const r = i % 2 === 0 ? outerRadius : innerRadius;
-                        const angle = (Math.PI * i) / spikes;
-                        const x = Math.cos(angle) * r;
-                        const y = Math.sin(angle) * r;
-                        if (i === 0) ctx.moveTo(x, y);
-                        else ctx.lineTo(x, y);
-                    }
-                    ctx.closePath();
-                    ctx.fill();
-                } else if (p.type === 'bomb-ghost') {
-                    ctx.fillStyle = '#212121';
-                    ctx.beginPath();
-                    ctx.arc(drawX, drawY, drawSize, 0, Math.PI * 2);
-                    ctx.fill();
-                } else {
-                    // Circle
-                    ctx.beginPath();
-                    ctx.arc(drawX, drawY, drawSize, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-
+                ctx.closePath();
+                ctx.fill();
                 ctx.restore();
             }
+
+            // --- Pass 3: Bomb ghost (expand circle, dark) ---
+            ctx.fillStyle = '#212121';
+            lastColor = '#212121';
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                if (p.type !== 'bomb-ghost') continue;
+
+                const drawX = gx + p.x * scale;
+                const drawY = gy + p.y * scale;
+                const drawR = p.size * scale;
+                if (drawR <= 0) continue;
+
+                const alpha = Math.max(0, Math.min(1, p.alpha));
+                if (Math.abs(alpha - lastAlpha) > 0.01) {
+                    ctx.globalAlpha = alpha;
+                    lastAlpha = alpha;
+                }
+
+                ctx.beginPath();
+                ctx.arc(drawX, drawY, drawR, 0, 6.2832);
+                ctx.fill();
+            }
+
+            // Reset global alpha
+            ctx.globalAlpha = 1;
 
             animationFrameRef.current = requestAnimationFrame(render);
         };
@@ -150,7 +195,7 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
         <canvas
             ref={canvasRef}
             className="fixed inset-0 pointer-events-none"
-            style={{ zIndex: 30 }} // Higher than Walls (20) and Game (10)
+            style={{ zIndex: 30 }}
         />
     );
 });

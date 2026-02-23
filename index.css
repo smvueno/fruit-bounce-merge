@@ -297,4 +297,14 @@
     will-change: transform;
     transform: translateZ(0);
   }
+
+  /* Ensure animate-pop exists */
+  @keyframes pop {
+    0% { transform: scale(0.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .animate-pop {
+    animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
 }

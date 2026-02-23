@@ -9,6 +9,7 @@ import { DebugMenu } from './DebugMenu';
 // Components
 import { GameBackground } from './GameBackground';
 import { JuiceOverlay } from './JuiceOverlay';
+import { CloudsCanvas } from './CloudsCanvas';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
@@ -50,6 +51,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [isPaused, setIsPaused] = useState(false);
     const [debugMode, setDebugMode] = useState(false);
     const [pauseTapCount, setPauseTapCount] = useState(0);
+
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
 
@@ -358,6 +360,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
             )}
 
+            {/* 1.2 Clouds Overlay - Above background/juice, below game */}
+            <CloudsCanvas
+                gameAreaDimensions={gameAreaDimensions}
+            />
+
             {/* 2. Main Layout Container */}
             <LayoutContainer>
 
@@ -384,13 +391,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
                 {/* BOTTOM UI - Fixed height spacer. */}
                 <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
-                    <button
-                        onClick={handlePauseToggle}
-                        className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-                        aria-label="Pause Game"
-                    >
-                        <Pause size={24} fill="currentColor" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={handlePauseToggle}
+                            className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                            aria-label="Pause Game"
+                        >
+                            <Pause size={24} fill="currentColor" />
+                        </button>
+                    </div>
                 </div>
 
             </LayoutContainer>
