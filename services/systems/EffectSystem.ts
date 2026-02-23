@@ -3,6 +3,7 @@ import { EffectParticle, Particle, TomatoEffect } from '../../types/GameObjects'
 
 export interface EffectContext {
     fruits: Particle[];
+    fruitMap: Map<number, Particle>;
     activeTomatoes: TomatoEffect[];
     currentFruit: Particle | null;
     feverActive: boolean;
@@ -20,8 +21,6 @@ const MERGE_PARTICLE_COUNT = _effectIsMobile ? 8 : 15;
 
 export class EffectSystem {
     visualParticles: EffectParticle[] = [];
-    // Optimization: Persistent Map to avoid O(N) fruit lookups inside particle loop every frame
-    private _fruitMap: Map<number, Particle> = new Map();
     // Optimization: Persistent Map for tomato lookup (replaces O(N) find() in hot particle loop)
     private _tomatoMap: Map<number, TomatoEffect> = new Map();
     // Optimization: Track suck particle count directly instead of .filter() every frame
@@ -97,12 +96,6 @@ export class EffectSystem {
         const activeTomatoes = ctx.activeTomatoes;
         const hasActive = activeTomatoes.length > 0;
 
-        // Optimization: Build O(1) fruit lookup map once per frame instead of O(N) find() per particle
-        this._fruitMap.clear();
-        for (const f of ctx.fruits) {
-            this._fruitMap.set(f.id, f);
-        }
-
         // Optimization: Build O(1) tomato lookup map — replaces O(N) find() inside particle loop
         this._tomatoMap.clear();
         for (const t of activeTomatoes) {
@@ -116,7 +109,7 @@ export class EffectSystem {
         if (hasActive) {
             if (this._suckCount < MAX_SUCK_PARTICLES) {
                 for (const t of activeTomatoes) {
-                    const tomatoParticle = this._fruitMap.get(t.tomatoId);
+                    const tomatoParticle = ctx.fruitMap.get(t.tomatoId);
                     const centerX = tomatoParticle ? tomatoParticle.x : t.x;
                     const centerY = tomatoParticle ? tomatoParticle.y : t.y;
 
@@ -240,7 +233,7 @@ export class EffectSystem {
             if (!shouldRemove && targetTomato) {
                 // --- EVENT HORIZON MODE ---
                 // Optimization: O(1) Map lookup instead of O(N) find()
-                const tomatoParticle = this._fruitMap.get(targetTomato.tomatoId);
+                const tomatoParticle = ctx.fruitMap.get(targetTomato.tomatoId);
                 const centerX = tomatoParticle ? tomatoParticle.x : targetTomato.x;
                 const centerY = tomatoParticle ? tomatoParticle.y : targetTomato.y;
 

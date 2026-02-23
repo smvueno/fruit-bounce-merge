@@ -112,7 +112,7 @@ export class GameEngine {
     // Optimization: Reused Objects
     private _physicsContext: PhysicsContext;
     private _physicsCallbacks: PhysicsCallbacks;
-    private _effectContext: { fruits: Particle[]; activeTomatoes: TomatoEffect[]; currentFruit: Particle | null; feverActive: boolean; width: number; height: number };
+    private _effectContext: { fruits: Particle[]; fruitMap: Map<number, Particle>; activeTomatoes: TomatoEffect[]; currentFruit: Particle | null; feverActive: boolean; width: number; height: number };
     private _timeUpdateAccumulator: number = 0; // Throttle onTimeUpdate to 4x/s instead of 60x/s
     // Optimization: O(1) fruit lookups in updateGameLogic (replaces .find() per active effect per frame)
     private _fruitsById: Map<number, Particle> = new Map();
@@ -210,6 +210,7 @@ export class GameEngine {
         // Optimization: Initialize reusable objects
         this._physicsContext = {
             fruits: [],
+            fruitMap: this._fruitsById,
             activeTomatoes: [],
             activeBombs: [],
             celebrationEffect: null,
@@ -231,6 +232,7 @@ export class GameEngine {
         // Optimization: Persistent effectContext to avoid new object allocation every frame
         this._effectContext = {
             fruits: [],
+            fruitMap: this._fruitsById,
             activeTomatoes: [],
             currentFruit: null,
             feverActive: false,
@@ -569,6 +571,7 @@ export class GameEngine {
         // 2. Update Physics
         // Optimization: Reuse object to reduce GC
         this._physicsContext.fruits = this.fruits;
+        // fruitMap is already linked by reference to this._fruitsById
         this._physicsContext.activeTomatoes = this.activeTomatoes;
         this._physicsContext.activeBombs = this.activeBombs;
         this._physicsContext.celebrationEffect = this.celebrationEffect;
@@ -585,6 +588,7 @@ export class GameEngine {
         // Optimization: Reuse persistent context object — avoids GC allocation every frame
         const isFever = this.scoreController.isFever();
         this._effectContext.fruits = this.fruits;
+        // fruitMap is already linked
         this._effectContext.activeTomatoes = this.activeTomatoes;
         this._effectContext.currentFruit = this.currentFruit;
         this._effectContext.feverActive = isFever;
