@@ -88,11 +88,6 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
 
     // Current effective pattern index (safe modulo)
     const safePatternIdx = Math.abs(patternIndex) % BACKGROUND_PATTERNS.length;
-    const safePatternIdxRef = useRef(safePatternIdx);
-
-    useEffect(() => {
-        safePatternIdxRef.current = safePatternIdx;
-    }, [safePatternIdx]);
 
     return (
         <div
