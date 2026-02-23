@@ -298,24 +298,6 @@
     transform: translateZ(0);
   }
 
-  /* NEW ADDITIONS FOR CLOUDS */
-  @keyframes float-right-linear {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(160vw); }
-  }
-
-  .animate-float-right-fast {
-    animation: float-right-linear linear infinite;
-  }
-
-  .animate-float-right-medium {
-    animation: float-right-linear linear infinite;
-  }
-
-  .animate-float-right-slow {
-    animation: float-right-linear linear infinite;
-  }
-
   /* Ensure animate-pop exists */
   @keyframes pop {
     0% { transform: scale(0.8); opacity: 0; }
