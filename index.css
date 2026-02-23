@@ -301,7 +301,7 @@
   /* NEW ADDITIONS FOR CLOUDS */
   @keyframes float-right-linear {
     0% { transform: translateX(0); }
-    100% { transform: translateX(120vw); }
+    100% { transform: translateX(160vw); }
   }
 
   .animate-float-right-fast {
