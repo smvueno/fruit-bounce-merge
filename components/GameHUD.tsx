@@ -88,7 +88,7 @@ export const GameHUD: React.FC<GameHUDProps> = React.memo(({ score, playTime, ma
                         title="Tap to Save/Swap Fruit"
                         onClick={onSwap}>
                         <div className="text-gray-800 text-[10px] md:text-sm font-bold tracking-widest uppercase mb-1">SAVE</div>
-                        <div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] bg-white/20 backdrop-blur-md rounded-xl border-2 border-[#1a1a1a] flex items-center justify-center relative overflow-hidden shadow-sm hover:bg-white/30 transition-colors">
+                        <div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] bg-white/20 rounded-xl border-2 border-[#1a1a1a] flex items-center justify-center relative overflow-hidden shadow-sm hover:bg-white/30 transition-colors">
                             {savedFruit !== null ? (
                                 <div className="animate-pop">
                                     <FruitSVG tier={savedFruit} size={28} />

@@ -388,8 +388,10 @@ const App: React.FC = () => {
           <div className="absolute bottom-[20%] left-[30%] w-80 h-80 md:w-[32rem] md:h-[32rem] bg-pink-300 rounded-full opacity-25 animate-float" style={{ animationDuration: '12s', animationDelay: '4s', filter: 'blur(60px)' }}></div>
         </div>
 
-        {/* Frosted glass — reduced from backdrop-blur-2xl to backdrop-blur-md on mobile */}
-        <div className="absolute inset-0 bg-white/30 backdrop-blur-md md:backdrop-blur-2xl"></div>
+        {/* Frosted glass — removed entirely during gameplay to avoid GPU burnout on mobile */}
+        {gameState !== GameState.PLAYING && (
+          <div className="absolute inset-0 bg-white/30 backdrop-blur-md md:backdrop-blur-2xl"></div>
+        )}
 
         {/* Subtle Texture */}
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#000 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
