@@ -106,6 +106,8 @@ export const CloudsCanvas: React.FC<CloudsCanvasProps> = ({ gameAreaDimensions }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Optimization: avoid property lookups and compute values outside the loop
+            const canvasWidth = canvas.width;
             const vw = window.innerWidth / 100;
             const totalDistance = 160 * vw;
             const startX = -50 * vw;
