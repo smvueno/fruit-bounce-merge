@@ -617,10 +617,11 @@ export class GameEngine {
     updateGameLogic(dtMs: number) {
         this.stats.timePlayed += dtMs;
 
-        // Optimization: Throttle time callback to 4x/s — firing at 60x/s causes 60 React renders/s just for the timer
+        // Optimization: Throttle time callback to 1x/s — firing at 60x/s causes 60 React renders/s just for the timer
+        // 1x/s is enough since the HUD displays whole seconds ("MM:SS")
         this._timeUpdateAccumulator += dtMs;
-        if (this._timeUpdateAccumulator >= 250) {
-            this._timeUpdateAccumulator = 0;
+        if (this._timeUpdateAccumulator >= 1000) {
+            this._timeUpdateAccumulator -= 1000;
             this.onTimeUpdate(this.stats.timePlayed);
         }
 

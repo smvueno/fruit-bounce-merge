@@ -30,6 +30,7 @@ const useNumberTicker = (targetValue: number, duration: number = 500) => {
 
         if (change === 0) return;
 
+        let reqId: number;
         const animate = (currentTime: number) => {
             if (!startTime) startTime = currentTime;
             const progress = Math.min((currentTime - startTime) / duration, 1);
@@ -38,14 +39,20 @@ const useNumberTicker = (targetValue: number, duration: number = 500) => {
             const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
 
             const nextVal = Math.floor(startValue + (change * ease));
-            setDisplayValue(nextVal);
+
+            // Optimization: avoid state set if no change
+            setDisplayValue((prev) => {
+               if (prev !== nextVal) return nextVal;
+               return prev;
+            });
 
             if (progress < 1) {
-                requestAnimationFrame(animate);
+                reqId = requestAnimationFrame(animate);
             }
         };
 
-        requestAnimationFrame(animate);
+        reqId = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(reqId);
     }, [targetValue]);
 
     return displayValue;

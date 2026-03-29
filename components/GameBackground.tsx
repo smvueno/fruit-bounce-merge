@@ -74,9 +74,9 @@ export const GameBackground: React.FC<GameBackgroundProps> = React.memo(({ patte
             scrollPosRef.current += currentSpeedRef.current * dt;
             const wrappedScroll = scrollPosRef.current % 80;
 
-            // 3. Apply to ALL DOM Elements
-            layerRefs.current.forEach(layer => {
-                if (layer) {
+            // 3. Apply ONLY to the visible DOM Element to save paint/layout on mobile
+            layerRefs.current.forEach((layer, idx) => {
+                if (layer && layer.style.opacity !== '0') {
                     layer.style.backgroundPosition = `-${wrappedScroll}px 0px`;
                 }
             });
