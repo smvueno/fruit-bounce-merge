@@ -30,6 +30,7 @@ const useNumberTicker = (targetValue: number, duration: number = 500) => {
 
         if (change === 0) return;
 
+        let reqId: number;
         const animate = (currentTime: number) => {
             if (!startTime) startTime = currentTime;
             const progress = Math.min((currentTime - startTime) / duration, 1);
@@ -38,14 +39,20 @@ const useNumberTicker = (targetValue: number, duration: number = 500) => {
             const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
 
             const nextVal = Math.floor(startValue + (change * ease));
-            setDisplayValue(nextVal);
+
+            // Optimization: avoid state set if no change
+            setDisplayValue((prev) => {
+               if (prev !== nextVal) return nextVal;
+               return prev;
+            });
 
             if (progress < 1) {
-                requestAnimationFrame(animate);
+                reqId = requestAnimationFrame(animate);
             }
         };
 
-        requestAnimationFrame(animate);
+        reqId = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(reqId);
     }, [targetValue]);
 
     return displayValue;
@@ -88,7 +95,7 @@ export const GameHUD: React.FC<GameHUDProps> = React.memo(({ score, playTime, ma
                         title="Tap to Save/Swap Fruit"
                         onClick={onSwap}>
                         <div className="text-gray-800 text-[10px] md:text-sm font-bold tracking-widest uppercase mb-1">SAVE</div>
-                        <div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] bg-white/20 backdrop-blur-md rounded-xl border-2 border-[#1a1a1a] flex items-center justify-center relative overflow-hidden shadow-sm hover:bg-white/30 transition-colors">
+                        <div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] bg-white/20 rounded-xl border-2 border-[#1a1a1a] flex items-center justify-center relative overflow-hidden shadow-sm hover:bg-white/30 transition-colors">
                             {savedFruit !== null ? (
                                 <div className="animate-pop">
                                     <FruitSVG tier={savedFruit} size={28} />

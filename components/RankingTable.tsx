@@ -29,7 +29,7 @@ export const RankingTable: React.FC<RankingTableProps> = ({
 
     return (
         <div className={`w-full bg-slate-50 border border-slate-200 rounded-2xl shadow-inner flex flex-col overflow-hidden min-h-0 ${maxHeight}`}>
-            <div className="flex items-center justify-center gap-2 text-slate-400 uppercase tracking-widest text-xs font-bold py-2 md:py-3 shrink-0 bg-slate-50/80 backdrop-blur z-20 sticky top-0 border-b border-slate-100">
+            <div className="flex items-center justify-center gap-2 text-slate-400 uppercase tracking-widest text-xs font-bold py-2 md:py-3 shrink-0 bg-slate-50/80 z-20 sticky top-0 border-b border-slate-100">
                 <Trophy size={14} /> {title}
             </div>
 
