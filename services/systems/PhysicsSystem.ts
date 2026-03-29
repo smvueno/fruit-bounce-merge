@@ -104,23 +104,35 @@ export class PhysicsSystem {
         this.updateCelebrationPhysics(ctx);
 
         // 4. Solver Loop (Substeps)
-        for (let s = 0; s < SUBSTEPS; s++) {
-            // Optimization: Single Sort per Substep
-            // Clear and repopulate buffer
-            this._sortedBuffer.length = 0;
-            // Only add relevant particles to the sort buffer to reduce sort cost further?
-            // No, logic expects full list for other checks maybe.
-            // Using push loop is faster than spread operator for large arrays in many engines
-            for (let i = 0; i < ctx.fruits.length; i++) {
-                this._sortedBuffer.push(ctx.fruits[i]);
-            }
-            // Sort by X for Sweep and Prune
-            this._sortedBuffer.sort((a, b) => a.x - b.x);
+        // We cannot hoist _sortedBuffer population out of substep loop because merges during substeps modify ctx.fruits
+        let dynamicMaxRadius = 0;
 
-            this.updateContactCounts(ctx, this._sortedBuffer); // Pass sorted buffer
+        for (let s = 0; s < SUBSTEPS; s++) {
+            this._sortedBuffer.length = 0;
+            dynamicMaxRadius = 0;
+
+            for (let i = 0; i < ctx.fruits.length; i++) {
+                const f = ctx.fruits[i];
+                if (f.radius > dynamicMaxRadius) dynamicMaxRadius = f.radius;
+                this._sortedBuffer.push(f);
+            }
+
+            // Insertion sort is faster for nearly-sorted arrays
+            for (let i = 1; i < this._sortedBuffer.length; i++) {
+                let j = i;
+                const temp = this._sortedBuffer[i];
+                while (j > 0 && this._sortedBuffer[j - 1].x > temp.x) {
+                    this._sortedBuffer[j] = this._sortedBuffer[j - 1];
+                    j--;
+                }
+                this._sortedBuffer[j] = temp;
+            }
+
+            this.updateContactCounts(ctx, this._sortedBuffer, dynamicMaxRadius); // Pass sorted buffer and dynamic radius
 
             // --- GLOBAL LOCKING FRICTION ---
-            for (const p of ctx.fruits) {
+            for (let i = 0; i < ctx.fruits.length; i++) {
+                const p = ctx.fruits[i];
                 if (p.isStatic || p.isCaught) continue;
 
                 if (p.contactCount > 1) {
@@ -131,7 +143,7 @@ export class PhysicsSystem {
                 }
             }
 
-            this.resolveCollisions(ctx, callbacks, this._sortedBuffer); // Pass sorted buffer
+            this.resolveCollisions(ctx, callbacks, this._sortedBuffer, dynamicMaxRadius); // Pass sorted buffer
             this.resolveWalls(ctx);
         }
     }
@@ -148,15 +160,17 @@ export class PhysicsSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
 
-    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[]) {
-        // Reset counts
-        for (const p of ctx.fruits) {
+    updateContactCounts(ctx: PhysicsContext, sortedFruits: Particle[], dynamicMaxRadius: number) {
+        // Reset counts & stability, and check floor in one pass
+        for (let i = 0; i < ctx.fruits.length; i++) {
+            const p = ctx.fruits[i];
             p.contactCount = 0;
-        }
 
-        // Check floor
-        for (const p of ctx.fruits) {
-            if (p.isStatic || p.isCaught) continue;
+            if (p.isStatic || p.isCaught) {
+                p.stability = 0.0;
+                continue;
+            }
+
             // Check if touching floor
             const groundY = this.getFloorY(p.x, ctx.height);
             if (p.y + p.radius >= groundY - 2) { // 2px epsilon
@@ -165,18 +179,21 @@ export class PhysicsSystem {
         }
 
         // Check pairs (Sweep and Prune)
-        // Use the passed sorted buffer
         const sorted = sortedFruits;
 
         for (let i = 0; i < sorted.length; i++) {
             const p1 = sorted[i];
             if (p1.ignoreCollisions || p1.isStatic || p1.isCaught) continue;
 
+            // Cannot cache p1.x and p1.y because they can change during collision resolution,
+            // but for updateContactCounts they don't change, however for consistency and safety let's use direct access
+            const sweepLimit = p1.x + p1.radius + dynamicMaxRadius;
+
             for (let j = i + 1; j < sorted.length; j++) {
                 const p2 = sorted[j];
 
                 // Sweep & Prune Early Exit
-                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+                if (p2.x > sweepLimit) break;
 
                 if (p2.ignoreCollisions || p2.isStatic || p2.isCaught) continue;
 
@@ -184,6 +201,7 @@ export class PhysicsSystem {
                 const dy = p1.y - p2.y;
                 const distSq = dx * dx + dy * dy;
                 const radSum = p1.radius + p2.radius;
+
                 if (distSq < radSum * radSum) {
                     p1.contactCount++;
                     p2.contactCount++;
@@ -191,13 +209,10 @@ export class PhysicsSystem {
             }
         }
 
-        // Calculate Stability (Inertia)
-        for (const p of ctx.fruits) {
-            if (p.contactCount > 1) {
-                p.stability = 1.0;
-            } else {
-                p.stability = 0.0;
-            }
+        // Calculate Stability (Inertia) - combined into same loop as initial reset if it didn't depend on pair counts
+        for (let i = 0; i < ctx.fruits.length; i++) {
+            const p = ctx.fruits[i];
+            p.stability = p.contactCount > 1 ? 1.0 : 0.0;
         }
     }
 
@@ -327,31 +342,32 @@ export class PhysicsSystem {
 
     resolveWalls(ctx: PhysicsContext) {
         const width = ctx.width;
-        for (const p of ctx.fruits) {
+        for (let i = 0; i < ctx.fruits.length; i++) {
+            const p = ctx.fruits[i];
             if (p.isStatic || p.isCaught) continue;
 
             const groundY = this.getFloorY(p.x, ctx.height);
+            const radius = p.radius;
 
             // Strict Floor Clamp
-            if (p.y + p.radius > groundY) {
-                p.y = groundY - p.radius; // HARD RESET
+            if (p.y + radius > groundY) {
+                p.y = groundY - radius; // HARD RESET
                 p.vy *= -FLOOR_DAMPING;
                 p.vx *= 0.85; // Floor Friction
             }
 
             // Walls
-            if (p.x - p.radius < 0) {
-                p.x = p.radius;
+            if (p.x - radius < 0) {
+                p.x = radius;
                 p.vx *= -WALL_DAMPING; // Bounce
-            }
-            if (p.x + p.radius > width) {
-                p.x = width - p.radius;
+            } else if (p.x + radius > width) {
+                p.x = width - radius;
                 p.vx *= -WALL_DAMPING; // Bounce
             }
         }
     }
 
-    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[]) {
+    resolveCollisions(ctx: PhysicsContext, callbacks: PhysicsCallbacks, sortedFruits: Particle[], dynamicMaxRadius: number) {
         // Optimization: Pre-calculate active tomato targets to avoid O(N^3) in worst case
         // Logic: activeTomatoes lookup O(1) inside N^2 loop
 
@@ -361,7 +377,8 @@ export class PhysicsSystem {
 
         if (ctx.activeTomatoes.length > 0) {
             tomatoTargets = this._tomatoTargets;
-            for (const t of ctx.activeTomatoes) {
+            for (let k = 0; k < ctx.activeTomatoes.length; k++) {
+                const t = ctx.activeTomatoes[k];
                 tomatoTargets.set(t.tomatoId, t.targetTier);
             }
         }
@@ -374,11 +391,14 @@ export class PhysicsSystem {
             const p1 = sorted[i];
             if (p1.ignoreCollisions || p1.isCaught) continue;
 
+            // Revert aggressive caching of position that changes during loop
+            const sweepLimit = p1.x + p1.radius + dynamicMaxRadius;
+
             for (let j = i + 1; j < sorted.length; j++) {
                 const p2 = sorted[j];
 
                 // Prune
-                if (p2.x - p1.x > p1.radius + MAX_RADIUS) break;
+                if (p2.x > sweepLimit) break;
 
                 if (p2.ignoreCollisions || p2.isCaught) continue;
                 if (p1.isStatic && p2.isStatic) continue;
@@ -398,6 +418,7 @@ export class PhysicsSystem {
                 const radSum = p1.radius + p2.radius;
 
                 if (distSq < radSum * radSum) {
+                    // Deferred square root - only calculate if definitely colliding
                     const dist = Math.sqrt(distSq);
 
                     // --- BOMB + BOMB → Secret Watermelon (must come before single-bomb check) ---

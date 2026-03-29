@@ -83,6 +83,19 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
             // --- Pass 1: Circles (most common — merge burst + suck + passive) ---
             let lastColor = '';
             let lastAlpha = -1;
+
+            // Fast path cache for colors
+            const colorCache: Record<number | string, string> = {};
+            const getColorStr = (c: number | string) => {
+                if (colorCache[c]) return colorCache[c];
+                const str = typeof c === 'number'
+                    ? `#${c.toString(16).padStart(6, '0')}`
+                    : c;
+                colorCache[c] = str;
+                return str;
+            };
+
+            ctx.beginPath();
             for (let i = 0; i < particles.length; i++) {
                 const p = particles[i];
                 if (p.type !== 'circle' && p.type !== 'suck') continue;
@@ -92,26 +105,23 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
                 const drawR = p.size * scale;
                 if (drawR <= 0) continue;
 
-                // Optimization: Convert color once — stored as number in EffectParticle
-                const colorStr = typeof p.color === 'number'
-                    ? `#${(p.color as number).toString(16).padStart(6, '0')}`
-                    : p.color as string;
-
-                // Only change alpha when it differs by more than 0.01
+                const colorStr = getColorStr(p.color);
                 const alpha = Math.max(0, Math.min(1, p.alpha));
-                if (Math.abs(alpha - lastAlpha) > 0.01) {
+
+                // If state changes, stroke current batch and start new
+                if (Math.abs(alpha - lastAlpha) > 0.01 || colorStr !== lastColor) {
+                    if (lastAlpha !== -1) ctx.fill();
+                    ctx.beginPath();
                     ctx.globalAlpha = alpha;
-                    lastAlpha = alpha;
-                }
-                if (colorStr !== lastColor) {
                     ctx.fillStyle = colorStr;
+                    lastAlpha = alpha;
                     lastColor = colorStr;
                 }
 
-                ctx.beginPath();
-                ctx.arc(drawX, drawY, drawR, 0, 6.2832); // 2π pre-computed
-                ctx.fill();
+                ctx.moveTo(drawX + drawR, drawY);
+                ctx.arc(drawX, drawY, drawR, 0, 6.2832);
             }
+            if (lastAlpha !== -1) ctx.fill(); // Fill last batch
 
             // --- Pass 2: Stars (rotation required — use save/restore but only for this type) ---
             ctx.globalAlpha = 1;
@@ -131,9 +141,7 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
                     lastAlpha = alpha;
                 }
 
-                const colorStr = typeof p.color === 'number'
-                    ? `#${(p.color as number).toString(16).padStart(6, '0')}`
-                    : p.color as string;
+                const colorStr = getColorStr(p.color);
                 if (colorStr !== lastColor) {
                     ctx.fillStyle = colorStr;
                     lastColor = colorStr;
@@ -158,6 +166,8 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
             // --- Pass 3: Bomb ghost (expand circle, dark) ---
             ctx.fillStyle = '#212121';
             lastColor = '#212121';
+            ctx.beginPath();
+            let hasGhosts = false;
             for (let i = 0; i < particles.length; i++) {
                 const p = particles[i];
                 if (p.type !== 'bomb-ghost') continue;
@@ -169,14 +179,17 @@ export const EffectCanvas: React.FC<EffectCanvasProps> = React.memo(({
 
                 const alpha = Math.max(0, Math.min(1, p.alpha));
                 if (Math.abs(alpha - lastAlpha) > 0.01) {
+                    if (hasGhosts) ctx.fill();
+                    ctx.beginPath();
                     ctx.globalAlpha = alpha;
                     lastAlpha = alpha;
                 }
 
-                ctx.beginPath();
+                ctx.moveTo(drawX + drawR, drawY);
                 ctx.arc(drawX, drawY, drawR, 0, 6.2832);
-                ctx.fill();
+                hasGhosts = true;
             }
+            if (hasGhosts) ctx.fill();
 
             // Reset global alpha
             ctx.globalAlpha = 1;

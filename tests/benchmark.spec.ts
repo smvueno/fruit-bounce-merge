@@ -1,10 +1,20 @@
 import { test, expect } from '@playwright/test';
 
+test.use({
+    launchOptions: {
+        args: ['--use-gl=swiftshader']
+    }
+});
+
 test.describe('Game Benchmark', () => {
     test('stress test gameplay', async ({ page }) => {
         test.setTimeout(120000); // 2 minutes
 
         await page.goto('/');
+
+        // Ensure webgl doesn't crash
+        page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
         await page.getByRole('button', { name: /play|start/i }).first().click();
 
         // Wait for game to initialize
@@ -13,11 +23,17 @@ test.describe('Game Benchmark', () => {
         // Inject script to automate gameplay and measure FPS
         const report = await page.evaluate(async () => {
             return new Promise<{ avgFps: number, minFps: number, particleCount: number }>((resolve) => {
-                const canvas = document.querySelector('canvas.cursor-grab');
+                // Now using standard canvas without cursor-grab as we removed it when migrating away from DOM events
+                const canvas = document.querySelector('canvas') as HTMLCanvasElement;
                 if (!canvas) {
+                    console.log("Canvas not found!");
                     resolve({ avgFps: 0, minFps: 0, particleCount: 0 });
                     return;
                 }
+
+                // Dispatch WebGL restoration event to ensure renderer runs in headless
+                const glRestoreEvent = new Event('webglcontextrestored');
+                canvas.dispatchEvent(glRestoreEvent);
 
                 const rect = canvas.getBoundingClientRect();
                 const centerX = rect.width / 2;

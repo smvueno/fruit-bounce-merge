@@ -381,10 +381,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
 
                 {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
-                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
+                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10 pointer-events-auto">
                     <GameArea canvasRef={canvasRef}>
-                        {/* Overlays moved to root level for correct z-index stacking */}
-                        {/* New Danger Overlay sits INSIDE the game area scaling context */}
+                        {/* The Danger Overlay */}
                         <DangerOverlay dangerTime={limitTime} />
                     </GameArea>
                 </div>
