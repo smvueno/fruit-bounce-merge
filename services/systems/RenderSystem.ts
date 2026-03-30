@@ -168,27 +168,35 @@ export class RenderSystem {
         const baseY = height - 60;
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
-
     drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
         this.floorGraphics.clear();
 
-        const bottomY = ((screenHeight - containerY) / scaleFactor) + 200;
+        // The game physics operates in a V_WIDTH x V_HEIGHT (600x750) logical space.
+        // We draw the floor inside the scaled container so it aligns perfectly with the physics engine.
 
-        // Calculate extended width to cover full screen
-        const virtualScreenWidth = screenWidth / scaleFactor;
-        const gameCenter = width / 2;
-        const startX = gameCenter - (virtualScreenWidth / 2);
-        const endX = gameCenter + (virtualScreenWidth / 2);
-
+        // We want the floor to stretch far to the left and right to cover the whole screen,
+        // regardless of the aspect ratio. So we'll use large static logical bounds.
+        const startX = -2000;
+        const endX = 2600; // 600 + 2000
+        const bottomY = 2000; // Stretch far down
         const step = 5;
+
+        if (Math.random() < 0.05) {
+            console.log(`[drawFloor] Drawing wide floor from X: ${startX} to ${endX}`);
+        }
+
         this.floorGraphics.moveTo(startX, bottomY);
         this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
+
         for (let x = startX; x <= endX; x += step) {
             this.floorGraphics.lineTo(x, this.getFloorY(x, height));
         }
+
         this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
         this.floorGraphics.lineTo(endX, bottomY);
         this.floorGraphics.closePath();
+
+        // Fill and stroke
         this.floorGraphics.fill({ color: 0x76C043 });
         this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
 
@@ -199,6 +207,8 @@ export class RenderSystem {
         this.floorGraphics.circle(width - 100, height, 25);
         this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
     }
+
+
 
     drawDangerLine(width: number, height: number, active: boolean) {
         // Optimization: Skip redraw if state hasn't changed — PIXI.Graphics clear+draw is not free
