@@ -129,25 +129,51 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         return () => clearInterval(interval);
     }, []);
 
-    // --- Track Game Area Position for Ground Canvas ---
+    // --- Track Game Area Position for Ground Canvas and Engine Scaling ---
     useEffect(() => {
         const updateGameAreaPosition = () => {
             if (gameAreaRef.current) {
                 const rect = gameAreaRef.current.getBoundingClientRect();
-                setGameAreaDimensions({
+                const dims = {
                     width: rect.width,
                     height: rect.height,
                     top: rect.top,
                     left: rect.left
-                });
+                };
+                setGameAreaDimensions(dims);
+                // Also explicitly inform the engine so it can scale its internal container immediately
+                if (engineRef.current) {
+                    engineRef.current.setGameAreaDimensions(dims);
+                }
             }
         };
 
-        updateGameAreaPosition();
+        // We use a ResizeObserver to get highly accurate updates
+        // instead of just hooking 'resize' since the layout might change
+        // dynamically during initial render or UI toggles.
+        const resizeObserver = new ResizeObserver(() => {
+            updateGameAreaPosition();
+        });
+
+        if (gameAreaRef.current) {
+            resizeObserver.observe(gameAreaRef.current);
+        }
+
+        // Also fallback to regular window resize for good measure
         window.addEventListener('resize', updateGameAreaPosition);
 
-        return () => window.removeEventListener('resize', updateGameAreaPosition);
+        return () => {
+            window.removeEventListener('resize', updateGameAreaPosition);
+            resizeObserver.disconnect();
+        };
     }, []);
+
+    // Keep Engine Updated with dimensions after initialization
+    useEffect(() => {
+        if (engineRef.current && gameAreaDimensions.width > 0) {
+            engineRef.current.setGameAreaDimensions(gameAreaDimensions);
+        }
+    }, [gameAreaDimensions]);
 
     // --- Engine Initialization ---
     useEffect(() => {

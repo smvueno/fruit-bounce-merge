@@ -7,21 +7,23 @@ interface GameAreaProps {
 
 export const GameArea: React.FC<GameAreaProps> = React.memo(({ children, canvasRef }) => {
     return (
-        <div className="relative w-full aspect-[4/5] bg-transparent overflow-visible">
-            {/* The Actual Game Canvas */}
+        <div className="relative w-full h-full bg-transparent overflow-visible pointer-events-none">
+            {/* The Actual Game Canvas (Spans 100vw / 100vh) */}
+            {/* We place it in a fixed positioning layer so it breaks out of the flex container */}
             <canvas
                 ref={canvasRef}
-                className="absolute touch-none cursor-grab active:cursor-grabbing z-10 block"
+                className="fixed inset-0 touch-none cursor-grab active:cursor-grabbing block pointer-events-auto"
                 style={{
-                    width: '140%',
-                    height: '140%',
-                    top: '-20%',
-                    left: '-20%'
+                    width: '100vw',
+                    height: '100vh',
+                    zIndex: 1 // Base game rendering layer
                 }}
             />
 
-            {/* Overlay Elements */}
-            {children}
+            {/* Overlay Elements (These still flow within the constrained GameArea flex box) */}
+            <div className="absolute inset-0 pointer-events-none z-20">
+                {children}
+            </div>
 
         </div>
     );
