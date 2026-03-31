@@ -429,14 +429,16 @@ export class GameEngine {
 
         console.log(`[handleResize] Drawing floor: w=${this.width}, h=${this.height}, scale=${this.scaleFactor}`);
 
-        // Update floor (since we just resized, we redraw once rather than doing it every frame)
+        // Update floor and walls (since we just resized, we redraw once rather than doing it every frame)
+        this.renderSystem.drawWalls(
+            this.width,
+            this.height,
+            this.scaleFactor
+        );
         this.renderSystem.drawFloor(
             this.width,
             this.height,
-            this.scaleFactor,
-            this.app.screen.height,
-            this.container.y,
-            this.app.screen.width
+            this.scaleFactor
         );
     }
 

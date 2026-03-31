@@ -18,12 +18,14 @@ export class RenderSystem {
     faceRefs: Map<number, { face: PIXI.Container; eyes: PIXI.DisplayObject | null }> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
     floorGraphics: PIXI.Graphics;
+    wallGraphics: PIXI.Graphics;
     dangerLine: PIXI.Graphics;
     // Optimization: Only redraw danger line when active state changes
     private _lastDangerActive: boolean | null = null;
 
     constructor() {
         this.floorGraphics = new PIXI.Graphics();
+        this.wallGraphics = new PIXI.Graphics();
         this.dangerLine = new PIXI.Graphics();
     }
 
@@ -31,6 +33,7 @@ export class RenderSystem {
         this.app = app;
         this.container = container;
 
+        container.addChild(this.wallGraphics);
         container.addChild(this.floorGraphics);
         container.addChild(this.dangerLine);
 
@@ -129,7 +132,8 @@ export class RenderSystem {
         this.fruitSprites.clear();
         this.faceRefs.clear();
         this._lastDangerActive = null; // Force danger line redraw after reset
-        this.floorGraphics.clear(); // Will need redraw
+        // floor graphics persist
+        // wall graphics persist
     }
 
     refreshGraphics(): boolean {
@@ -168,7 +172,111 @@ export class RenderSystem {
         const baseY = height - 60;
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
-    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
+    drawWalls(width: number, height: number, scaleFactor: number) {
+        this.wallGraphics.clear();
+
+        // Wall dimensions
+        const wallWidth = 80;
+
+        const topMargin = -2000; // extend far up
+        const bottomEdge = 2000; // extend far down
+
+        // Draw grass wall function translated to PixiJS Graphics API
+        const drawGrassWall = (x: number, y: number, wallHeight: number, side: 'left' | 'right', logicWallWidth: number) => {
+            const isRight = side === 'right';
+
+            // X returns the mirrored x coordinate correctly based on the visual width
+            // This ensures that the left and right walls are identical, just flipped.
+            const X = (px: number) => {
+                // px is [0, 80] visually
+                // we scale it to [0, logicWallWidth]
+                const scaledPx = px * (logicWallWidth / wallWidth);
+                return isRight ? x + logicWallWidth - scaledPx : x + scaledPx;
+            };
+
+            // Draw Main Wall Body
+            this.wallGraphics.moveTo(X(10), y + 35);
+            this.wallGraphics.lineTo(X(10), y + wallHeight - 10);
+            this.wallGraphics.quadraticCurveTo(X(10), y + wallHeight, X(20), y + wallHeight);
+            this.wallGraphics.lineTo(X(60), y + wallHeight);
+            this.wallGraphics.quadraticCurveTo(X(70), y + wallHeight, X(70), y + wallHeight - 10);
+            this.wallGraphics.lineTo(X(70), y + 35);
+            this.wallGraphics.closePath();
+
+            this.wallGraphics.fill({ color: 0x4CAF50 });
+            this.wallGraphics.stroke({ width: 2.5, color: 0x1f6b23, alignment: 0 });
+
+            // Shadow under Grass Cap
+            this.wallGraphics.moveTo(X(10), y + 35);
+            this.wallGraphics.lineTo(X(70), y + 35);
+            this.wallGraphics.lineTo(X(70), y + 50);
+            this.wallGraphics.quadraticCurveTo(X(50), y + 55, X(40), y + 50);
+            this.wallGraphics.quadraticCurveTo(X(30), y + 55, X(10), y + 50);
+            this.wallGraphics.closePath();
+            this.wallGraphics.fill({ color: 0x2E7D32, alpha: 0.4 });
+
+            // Grass Cap (Complex Bezier)
+            this.wallGraphics.moveTo(X(5), y + 35);
+            this.wallGraphics.bezierCurveTo(X(2), y + 25, X(8), y + 18, X(15), y + 22);
+            this.wallGraphics.bezierCurveTo(X(18), y + 12, X(28), y + 8, X(35), y + 18);
+            this.wallGraphics.bezierCurveTo(X(40), y + 5, X(52), y + 5, X(58), y + 18);
+            this.wallGraphics.bezierCurveTo(X(65), y + 10, X(78), y + 15, X(75), y + 35);
+            this.wallGraphics.quadraticCurveTo(X(65), y + 42, X(55), y + 38);
+            this.wallGraphics.quadraticCurveTo(X(45), y + 45, X(35), y + 38);
+            this.wallGraphics.quadraticCurveTo(X(25), y + 42, X(15), y + 38);
+            this.wallGraphics.quadraticCurveTo(X(8), y + 40, X(5), y + 35);
+            this.wallGraphics.closePath();
+
+            this.wallGraphics.fill({ color: 0x8BC34A });
+            this.wallGraphics.stroke({ width: 2.5, color: 0x1f6b23, alignment: 0 });
+
+            // Decorative Tufts
+            const tufts = [
+                // Left Column
+                { bx: 20, by: 95, cp1x: 22, cp1y: 85, cp2x: 26, cp2y: 85, ex: 28, ey: 95 },
+                { bx: 15, by: 200, cp1x: 17, cp1y: 190, cp2x: 21, cp2y: 190, ex: 23, ey: 200 },
+                { bx: 22, by: 340, cp1x: 24, cp1y: 330, cp2x: 28, cp2y: 330, ex: 30, ey: 340 },
+                { bx: 16, by: 470, cp1x: 18, cp1y: 460, cp2x: 22, cp2y: 460, ex: 24, ey: 470 },
+                // Right Column
+                { bx: 45, by: 120, cp1x: 47, cp1y: 110, cp2x: 51, cp2y: 110, ex: 53, ey: 120 },
+                { bx: 55, by: 230, cp1x: 57, cp1y: 220, cp2x: 61, cp2y: 220, ex: 63, ey: 230 },
+                { bx: 42, by: 360, cp1x: 44, cp1y: 350, cp2x: 48, cp2y: 350, ex: 50, ey: 360 },
+                { bx: 58, by: 490, cp1x: 60, cp1y: 480, cp2x: 64, cp2y: 480, ex: 66, ey: 490 }
+            ];
+
+            tufts.forEach(tuft => {
+                for (let ty = y; ty < y + wallHeight; ty += 500) {
+                    if (ty + tuft.by < y + wallHeight) {
+                        this.wallGraphics.moveTo(X(tuft.bx), ty + tuft.by);
+                        this.wallGraphics.bezierCurveTo(
+                            X(tuft.cp1x), ty + tuft.cp1y,
+                            X(tuft.cp2x), ty + tuft.cp2y,
+                            X(tuft.ex), ty + tuft.ey
+                        );
+                        this.wallGraphics.stroke({ width: 2.5, color: 0x1f6b23, alpha: 0.6, alignment: 0 });
+                    }
+                }
+            });
+        };
+
+        const overlap = 12 / scaleFactor;
+        const logicWallWidth = wallWidth / scaleFactor;
+
+        // Logical coordinates of the left and right borders of the game area
+        // Before we were doing `-wallWidth` which wasn't scaled, so it was too small.
+        // It needs to be `-logicWallWidth`.
+        const leftWallX = -logicWallWidth + overlap;
+        const rightWallX = width - overlap;
+
+        const totalHeight = bottomEdge - topMargin;
+
+        drawGrassWall(leftWallX, topMargin, totalHeight, 'left', logicWallWidth);
+        drawGrassWall(rightWallX, topMargin, totalHeight, 'right', logicWallWidth);
+    }
+
+
+
+    drawFloor(width: number, height: number, scaleFactor: number) {
         this.floorGraphics.clear();
 
         // The game physics operates in a V_WIDTH x V_HEIGHT (600x750) logical space.
@@ -181,23 +289,22 @@ export class RenderSystem {
         const bottomY = 2000; // Stretch far down
         const step = 5;
 
-        if (Math.random() < 0.05) {
-            console.log(`[drawFloor] Drawing wide floor from X: ${startX} to ${endX}`);
-        }
-
+        // 1. Fill the ground
         this.floorGraphics.moveTo(startX, bottomY);
         this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
-
         for (let x = startX; x <= endX; x += step) {
             this.floorGraphics.lineTo(x, this.getFloorY(x, height));
         }
-
         this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
         this.floorGraphics.lineTo(endX, bottomY);
         this.floorGraphics.closePath();
-
-        // Fill and stroke
         this.floorGraphics.fill({ color: 0x76C043 });
+
+        // 2. Stroke only the top edge
+        this.floorGraphics.moveTo(startX, this.getFloorY(startX, height));
+        for (let x = startX; x <= endX; x += step) {
+            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
+        }
         this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
 
         // Decorations - keep relative to game area center

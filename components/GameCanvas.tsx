@@ -16,7 +16,6 @@ import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
 import { GroundCanvas } from './GroundCanvas';
-import { WallCanvas } from './WallCanvas';
 import { EffectCanvas } from './EffectCanvas';
 import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
@@ -295,15 +294,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 />
             )}
 
-            {/* 1.6. Wall Canvas - Brick walls on sides */}
-            {gameAreaDimensions.width > 0 && (
-                <WallCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
 
             {/* 1.7. Effect Canvas - Overlay on top of walls */}
             {gameAreaDimensions.width > 0 && (
