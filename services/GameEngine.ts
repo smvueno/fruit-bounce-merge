@@ -20,7 +20,8 @@ const V_HEIGHT = 750;
 export class GameEngine {
     // PIXI references (Managed by RenderSystem mainly, but Engine holds App for Lifecycle)
     app: PIXI.Application | undefined;
-    container: PIXI.Container;
+    rootContainer: PIXI.Container;
+    container: PIXI.Container; // gameAreaContainer
 
     // Systems
     physicsSystem: PhysicsSystem;
@@ -138,7 +139,9 @@ export class GameEngine {
         };
 
         // Core PIXI Containers
+        this.rootContainer = new PIXI.Container();
         this.container = new PIXI.Container();
+        this.rootContainer.addChild(this.container);
 
         // Initialize Systems
         this.physicsSystem = new PhysicsSystem();
@@ -274,13 +277,13 @@ export class GameEngine {
             await this.app.init({
                 canvas: this.canvasElement,
                 backgroundAlpha: 0,
-                width: this.canvasElement.clientWidth,
-                height: this.canvasElement.clientHeight,
+                width: window.innerWidth,
+                height: window.innerHeight,
                 antialias: !isMobile, // Disable antialias on mobile — saves GPU passes
                 resolution: cappedDpr,
                 autoDensity: true,
                 preference: 'webgl',
-                resizeTo: this.canvasElement
+                resizeTo: window
             });
 
             this.app.renderer.on('resize', () => this.handleResize());
@@ -301,7 +304,7 @@ export class GameEngine {
         // Initial Resize
         this.handleResize();
 
-        this.app.stage.addChild(this.container);
+        this.app.stage.addChild(this.rootContainer);
 
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container);
@@ -313,7 +316,11 @@ export class GameEngine {
 
         // Input Handling
         this.app.stage.eventMode = 'static';
-        if (this.app.screen) this.app.stage.hitArea = this.app.screen;
+        if (this.app.screen) {
+            this.app.stage.hitArea = this.app.screen;
+        } else {
+            this.app.stage.hitArea = new PIXI.Rectangle(0, 0, window.innerWidth, window.innerHeight);
+        }
 
         this.app.stage.on('pointerdown', this.onPointerDown.bind(this));
         this.app.stage.on('pointermove', this.onPointerMove.bind(this));
@@ -400,25 +407,67 @@ export class GameEngine {
         return true;
     }
 
+    // Dimensions from React HUD bounding box
+    public gameAreaDimensions: { width: number, height: number, top: number, left: number } | null = null;
+
+    setGameAreaDimensions(dimensions: { width: number, height: number, top: number, left: number }) {
+        this.gameAreaDimensions = dimensions;
+        if (this.app) {
+            this.handleResize();
+        }
+    }
+
     handleResize() {
-        if (!this.app || !this.app.screen) return;
+        if (!this.app || !this.app.renderer) return;
+        const screen = this.app.screen || { width: window.innerWidth, height: window.innerHeight };
 
-        const actualW = this.app.screen.width;
-        const actualH = this.app.screen.height;
-        const viewW = actualW / 1.4;
-        const viewH = actualH / 1.4;
+        // The app.screen represents the entire 100vw/100vh browser window
+        // But we want to scale and position `this.container` (the 4:5 GameArea)
+        // to EXACTLY match the bounding box provided by React (`this.gameAreaDimensions`)
 
-        this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
-        this.container.scale.set(this.scaleFactor);
+        if (this.gameAreaDimensions && this.gameAreaDimensions.width > 0 && this.gameAreaDimensions.height > 0) {
+            const actualW = this.gameAreaDimensions.width;
+            const actualH = this.gameAreaDimensions.height;
 
-        // Center the container in the canvas
-        const logicalW = V_WIDTH * this.scaleFactor;
-        const logicalH = V_HEIGHT * this.scaleFactor;
+            // V_WIDTH = 600, V_HEIGHT = 750 (4:5)
+            // Determine scale factor based on the actual target pixel dimensions from the DOM
+            this.scaleFactor = Math.min(actualW / V_WIDTH, actualH / V_HEIGHT);
 
-        const xOffset = (actualW - logicalW) / 2;
-        const yOffset = (actualH - logicalH) / 2;
+            this.container.scale.set(this.scaleFactor);
 
-        this.container.position.set(xOffset, yOffset);
+            // Center within the provided bounding box just in case, though they should match 4:5
+            const logicalW = V_WIDTH * this.scaleFactor;
+            const logicalH = V_HEIGHT * this.scaleFactor;
+
+            const boxXOffset = (actualW - logicalW) / 2;
+            const boxYOffset = (actualH - logicalH) / 2;
+
+            // Global position: HTML top/left + local offset
+            this.container.position.set(
+                this.gameAreaDimensions.left + boxXOffset,
+                this.gameAreaDimensions.top + boxYOffset
+            );
+        } else {
+            // Fallback before React dimensions are provided
+            const actualW = screen.width;
+            const actualH = screen.height;
+
+            // Assume we want the Game Area to roughly fit centrally
+            // The HUD expects 4:5, so let's default to a centered 4:5 fit
+            const viewW = actualW;
+            const viewH = actualH;
+
+            this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
+            this.container.scale.set(this.scaleFactor);
+
+            const logicalW = V_WIDTH * this.scaleFactor;
+            const logicalH = V_HEIGHT * this.scaleFactor;
+
+            const xOffset = (actualW - logicalW) / 2;
+            const yOffset = (actualH - logicalH) / 2;
+
+            this.container.position.set(xOffset, yOffset);
+        }
     }
 
     reset() {
