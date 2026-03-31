@@ -315,17 +315,15 @@ export class GameEngine {
         this.app.ticker.add(this.update.bind(this));
 
         // Input Handling
-        this.app.stage.eventMode = 'static';
-        if (this.app.screen) {
-            this.app.stage.hitArea = this.app.screen;
-        } else {
-            this.app.stage.hitArea = new PIXI.Rectangle(0, 0, window.innerWidth, window.innerHeight);
-        }
+        // We bind input events directly to the container to ensure the coordinate
+        // space is naturally bounded and relative to the playable game area.
+        this.container.eventMode = 'static';
+        this.container.hitArea = new PIXI.Rectangle(0, 0, V_WIDTH, V_HEIGHT);
 
-        this.app.stage.on('pointerdown', this.onPointerDown.bind(this));
-        this.app.stage.on('pointermove', this.onPointerMove.bind(this));
-        this.app.stage.on('pointerup', this.onPointerUp.bind(this));
-        this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
+        this.container.on('pointerdown', this.onPointerDown.bind(this));
+        this.container.on('pointermove', this.onPointerMove.bind(this));
+        this.container.on('pointerup', this.onPointerUp.bind(this));
+        this.container.on('pointerupoutside', this.onPointerUp.bind(this));
 
         // Handle Visibility Changes (Context Loss Prevention)
         document.addEventListener('visibilitychange', this.visibilityHandler);

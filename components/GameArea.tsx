@@ -21,7 +21,7 @@ export const GameArea: React.FC<GameAreaProps> = React.memo(({ children, canvasR
             />
 
             {/* Overlay Elements (These still flow within the constrained GameArea flex box) */}
-            <div className="absolute inset-0 pointer-events-auto z-20">
+            <div className="absolute inset-0 pointer-events-none z-20">
                 {children}
             </div>
 

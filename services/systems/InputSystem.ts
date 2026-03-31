@@ -33,10 +33,16 @@ export class InputSystem {
         this.dragAnchorY = 0;
     }
 
-    getVirtualPos(globalX: number, globalY: number, ctx: InputContext) {
+    getVirtualPos(e: PIXI.FederatedPointerEvent) {
+        // In Pixi v7, FederatedPointerEvent.getLocalPosition is not available directly on the event.
+        // Instead, we translate the global coordinates via the container's local transform.
+        const container = e.currentTarget as PIXI.Container;
+        if (!container) return { x: e.global.x, y: e.global.y };
+
+        const localPos = container.toLocal(e.global);
         return {
-            x: (globalX - ctx.containerX) / ctx.scaleFactor,
-            y: (globalY - ctx.containerY) / ctx.scaleFactor
+            x: localPos.x,
+            y: localPos.y
         };
     }
 
@@ -45,7 +51,7 @@ export class InputSystem {
         if (!ctx.currentFruit || !ctx.canDrop) return false;
 
         this.isAiming = true;
-        const p = this.getVirtualPos(e.global.x, e.global.y, ctx);
+        const p = this.getVirtualPos(e);
         this.updateAim(p.x, p.y, ctx);
         this.pointerHistory = [];
         return true; // Return true to indicate interaction started
@@ -54,7 +60,7 @@ export class InputSystem {
     onPointerMove(e: PIXI.FederatedPointerEvent, ctx: InputContext) {
         if (ctx.paused) return;
         if (!this.isAiming) return;
-        const p = this.getVirtualPos(e.global.x, e.global.y, ctx);
+        const p = this.getVirtualPos(e);
         this.updateAim(p.x, p.y, ctx);
         const now = performance.now();
         this.pointerHistory.push({ x: p.x, y: p.y, time: now });
