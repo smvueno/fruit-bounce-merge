@@ -632,6 +632,7 @@ export class GameEngine {
             feverActive: isFever,
             scaleFactor: this.scaleFactor
         };
+        this.renderSystem.drawClouds(this.width, this.height, this.scaleFactor, performance.now());
         this.renderSystem.renderSync(renderCtx);
     }
 

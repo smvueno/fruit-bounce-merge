@@ -17,15 +17,36 @@ export class RenderSystem {
     // Optimization: Cache face+eyes refs to avoid getChildByLabel() scan every frame
     faceRefs: Map<number, { face: PIXI.Container; eyes: PIXI.DisplayObject | null }> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
-    floorGraphics: PIXI.Graphics;
-    wallGraphics: PIXI.Graphics;
+    floorSprite: PIXI.Sprite;
+    // Clouds
+    cloudSprites: PIXI.Sprite[] = [];
+    cloudTexture: PIXI.RenderTexture | null = null;
+    cloudData: { yPercent: number, scale: number, opacity: number, duration: number, delay: number, currentX: number }[] = [];
+    leftWallSprite: PIXI.Sprite;
+    rightWallSprite: PIXI.Sprite;
+    wallTexture: PIXI.Texture | null = null;
+    floorTexture: PIXI.Texture | null = null;
     dangerLine: PIXI.Graphics;
     // Optimization: Only redraw danger line when active state changes
     private _lastDangerActive: boolean | null = null;
 
     constructor() {
-        this.floorGraphics = new PIXI.Graphics();
-        this.wallGraphics = new PIXI.Graphics();
+        this.floorSprite = new PIXI.Sprite();
+        this.leftWallSprite = new PIXI.Sprite();
+        this.cloudSprites = [];
+        this.cloudData = [
+            { yPercent: 0.75, scale: 0.5, opacity: 0.3, duration: 30, delay: 0, currentX: 0 },
+            { yPercent: 0.60, scale: 0.7, opacity: 0.4, duration: 25, delay: 5, currentX: 0 },
+            { yPercent: 0.35, scale: 0.9, opacity: 0.5, duration: 20, delay: 2, currentX: 0 },
+            { yPercent: 0.10, scale: 1.2, opacity: 0.6, duration: 15, delay: 0, currentX: 0 },
+            { yPercent: 0.05, scale: 1.3, opacity: 0.55, duration: 12, delay: 8, currentX: 0 },
+        ];
+        for (let i = 0; i < this.cloudData.length; i++) {
+            const sprite = new PIXI.Sprite();
+            this.cloudSprites.push(sprite);
+            // moved to initialize
+        }
+        this.rightWallSprite = new PIXI.Sprite();
         this.dangerLine = new PIXI.Graphics();
     }
 
@@ -33,8 +54,12 @@ export class RenderSystem {
         this.app = app;
         this.container = container;
 
-        container.addChild(this.wallGraphics);
-        container.addChild(this.floorGraphics);
+        for (const sprite of this.cloudSprites) {
+            container.addChild(sprite); // Add clouds behind everything else in the container
+        }
+        container.addChild(this.leftWallSprite);
+        container.addChild(this.rightWallSprite);
+        container.addChild(this.floorSprite);
         container.addChild(this.dangerLine);
 
         this.initTextures();
@@ -173,149 +198,235 @@ export class RenderSystem {
         return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
     }
     drawWalls(width: number, height: number, scaleFactor: number) {
-        this.wallGraphics.clear();
 
-        // Wall dimensions
-        const wallWidth = 80;
 
-        const topMargin = -2000; // extend far up
-        const bottomEdge = 2000; // extend far down
+        if (!this.app || !this.app.renderer) return;
 
-        // Draw grass wall function translated to PixiJS Graphics API
-        const drawGrassWall = (x: number, y: number, wallHeight: number, side: 'left' | 'right', logicWallWidth: number) => {
-            const isRight = side === 'right';
+        // Context Loss Check
+        // @ts-ignore - accessing internal gl context
+        const glContext = this.app.renderer.gl || this.app.renderer.context?.gl;
+        if (glContext && glContext.isContextLost()) return;
 
-            // X returns the mirrored x coordinate correctly based on the visual width
-            // This ensures that the left and right walls are identical, just flipped.
-            const X = (px: number) => {
-                // px is [0, 80] visually
-                // we scale it to [0, logicWallWidth]
-                const scaledPx = px * (logicWallWidth / wallWidth);
-                return isRight ? x + logicWallWidth - scaledPx : x + scaledPx;
-            };
-
-            // Draw Main Wall Body
-            this.wallGraphics.moveTo(X(10), y + 35);
-            this.wallGraphics.lineTo(X(10), y + wallHeight - 10);
-            this.wallGraphics.quadraticCurveTo(X(10), y + wallHeight, X(20), y + wallHeight);
-            this.wallGraphics.lineTo(X(60), y + wallHeight);
-            this.wallGraphics.quadraticCurveTo(X(70), y + wallHeight, X(70), y + wallHeight - 10);
-            this.wallGraphics.lineTo(X(70), y + 35);
-            this.wallGraphics.closePath();
-
-            this.wallGraphics.fill({ color: 0x4CAF50 });
-            this.wallGraphics.stroke({ width: 2.5, color: 0x1f6b23, alignment: 0 });
-
-            // Shadow under Grass Cap
-            this.wallGraphics.moveTo(X(10), y + 35);
-            this.wallGraphics.lineTo(X(70), y + 35);
-            this.wallGraphics.lineTo(X(70), y + 50);
-            this.wallGraphics.quadraticCurveTo(X(50), y + 55, X(40), y + 50);
-            this.wallGraphics.quadraticCurveTo(X(30), y + 55, X(10), y + 50);
-            this.wallGraphics.closePath();
-            this.wallGraphics.fill({ color: 0x2E7D32, alpha: 0.4 });
-
-            // Grass Cap (Complex Bezier)
-            this.wallGraphics.moveTo(X(5), y + 35);
-            this.wallGraphics.bezierCurveTo(X(2), y + 25, X(8), y + 18, X(15), y + 22);
-            this.wallGraphics.bezierCurveTo(X(18), y + 12, X(28), y + 8, X(35), y + 18);
-            this.wallGraphics.bezierCurveTo(X(40), y + 5, X(52), y + 5, X(58), y + 18);
-            this.wallGraphics.bezierCurveTo(X(65), y + 10, X(78), y + 15, X(75), y + 35);
-            this.wallGraphics.quadraticCurveTo(X(65), y + 42, X(55), y + 38);
-            this.wallGraphics.quadraticCurveTo(X(45), y + 45, X(35), y + 38);
-            this.wallGraphics.quadraticCurveTo(X(25), y + 42, X(15), y + 38);
-            this.wallGraphics.quadraticCurveTo(X(8), y + 40, X(5), y + 35);
-            this.wallGraphics.closePath();
-
-            this.wallGraphics.fill({ color: 0x8BC34A });
-            this.wallGraphics.stroke({ width: 2.5, color: 0x1f6b23, alignment: 0 });
-
-            // Decorative Tufts
-            const tufts = [
-                // Left Column
-                { bx: 20, by: 95, cp1x: 22, cp1y: 85, cp2x: 26, cp2y: 85, ex: 28, ey: 95 },
-                { bx: 15, by: 200, cp1x: 17, cp1y: 190, cp2x: 21, cp2y: 190, ex: 23, ey: 200 },
-                { bx: 22, by: 340, cp1x: 24, cp1y: 330, cp2x: 28, cp2y: 330, ex: 30, ey: 340 },
-                { bx: 16, by: 470, cp1x: 18, cp1y: 460, cp2x: 22, cp2y: 460, ex: 24, ey: 470 },
-                // Right Column
-                { bx: 45, by: 120, cp1x: 47, cp1y: 110, cp2x: 51, cp2y: 110, ex: 53, ey: 120 },
-                { bx: 55, by: 230, cp1x: 57, cp1y: 220, cp2x: 61, cp2y: 220, ex: 63, ey: 230 },
-                { bx: 42, by: 360, cp1x: 44, cp1y: 350, cp2x: 48, cp2y: 350, ex: 50, ey: 360 },
-                { bx: 58, by: 490, cp1x: 60, cp1y: 480, cp2x: 64, cp2y: 480, ex: 66, ey: 490 }
-            ];
-
-            tufts.forEach(tuft => {
-                for (let ty = y; ty < y + wallHeight; ty += 500) {
-                    if (ty + tuft.by < y + wallHeight) {
-                        this.wallGraphics.moveTo(X(tuft.bx), ty + tuft.by);
-                        this.wallGraphics.bezierCurveTo(
-                            X(tuft.cp1x), ty + tuft.cp1y,
-                            X(tuft.cp2x), ty + tuft.cp2y,
-                            X(tuft.ex), ty + tuft.ey
-                        );
-                        this.wallGraphics.stroke({ width: 2.5, color: 0x1f6b23, alpha: 0.6, alignment: 0 });
-                    }
-                }
-            });
-        };
 
         const overlap = 12 / scaleFactor;
+        const wallWidth = 80;
         const logicWallWidth = wallWidth / scaleFactor;
 
-        // Logical coordinates of the left and right borders of the game area
-        // Before we were doing `-wallWidth` which wasn't scaled, so it was too small.
-        // It needs to be `-logicWallWidth`.
-        const leftWallX = -logicWallWidth + overlap;
-        const rightWallX = width - overlap;
+        // Create texture if it doesn't exist
+        if (!this.wallTexture) {
+            const g = new PIXI.Graphics();
 
-        const totalHeight = bottomEdge - topMargin;
+            // Draw a basic repeating wall tile
+            g.rect(0, 0, wallWidth, 500);
+            g.fill({ color: 0x4CAF50 });
+            g.stroke({ width: 2.5, color: 0x1f6b23 });
 
-        drawGrassWall(leftWallX, topMargin, totalHeight, 'left', logicWallWidth);
-        drawGrassWall(rightWallX, topMargin, totalHeight, 'right', logicWallWidth);
+            // Grass cap
+            g.rect(0, 0, wallWidth, 40);
+            g.fill({ color: 0x8BC34A });
+            g.stroke({ width: 2.5, color: 0x1f6b23 });
+
+            // Shadow
+            g.rect(0, 40, wallWidth, 10);
+            g.fill({ color: 0x2E7D32, alpha: 0.4 });
+
+            const texSize = { width: wallWidth, height: 500 };
+            const renderTexture = PIXI.RenderTexture.create({
+                width: texSize.width,
+                height: texSize.height,
+                resolution: this.app.renderer.resolution || 2
+            });
+
+            this.app.renderer.render({ container: g, target: renderTexture });
+            g.destroy();
+            this.wallTexture = renderTexture;
+
+            this.leftWallSprite.texture = this.wallTexture;
+            this.rightWallSprite.texture = this.wallTexture;
+        }
+
+        const topMargin = -2000;
+        const totalHeight = 4000;
+
+        // Configure Left Wall
+        this.leftWallSprite.x = -logicWallWidth + overlap;
+        this.leftWallSprite.y = topMargin;
+        this.leftWallSprite.width = logicWallWidth;
+        this.leftWallSprite.height = totalHeight;
+
+        // Configure Right Wall
+        this.rightWallSprite.x = width - overlap;
+        this.rightWallSprite.y = topMargin;
+        this.rightWallSprite.width = logicWallWidth;
+        this.rightWallSprite.height = totalHeight;
+
+        // Mirror the right wall texture visually if desired, but here we just adjust position
+        // so it looks like a wall on the right.
+        this.rightWallSprite.scale.x = -Math.abs(this.rightWallSprite.scale.x);
+        this.rightWallSprite.x += logicWallWidth;
     }
 
+    drawClouds(width: number, height: number, scaleFactor: number, time: number) {
+try {
 
+
+        if (!this.app || !this.app.renderer) return;
+
+        // Context Loss Check
+        // @ts-ignore - accessing internal gl context
+        const glContext = this.app.renderer.gl || this.app.renderer.context?.gl;
+        if (glContext && glContext.isContextLost()) return;
+
+
+        if (!this.cloudTexture) {
+            const g = new PIXI.Graphics();
+            g.fill({ color: 0xFFFFFF });
+
+            // Draw simplified cloud shape (3 circles)
+            // (0,0) is bottom-center of main circle
+            g.circle(0, -20, 20);
+            g.circle(30, -30, 28);
+            g.circle(60, -20, 20);
+
+            const texSize = { width: 100, height: 70 };
+            const renderTexture = PIXI.RenderTexture.create({
+                width: texSize.width,
+                height: texSize.height,
+                resolution: this.app.renderer.resolution || 2
+            });
+
+            // Shift graphics down and right to fit into texture bounds
+            g.x = 25;
+            g.y = 65;
+
+            this.app.renderer.render({ container: g, target: renderTexture });
+            g.destroy();
+            this.cloudTexture = renderTexture;
+
+            this.cloudSprites.forEach(sprite => {
+                sprite.texture = this.cloudTexture;
+                sprite.anchor.set(0.25, 1); // approximate anchor point for (0,0) of original graphics
+            });
+        }
+
+        // Calculate Cloud Zone boundaries
+        // Assuming top is roughly height * 0.1 or we use a fixed gameArea.top proxy
+        // Since we don't have gameArea.top easily, we can use absolute screen values
+        // or relative to the height. GameArea usually has top margin of 10-20vh.
+        const zoneTop = -140; // Offset relative to game area top (which is 0 in Pixi local space if we are inside the game container)
+        // Actually, RenderSystem's (0,0) is the top-left of the game area.
+        // So zoneTop should be a bit negative. Let's use -140 like the original.
+        const zoneHeight = 180;
+
+        // Use a relative VW calculation for distance, roughly 100vw = width / scaleFactor?
+        // Width here is the logical game width (e.g. 600). So 100vw depends on screen.
+        // Let's use the actual logical width of the game area.
+        // 100vw is roughly 100 * (window.innerWidth / 100).
+        // Let's just use window.innerWidth for total distance.
+        const vw = window.innerWidth / 100;
+        const totalDistance = 160 * vw;
+        const startX = -50 * vw;
+
+        this.cloudData.forEach((cloud, index) => {
+            const sprite = this.cloudSprites[index];
+            const cycleTime = cloud.duration * 1000;
+            const delayMs = cloud.delay * 1000;
+            const totalTime = time - delayMs;
+
+            let progress = (totalTime % cycleTime) / cycleTime;
+            if (progress < 0) progress += 1;
+
+            const currentX = startX + (totalDistance * progress);
+            const canvasY = zoneTop + (cloud.yPercent * zoneHeight);
+
+            // Convert window space to logical space
+            sprite.x = currentX / scaleFactor;
+            sprite.y = canvasY;
+            sprite.scale.set(cloud.scale);
+            sprite.alpha = cloud.opacity;
+        });
+    } catch (e) { console.error("Error in drawClouds:", e); } }
 
     drawFloor(width: number, height: number, scaleFactor: number) {
-        this.floorGraphics.clear();
 
-        // The game physics operates in a V_WIDTH x V_HEIGHT (600x750) logical space.
-        // We draw the floor inside the scaled container so it aligns perfectly with the physics engine.
 
-        // We want the floor to stretch far to the left and right to cover the whole screen,
-        // regardless of the aspect ratio. So we'll use large static logical bounds.
-        const startX = -2000;
-        const endX = 2600; // 600 + 2000
-        const bottomY = 2000; // Stretch far down
-        const step = 5;
+        if (!this.app || !this.app.renderer) return;
 
-        // 1. Fill the ground
-        this.floorGraphics.moveTo(startX, bottomY);
-        this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
-        for (let x = startX; x <= endX; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
+        // Context Loss Check
+        // @ts-ignore - accessing internal gl context
+        const glContext = this.app.renderer.gl || this.app.renderer.context?.gl;
+        if (glContext && glContext.isContextLost()) return;
+
+
+        // To make the wavy floor, we can still use a Graphic to generate the texture ONCE,
+        // then render it as a Sprite.
+
+        if (!this.floorTexture) {
+            const g = new PIXI.Graphics();
+
+            const texWidth = 1000;
+            const texHeight = 200;
+            const step = 5;
+
+            g.moveTo(0, texHeight);
+
+            // Wavy top edge
+            const getFloorYLocal = (x: number) => {
+                const baseY = 40;
+                return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
+            };
+
+            g.lineTo(0, getFloorYLocal(0));
+            for (let x = 0; x <= texWidth; x += step) {
+                g.lineTo(x, getFloorYLocal(x));
+            }
+            g.lineTo(texWidth, getFloorYLocal(texWidth));
+            g.lineTo(texWidth, texHeight);
+            g.closePath();
+            g.fill({ color: 0x76C043 });
+
+            // Stroke
+            g.moveTo(0, getFloorYLocal(0));
+            for (let x = 0; x <= texWidth; x += step) {
+                g.lineTo(x, getFloorYLocal(x));
+            }
+            g.stroke({ width: 6, color: 0x2E5A1C });
+
+            // Some decorations
+            g.circle(150, 100, 15);
+            g.circle(180, 120, 20);
+            g.fill({ color: 0x558B2F, alpha: 0.2 });
+            g.circle(800, 100, 25);
+            g.fill({ color: 0x558B2F, alpha: 0.2 });
+
+            const renderTexture = PIXI.RenderTexture.create({
+                width: texWidth,
+                height: texHeight,
+                resolution: this.app.renderer.resolution || 2
+            });
+
+            this.app.renderer.render({ container: g, target: renderTexture });
+            g.destroy();
+            this.floorTexture = renderTexture;
+            this.floorSprite.texture = this.floorTexture;
         }
-        this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
-        this.floorGraphics.lineTo(endX, bottomY);
-        this.floorGraphics.closePath();
-        this.floorGraphics.fill({ color: 0x76C043 });
 
-        // 2. Stroke only the top edge
-        this.floorGraphics.moveTo(startX, this.getFloorY(startX, height));
-        for (let x = startX; x <= endX; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
-        }
-        this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
+        const startX = -200;
+        const widthToCover = Math.max(width + 400, 1000);
 
-        // Decorations - keep relative to game area center
-        this.floorGraphics.circle(50, height, 15);
-        this.floorGraphics.circle(80, height + 20, 20);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-        this.floorGraphics.circle(width - 100, height, 25);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
+        // We calculate floor height from GameEngine's height
+        // BaseY in original was `height - 60`. In our texture, the top wave starts at ~40px down.
+        // So we want the sprite's top wave (40px local) to align with `height - 60` globally.
+        // sprite.y + 40 = height - 60  =>  sprite.y = height - 100
+
+        this.floorSprite.x = startX;
+        this.floorSprite.y = height - 100;
+
+        // Stretch floor width to cover the screen
+        this.floorSprite.width = widthToCover;
+        // Keep proportional height or just fixed
+        this.floorSprite.height = 400; // stretch it down
     }
-
-
 
     drawDangerLine(width: number, height: number, active: boolean) {
         // Optimization: Skip redraw if state hasn't changed — PIXI.Graphics clear+draw is not free
