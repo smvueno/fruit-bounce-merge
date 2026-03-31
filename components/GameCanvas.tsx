@@ -9,14 +9,11 @@ import { DebugMenu } from './DebugMenu';
 // Components
 import { GameBackground } from './GameBackground';
 import { JuiceOverlay } from './JuiceOverlay';
-import { CloudsCanvas } from './CloudsCanvas';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
-import { GroundCanvas } from './GroundCanvas';
-import { WallCanvas } from './WallCanvas';
 import { EffectCanvas } from './EffectCanvas';
 import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
@@ -286,24 +283,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             />
 
             {/* 1.5. Ground Canvas - Extends to screen edges */}
-            {gameAreaDimensions.width > 0 && (
-                <GroundCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
 
-            {/* 1.6. Wall Canvas - Brick walls on sides */}
-            {gameAreaDimensions.width > 0 && (
-                <WallCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
+
 
             {/* 1.7. Effect Canvas - Overlay on top of walls */}
             {gameAreaDimensions.width > 0 && (
@@ -361,9 +342,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             )}
 
             {/* 1.2 Clouds Overlay - Above background/juice, below game */}
-            <CloudsCanvas
-                gameAreaDimensions={gameAreaDimensions}
-            />
+
 
             {/* 2. Main Layout Container */}
             <LayoutContainer>

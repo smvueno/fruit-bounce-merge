@@ -399,27 +399,50 @@ export class GameEngine {
 
         return true;
     }
-
     handleResize() {
-        if (!this.app || !this.app.screen) return;
+        if (!this.app || !this.app.screen || !this.container) return;
 
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
-        const viewW = actualW / 1.4;
-        const viewH = actualH / 1.4;
 
-        this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
+        // Determine logical scale to fit within viewport.
+        const maxGameWidth = Math.min(actualW * 0.95, 600); // Max logical width 600
+        const maxGameHeight = actualH * 0.75; // Leave 25% height for UI
+
+        // Ensure scale is constrained
+        this.scaleFactor = Math.min(maxGameWidth / V_WIDTH, maxGameHeight / V_HEIGHT);
+
+        // Force minimum scale to ensure it isn't tiny on extreme screens
+        this.scaleFactor = Math.max(this.scaleFactor, 0.4);
+
+        // Apply scale to PIXI Container
         this.container.scale.set(this.scaleFactor);
 
-        // Center the container in the canvas
         const logicalW = V_WIDTH * this.scaleFactor;
         const logicalH = V_HEIGHT * this.scaleFactor;
 
+        // Position Container in center
         const xOffset = (actualW - logicalW) / 2;
-        const yOffset = (actualH - logicalH) / 2;
+        const yOffset = (actualH - logicalH) / 2 + (actualH * 0.05);
 
         this.container.position.set(xOffset, yOffset);
+
+        console.log(`[handleResize] Drawing floor: w=${this.width}, h=${this.height}, scale=${this.scaleFactor}`);
+
+        // Update floor and walls (since we just resized, we redraw once rather than doing it every frame)
+        this.renderSystem.drawWalls(
+            this.width,
+            this.height,
+            this.scaleFactor
+        );
+        this.renderSystem.drawFloor(
+            this.width,
+            this.height,
+            this.scaleFactor
+        );
     }
+
+
 
     reset() {
         // 1. Reset Systems
@@ -609,6 +632,7 @@ export class GameEngine {
             feverActive: isFever,
             scaleFactor: this.scaleFactor
         };
+        this.renderSystem.drawClouds(this.width, this.height, this.scaleFactor, performance.now());
         this.renderSystem.renderSync(renderCtx);
     }
 
