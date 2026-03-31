@@ -7,7 +7,6 @@ import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
 // Components
-import { GameBackground } from './GameBackground';
 import { JuiceOverlay } from './JuiceOverlay';
 import { CloudsCanvas } from './CloudsCanvas';
 import { LayoutContainer } from './LayoutContainer';
@@ -128,6 +127,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         }, 25000);
         return () => clearInterval(interval);
     }, []);
+
+    // Keep Engine Updated with background changes
+    useEffect(() => {
+        if (engineRef.current) {
+            engineRef.current.updateBackgroundState(bgColor, fever, bgPatternIndex);
+        }
+    }, [bgColor, fever, bgPatternIndex]);
 
     // --- Track Game Area Position for Ground Canvas and Engine Scaling ---
     useEffect(() => {
@@ -304,13 +310,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
     return (
         <>
-            {/* 1. Full Screen Background */}
-            <GameBackground
-                patternIndex={bgPatternIndex}
-                bgColor={bgColor}
-                fever={fever}
-            />
-
             {/* 1.5. Ground Canvas - Extends to screen edges */}
             {gameAreaDimensions.width > 0 && (
                 <GroundCanvas

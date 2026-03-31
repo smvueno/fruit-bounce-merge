@@ -10,6 +10,7 @@ import { InputSystem } from './systems/InputSystem';
 import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { ScoreController } from './systems/ScoreController';
+import { BackgroundSystem } from './systems/background/BackgroundSystem';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -29,6 +30,7 @@ export class GameEngine {
     effectSystem: EffectSystem;
     renderSystem: RenderSystem;
     scoreController: ScoreController;
+    backgroundSystem: BackgroundSystem | null = null;
 
     // Game State
     fruits: Particle[] = [];
@@ -309,6 +311,12 @@ export class GameEngine {
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container);
 
+        // Initialize Background System
+        this.backgroundSystem = new BackgroundSystem(this.app);
+
+        // Add background behind the gameAreaContainer
+        this.rootContainer.addChildAt(this.backgroundSystem.container, 0);
+
         // Start Game
         this.spawnNextFruit();
         this.app.ticker.maxFPS = 60; // Lock to 60 FPS for consistent physics speed
@@ -466,6 +474,20 @@ export class GameEngine {
 
             this.container.position.set(xOffset, yOffset);
         }
+
+        // Resize Background System to full screen bounds
+        if (this.backgroundSystem) {
+            this.backgroundSystem.resize(screen.width, screen.height);
+        }
+    }
+
+    // --- Background State Control ---
+
+    updateBackgroundState(bgColor: string, fever: boolean, patternIndex: number) {
+        if (!this.backgroundSystem) return;
+        this.backgroundSystem.setBackgroundColor(bgColor);
+        this.backgroundSystem.setFever(fever);
+        this.backgroundSystem.setPatternIndex(patternIndex);
     }
 
     reset() {
@@ -614,6 +636,11 @@ export class GameEngine {
 
         // 1. Update Game Logic (Timers, Stats, Fever)
         this.updateGameLogic(dtMs);
+
+        // Update Background
+        if (this.backgroundSystem) {
+            this.backgroundSystem.update(dt);
+        }
 
         // 2. Update Physics
         // Optimization: Reuse object to reduce GC
