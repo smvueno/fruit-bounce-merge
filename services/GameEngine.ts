@@ -639,7 +639,7 @@ export class GameEngine {
 
         // Update Background
         if (this.backgroundSystem) {
-            this.backgroundSystem.update(dt);
+            this.backgroundSystem.update(dtMs / 1000);
         }
 
         // 2. Update Physics

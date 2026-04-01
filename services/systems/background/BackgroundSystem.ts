@@ -1,10 +1,10 @@
 import * as PIXI from 'pixi.js';
 
 const BACKGROUND_PATTERNS = [
-    `data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='black'%3E%3Ccircle cx='50' cy='50' r='40' /%3E%3C/g%3E%3C/svg%3E`,
-    `data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill='black' /%3E%3C/svg%3E`,
-    `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='black' /%3E%3C/svg%3E`,
-    `data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10 L70 70 L10 70 Z' fill='black' /%3E%3C/svg%3E`
+    '/assets/patterns/pattern_0.png',
+    '/assets/patterns/pattern_1.png',
+    '/assets/patterns/pattern_2.png',
+    '/assets/patterns/pattern_3.png'
 ];
 
 const BASE_SPEED = 20;
@@ -17,7 +17,11 @@ export class BackgroundSystem {
     // Background Layer
     private bgSprite: PIXI.Sprite;
     private targetBgColor: number = 0xFFF8E1;
-    private currentBgColor: number = 0xFFF8E1;
+
+    // Track colors as floats to prevent Math.round stalling
+    private currentR: number = 0xFF;
+    private currentG: number = 0xF8;
+    private currentB: number = 0xE1;
 
     // Tiling Patterns
     private patterns: PIXI.TilingSprite[] = [];
@@ -42,58 +46,41 @@ export class BackgroundSystem {
 
         // 1. Solid Background Color
         this.bgSprite = new PIXI.Sprite(PIXI.Texture.WHITE);
-        this.bgSprite.alpha = 0.35; // from React CSS
         this.container.addChild(this.bgSprite);
 
-        // 2. Pattern Layers
-        // To avoid Base64 / SVG loading issues in PixiJS v8, we parse SVGs via DOM and draw to canvas.
-        const svgStrings = [
-            `<svg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><g fill='black'><circle cx='50' cy='50' r='40' /></g></svg>`,
-            `<svg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'><path d='M30 0l25.98 15v30L30 60 4.02 45V15z' fill='black' /></svg>`,
-            `<svg width='80' height='80' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' fill='black' /></svg>`,
-            `<svg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'><path d='M40 10 L70 70 L10 70 Z' fill='black' /></svg>`
-        ];
+        // Apply global opacity to match React CSS
+        this.container.alpha = 0.35;
 
+        // 2. Pattern Layers
         const patternSizes = [100, 60, 80, 80];
 
-        for (let i = 0; i < svgStrings.length; i++) {
+        for (let i = 0; i < BACKGROUND_PATTERNS.length; i++) {
             const size = patternSizes[i];
             const tilingSprite = new PIXI.TilingSprite({
                 texture: PIXI.Texture.EMPTY,
-                width: 100,
-                height: 100
+                width: window.innerWidth,
+                height: window.innerHeight
             });
             tilingSprite.alpha = i === 0 ? 0.2 : 0;
             this.patterns.push(tilingSprite);
             this.container.addChild(tilingSprite);
 
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = size;
-                canvas.height = size;
-                const ctx = canvas.getContext('2d')!;
-                ctx.drawImage(img, 0, 0, size, size);
+            // Keep the visual size of the tiles to 80px
+            tilingSprite.tileScale.set(80 / size);
 
-                const texture = PIXI.Texture.from(canvas);
+            // Asynchronously load the texture
+            PIXI.Assets.load(BACKGROUND_PATTERNS[i]).then((texture) => {
                 if (texture.source) texture.source.scaleMode = 'linear';
-
                 tilingSprite.texture = texture;
 
-                // Keep the visual size of the tiles to 80px
-                tilingSprite.tileScale.set(80 / size);
-
-                // Explicitly sync the dimensions again, avoiding reset to base texture size
+                // Ensure dimensions are maintained after loading
                 if (this.width > 0 && this.height > 0) {
                     tilingSprite.width = this.width;
                     tilingSprite.height = this.height;
-                } else {
-                    tilingSprite.width = window.innerWidth;
-                    tilingSprite.height = window.innerHeight;
                 }
-            };
-            const svg64 = btoa(svgStrings[i]);
-            img.src = `data:image/svg+xml;base64,${svg64}`;
+            }).catch((err) => {
+                console.error(`Failed to load background pattern ${BACKGROUND_PATTERNS[i]}:`, err);
+            });
         }
 
         // 3. Gradient Mask Overlay
@@ -148,22 +135,22 @@ export class BackgroundSystem {
         this.targetBgColor = parseInt(cleanHex, 16);
     }
 
-    private lerpColor(start: number, end: number, t: number): number {
-        if (start === end) return end;
+    private updateBackgroundColor(dtSeconds: number) {
+        const targetR = (this.targetBgColor >> 16) & 0xFF;
+        const targetG = (this.targetBgColor >> 8) & 0xFF;
+        const targetB = this.targetBgColor & 0xFF;
 
-        const r1 = (start >> 16) & 0xFF;
-        const g1 = (start >> 8) & 0xFF;
-        const b1 = start & 0xFF;
+        const t = dtSeconds * 1.5; // Roughly 2s transition
 
-        const r2 = (end >> 16) & 0xFF;
-        const g2 = (end >> 8) & 0xFF;
-        const b2 = end & 0xFF;
+        this.currentR += (targetR - this.currentR) * t;
+        this.currentG += (targetG - this.currentG) * t;
+        this.currentB += (targetB - this.currentB) * t;
 
-        const r = Math.round(r1 + (r2 - r1) * t);
-        const g = Math.round(g1 + (g2 - g1) * t);
-        const b = Math.round(b1 + (b2 - b1) * t);
+        const r = Math.round(this.currentR);
+        const g = Math.round(this.currentG);
+        const b = Math.round(this.currentB);
 
-        return (r << 16) | (g << 8) | b;
+        this.bgSprite.tint = (r << 16) | (g << 8) | b;
     }
 
     public update(dtSeconds: number) {
@@ -197,17 +184,7 @@ export class BackgroundSystem {
             }
         }
 
-        // 4. Update Background Color (transition: background-color 2s ease)
-        if (this.currentBgColor !== this.targetBgColor) {
-            // Rough approximation of 2s transition with lerp
-            this.currentBgColor = this.lerpColor(this.currentBgColor, this.targetBgColor, dtSeconds * 1.5);
-            this.bgSprite.tint = this.currentBgColor;
-
-            // Snap if close enough (hard to detect exactly with hex, but this is fine for visual)
-            if (Math.abs(this.currentBgColor - this.targetBgColor) < 5) {
-                this.currentBgColor = this.targetBgColor;
-                this.bgSprite.tint = this.currentBgColor;
-            }
-        }
+        // 4. Update Background Color
+        this.updateBackgroundColor(dtSeconds);
     }
 }
