@@ -46,40 +46,54 @@ export class BackgroundSystem {
 
         // 1. Solid Background Color
         this.bgSprite = new PIXI.Sprite(PIXI.Texture.WHITE);
-        this.container.addChild(this.bgSprite);
+        // Ensure background itself is transparent if needed, or colored.
+        this.bgSprite.alpha = 1.0;
 
-        // Apply global opacity to match React CSS
-        this.container.alpha = 0.35;
+        // Let's create a main layer for patterns to handle alpha correctly
+        const patternContainer = new PIXI.Container();
+        patternContainer.alpha = 0.2; // This is the 0.2 alpha that SVG originally had
+
+        this.container.addChild(this.bgSprite);
+        this.container.addChild(patternContainer);
 
         // 2. Pattern Layers
         const patternSizes = [100, 60, 80, 80];
 
         for (let i = 0; i < BACKGROUND_PATTERNS.length; i++) {
             const size = patternSizes[i];
+
+            // PixiJS v8 handles dynamically updating textures on TilingSprite much better
+            // if we start with an empty texture and just let Assets load it.
+            // But using a WHITE texture is a safe fallback to ensure geometry is initialized
             const tilingSprite = new PIXI.TilingSprite({
-                texture: PIXI.Texture.EMPTY,
-                width: window.innerWidth,
-                height: window.innerHeight
+                texture: PIXI.Texture.WHITE,
+                width: window.innerWidth || 800,
+                height: window.innerHeight || 600
             });
-            tilingSprite.alpha = i === 0 ? 0.2 : 0;
+            // Make sure the placeholder doesn't show up before load
+            tilingSprite.alpha = 0;
+
             this.patterns.push(tilingSprite);
-            this.container.addChild(tilingSprite);
+            patternContainer.addChild(tilingSprite);
 
-            // Keep the visual size of the tiles to 80px
-            tilingSprite.tileScale.set(80 / size);
-
-            // Asynchronously load the texture
+            // Load and apply
             PIXI.Assets.load(BACKGROUND_PATTERNS[i]).then((texture) => {
                 if (texture.source) texture.source.scaleMode = 'linear';
-                tilingSprite.texture = texture;
 
-                // Ensure dimensions are maintained after loading
-                if (this.width > 0 && this.height > 0) {
-                    tilingSprite.width = this.width;
-                    tilingSprite.height = this.height;
-                }
-            }).catch((err) => {
-                console.error(`Failed to load background pattern ${BACKGROUND_PATTERNS[i]}:`, err);
+                tilingSprite.texture = texture;
+                tilingSprite.tileScale.set(80 / size);
+
+                const currentW = this.width > 0 ? this.width : (window.innerWidth || 800);
+                const currentH = this.height > 0 ? this.height : (window.innerHeight || 600);
+                tilingSprite.width = currentW;
+                tilingSprite.height = currentH;
+
+                // Once loaded, set alpha depending on if it's the active pattern
+                // (Note: we use 1.0 here because the patternContainer already has 0.2)
+                tilingSprite.alpha = i === this.activePatternIndex ? 1.0 : 0;
+
+            }).catch(e => {
+                console.error(`Failed to load pattern ${BACKGROUND_PATTERNS[i]}:`, e);
             });
         }
 
@@ -112,8 +126,10 @@ export class BackgroundSystem {
 
         // Resize Tiling Sprites
         for (const pattern of this.patterns) {
-            pattern.width = width;
-            pattern.height = height;
+            if (pattern) {
+                pattern.width = width;
+                pattern.height = height;
+            }
         }
 
         // Resize Gradient Overlay
@@ -166,12 +182,15 @@ export class BackgroundSystem {
         // 3. Update Patterns
         for (let i = 0; i < this.patterns.length; i++) {
             const pattern = this.patterns[i];
+            // If the texture hasn't loaded (still WHITE), skip alpha crossfade
+            // so we don't accidentally show a white/black block
+            if (!pattern || pattern.texture === PIXI.Texture.WHITE) continue;
 
             // Scroll Position
             pattern.tilePosition.x = -wrappedScroll;
 
             // Opacity Crossfade (transition: opacity 1.5s ease-in-out)
-            const targetAlpha = i === this.activePatternIndex ? 0.2 : 0;
+            const targetAlpha = i === this.activePatternIndex ? 1.0 : 0;
             if (pattern.alpha !== targetAlpha) {
                 const alphaDiff = targetAlpha - pattern.alpha;
                 // Roughly matches a 1.5s transition

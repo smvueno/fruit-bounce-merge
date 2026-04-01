@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><style>body { margin: 0; background: #eee; }</style></head>
+<body>
+    <script src="https://pixijs.download/v8.1.0/pixi.js"></script>
+    <script>
+        async function run() {
+            const app = new PIXI.Application();
+            await app.init({ width: 800, height: 600, backgroundColor: 0xeeeeee });
+            document.body.appendChild(app.canvas);
+
+            try {
+                // Testing PIXI.Assets.load
+                const texture = await PIXI.Assets.load('/assets/patterns/pattern_0.png');
+
+                const tiling = new PIXI.TilingSprite({
+                    texture,
+                    width: 800,
+                    height: 600
+                });
+                app.stage.addChild(tiling);
+                console.log('ADDED_TILING_SPRITE_ASSETS');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        run();
+    </script>
+</body>
+</html>

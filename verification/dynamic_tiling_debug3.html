@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PixiJS v8 Tiling Sprite Debug 3</title>
+    <!-- We need to use module type for Pixi v8 scripts in modern setups, or the correct unpkg path -->
+    <script type="importmap">
+    {
+      "imports": {
+        "pixi.js": "https://unpkg.com/pixi.js@8.x/dist/pixi.mjs"
+      }
+    }
+    </script>
+    <style>
+        body { margin: 0; background: #fff; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import { Application, Assets, Container, TilingSprite, Texture, Sprite } from 'pixi.js';
+
+        (async () => {
+            const app = new Application();
+            await app.init({ width: 800, height: 600, backgroundColor: 0xFFF8E1 });
+            document.body.appendChild(app.canvas);
+
+            const container = new Container();
+            app.stage.addChild(container);
+
+            try {
+                // Wait for a bit to make sure Playwright captures correctly
+                await new Promise(r => setTimeout(r, 1000));
+
+                // Let's use a standard remote image just in case local pathing is failing in Playwright
+                const texture = await Assets.load('https://pixijs.com/assets/bunny.png');
+                console.log('Texture loaded:', texture.width, texture.height);
+                texture.source.scaleMode = 'linear';
+
+                // Create tiling sprite
+                const tilingSprite = new TilingSprite({
+                    texture: texture,
+                    width: 800,
+                    height: 600
+                });
+
+                tilingSprite.tileScale.set(2);
+                tilingSprite.alpha = 1.0;
+
+                container.addChild(tilingSprite);
+                console.log('Tiling sprite added');
+
+                app.ticker.add(() => {
+                    tilingSprite.tilePosition.x -= 1;
+                });
+
+                // Keep it rendering for Playwright screenshot
+                window.testReady = true;
+            } catch (e) {
+                console.error("Failed to load or setup:", e);
+                window.testReady = true;
+            }
+        })();
+    </script>
+</body>
+</html>
