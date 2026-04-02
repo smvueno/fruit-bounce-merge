@@ -51,7 +51,7 @@ export class BackgroundSystem {
 
         // Let's create a main layer for patterns to handle alpha correctly
         const patternContainer = new PIXI.Container();
-        patternContainer.alpha = 0.2;
+        patternContainer.alpha = 0.2; // Opacity of the overall pattern container to keep it subtle
 
         this.container.addChild(this.bgSprite);
         this.container.addChild(patternContainer);
@@ -59,30 +59,44 @@ export class BackgroundSystem {
         // 2. Pattern Layers
         const patternSizes = [100, 60, 80, 80];
 
-        // Wait to load all assets first, then build the sprites
+        // Create initial placeholder TilingSprites to ensure order and avoid async loading issues
         for (let i = 0; i < BACKGROUND_PATTERNS.length; i++) {
             const size = patternSizes[i];
+
+            const tilingSprite = new PIXI.TilingSprite({
+                texture: PIXI.Texture.WHITE,
+                width: this.width > 0 ? this.width : (window.innerWidth || 800),
+                height: this.height > 0 ? this.height : (window.innerHeight || 600)
+            });
+
+            tilingSprite.tileScale.set(80 / size);
+            tilingSprite.alpha = 0;
+            // Changed blendMode to 'normal' so black pattern doesn't vanish entirely on dark colors.
+            // Tinting it white can also make the dots visible against dark backgrounds.
+            tilingSprite.blendMode = 'normal';
+            tilingSprite.tint = 0xFFFFFF; // Tint dots white
+
+            this.patterns[i] = tilingSprite;
+            patternContainer.addChild(tilingSprite);
 
             PIXI.Assets.load(BACKGROUND_PATTERNS[i]).then((texture) => {
                 if (texture.source) texture.source.scaleMode = 'linear';
 
-                const tilingSprite = new PIXI.TilingSprite({
+                // Recreate TilingSprite with new texture to fix WebGL caching bug on first load
+                const newTilingSprite = new PIXI.TilingSprite({
                     texture: texture,
                     width: this.width > 0 ? this.width : (window.innerWidth || 800),
                     height: this.height > 0 ? this.height : (window.innerHeight || 600)
                 });
+                newTilingSprite.tileScale.set(80 / size);
+                newTilingSprite.alpha = this.patterns[i].alpha;
+                newTilingSprite.blendMode = 'normal';
 
-                tilingSprite.tileScale.set(80 / size);
+                const index = patternContainer.getChildIndex(this.patterns[i]);
+                patternContainer.addChildAt(newTilingSprite, index);
+                patternContainer.removeChild(this.patterns[i]);
 
-                tilingSprite.alpha = i === this.activePatternIndex ? 1.0 : 0;
-                tilingSprite.blendMode = 'multiply';
-
-                this.patterns[i] = tilingSprite;
-                patternContainer.addChild(tilingSprite);
-
-                // Force a resize right away to fit bounds
-                tilingSprite.width = this.width > 0 ? this.width : (window.innerWidth || 800);
-                tilingSprite.height = this.height > 0 ? this.height : (window.innerHeight || 600);
+                this.patterns[i] = newTilingSprite;
 
             }).catch(e => {
                 console.error(`Failed to load pattern ${BACKGROUND_PATTERNS[i]}:`, e);
@@ -177,8 +191,8 @@ export class BackgroundSystem {
 
             if (!pattern) continue;
 
-            // Scroll Position
-            pattern.tilePosition.x = -wrappedScroll;
+            // Scroll Position (Vertical)
+            pattern.tilePosition.y = wrappedScroll;
 
             // Opacity Crossfade (transition: opacity 1.5s ease-in-out)
             const targetAlpha = i === this.activePatternIndex ? 1.0 : 0;
