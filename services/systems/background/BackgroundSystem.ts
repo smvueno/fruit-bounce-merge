@@ -51,9 +51,51 @@ export class BackgroundSystem {
 
         // Let's create a main layer for patterns to handle alpha correctly
         const patternContainer = new PIXI.Container();
-        patternContainer.alpha = 0.2; // Opacity of the overall pattern container to keep it subtle
+        // The pattern container itself needs a base color if we want to multiply.
+        // Let's match the old React setup.
+        // The old React setup was:
+        // <div bg="#FFF8E1" (or dynamic color) opacity=0.35>
+        //   <div gradient="rgba(255,255,255,0.9)" />
+        //   <div pattern opacity=0.2 />
+        // </div>
 
+        // This means the BASE background is always behind the 0.35 opacity layer!
+        // We need a base background!
+
+        // Let's rethink the structure:
+        // 1. Base Layer: Solid color (e.g., #FFF8E1)
+        // 2. Dynamic Color Layer: bgSprite, opacity 0.35
+        // 3. Gradient Layer: White vignette
+        // 4. Pattern Layer: Black patterns, opacity 0.2
+
+        // Add a base sprite that is always #FFF8E1
+        const baseSprite = new PIXI.Sprite(PIXI.Texture.WHITE);
+        baseSprite.tint = 0xFFF8E1;
+        this.container.addChild(baseSprite);
+
+        // The bgSprite is the dynamic colored one, opacity 0.35
+        this.bgSprite.alpha = 0.35;
         this.container.addChild(this.bgSprite);
+
+        // 3. Gradient Mask Overlay
+        const gradCanvas = document.createElement('canvas');
+        gradCanvas.width = 1;
+        gradCanvas.height = 256;
+        const ctx = gradCanvas.getContext('2d')!;
+        const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+        gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
+        gradient.addColorStop(0.2, 'rgba(255,255,255,0)');
+        gradient.addColorStop(0.8, 'rgba(255,255,255,0)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0.9)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 1, 256);
+
+        const gradTexture = PIXI.Texture.from(gradCanvas);
+        this.gradientSprite = new PIXI.Sprite(gradTexture);
+        this.gradientSprite.anchor.set(0, 0);
+        this.container.addChild(this.gradientSprite);
+
+        patternContainer.alpha = 0.2;
         this.container.addChild(patternContainer);
 
         // 2. Pattern Layers
@@ -71,10 +113,12 @@ export class BackgroundSystem {
 
             tilingSprite.tileScale.set(80 / size);
             tilingSprite.alpha = 0;
-            // Changed blendMode to 'normal' so black pattern doesn't vanish entirely on dark colors.
-            // Tinting it white can also make the dots visible against dark backgrounds.
             tilingSprite.blendMode = 'normal';
-            tilingSprite.tint = 0xFFFFFF; // Tint dots white
+
+            // To prevent the pattern from vanishing completely on dark backgrounds,
+            // we could tint it lightly, but multiply against white is no-op.
+            // Let's remove the white tint so it multiplies the black pixels properly.
+            tilingSprite.tint = 0xFFFFFF;
 
             this.patterns[i] = tilingSprite;
             patternContainer.addChild(tilingSprite);
@@ -102,29 +146,18 @@ export class BackgroundSystem {
                 console.error(`Failed to load pattern ${BACKGROUND_PATTERNS[i]}:`, e);
             });
         }
-
-        // 3. Gradient Mask Overlay
-        const gradCanvas = document.createElement('canvas');
-        gradCanvas.width = 1;
-        gradCanvas.height = 256;
-        const ctx = gradCanvas.getContext('2d')!;
-        const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-        gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
-        gradient.addColorStop(0.2, 'rgba(255,255,255,0)');
-        gradient.addColorStop(0.8, 'rgba(255,255,255,0)');
-        gradient.addColorStop(1, 'rgba(255,255,255,0.9)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 1, 256);
-
-        const gradTexture = PIXI.Texture.from(gradCanvas);
-        this.gradientSprite = new PIXI.Sprite(gradTexture);
-        this.gradientSprite.anchor.set(0, 0);
-        this.container.addChild(this.gradientSprite);
     }
 
     public resize(width: number, height: number) {
         this.width = width;
         this.height = height;
+
+        // The base Sprite is at index 0
+        const baseSprite = this.container.children[0] as PIXI.Sprite;
+        if (baseSprite) {
+            baseSprite.width = width;
+            baseSprite.height = height;
+        }
 
         // Resize Background Sprite
         this.bgSprite.width = width;

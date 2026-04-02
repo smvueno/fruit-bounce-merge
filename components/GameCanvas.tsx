@@ -435,7 +435,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 <div
                     className="fixed overflow-hidden rounded-t-3xl pointer-events-none"
                     style={{
-                        zIndex: 2, // Above Background (0), Below Ground (5)
+                        // Ensure it renders above the fixed PixiJS background canvas (GameArea is z-10)
+                        // wait, GameArea's main div is z-10 but the canvas inside it doesn't have a z-index,
+                        // meaning the canvas itself acts as the background for the whole z-10 context.
+                        // We need JuiceOverlay and Clouds to be BETWEEN the background base and the game area.
+                        // However, PixiJS renders everything into ONE canvas now! The background AND the fruits!
+                        // This means HTML elements CANNOT go between the background and the game area unless they
+                        // are rendered via WebGL too, OR if the PixiJS canvas is transparent where it should be.
+                        // Ah! The PixiJS background uses baseSprite.tint = 0xFFF8E1, making the PixiJS canvas opaque!
+                        // If the Pixi canvas is opaque, we can ONLY render HTML overlays ON TOP of it.
+                        // Let's set zIndex to 15 so it renders over GameArea.
+                        zIndex: 15,
                         width: gameAreaDimensions.width,
                         height: gameAreaDimensions.height,
                         top: gameAreaDimensions.top,

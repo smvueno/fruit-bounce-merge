@@ -153,12 +153,14 @@ export const CloudsCanvas: React.FC<CloudsCanvasProps> = ({ gameAreaDimensions }
         };
     }, [isVisible]);
 
-    if (!isVisible) return <div className="fixed pointer-events-none z-0" />;
+    if (!isVisible) return <div className="fixed pointer-events-none z-[11]" />;
 
     return (
         <canvas
             ref={canvasRef}
-            className="fixed pointer-events-none z-0"
+            // PixiJS canvas renders everything (opaque background + fruits) in GameArea (z-10).
+            // HTML overlays must render ON TOP of it (z-11).
+            className="fixed pointer-events-none z-[11]"
             style={{
                 top: 0, // Always start at top of viewport
                 left: 0,
