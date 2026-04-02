@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <script src="https://pixijs.download/v8.1.0/pixi.js"></script>
+    <script>
+        async function testLoad() {
+            try {
+                const texture = await PIXI.Assets.load('/assets/patterns/pattern_0.png');
+                console.log('SUCCESS loaded', texture);
+            } catch (err) {
+                console.error('FAILED to load', err);
+            }
+        }
+        testLoad();
+    </script>
+</body>
+</html>
