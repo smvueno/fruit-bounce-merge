@@ -51,7 +51,7 @@ export class BackgroundSystem {
 
         // Let's create a main layer for patterns to handle alpha correctly
         const patternContainer = new PIXI.Container();
-        patternContainer.alpha = 0.2; // This is the 0.2 alpha that SVG originally had
+        patternContainer.alpha = 0.2;
 
         this.container.addChild(this.bgSprite);
         this.container.addChild(patternContainer);
@@ -59,38 +59,30 @@ export class BackgroundSystem {
         // 2. Pattern Layers
         const patternSizes = [100, 60, 80, 80];
 
+        // Wait to load all assets first, then build the sprites
         for (let i = 0; i < BACKGROUND_PATTERNS.length; i++) {
             const size = patternSizes[i];
 
-            // PixiJS v8 handles dynamically updating textures on TilingSprite much better
-            // if we start with an empty texture and just let Assets load it.
-            // But using a WHITE texture is a safe fallback to ensure geometry is initialized
-            const tilingSprite = new PIXI.TilingSprite({
-                texture: PIXI.Texture.WHITE,
-                width: window.innerWidth || 800,
-                height: window.innerHeight || 600
-            });
-            // Make sure the placeholder doesn't show up before load
-            tilingSprite.alpha = 0;
-
-            this.patterns.push(tilingSprite);
-            patternContainer.addChild(tilingSprite);
-
-            // Load and apply
             PIXI.Assets.load(BACKGROUND_PATTERNS[i]).then((texture) => {
                 if (texture.source) texture.source.scaleMode = 'linear';
 
-                tilingSprite.texture = texture;
+                const tilingSprite = new PIXI.TilingSprite({
+                    texture: texture,
+                    width: this.width > 0 ? this.width : (window.innerWidth || 800),
+                    height: this.height > 0 ? this.height : (window.innerHeight || 600)
+                });
+
                 tilingSprite.tileScale.set(80 / size);
 
-                const currentW = this.width > 0 ? this.width : (window.innerWidth || 800);
-                const currentH = this.height > 0 ? this.height : (window.innerHeight || 600);
-                tilingSprite.width = currentW;
-                tilingSprite.height = currentH;
-
-                // Once loaded, set alpha depending on if it's the active pattern
-                // (Note: we use 1.0 here because the patternContainer already has 0.2)
                 tilingSprite.alpha = i === this.activePatternIndex ? 1.0 : 0;
+                tilingSprite.blendMode = 'multiply';
+
+                this.patterns[i] = tilingSprite;
+                patternContainer.addChild(tilingSprite);
+
+                // Force a resize right away to fit bounds
+                tilingSprite.width = this.width > 0 ? this.width : (window.innerWidth || 800);
+                tilingSprite.height = this.height > 0 ? this.height : (window.innerHeight || 600);
 
             }).catch(e => {
                 console.error(`Failed to load pattern ${BACKGROUND_PATTERNS[i]}:`, e);
@@ -182,9 +174,8 @@ export class BackgroundSystem {
         // 3. Update Patterns
         for (let i = 0; i < this.patterns.length; i++) {
             const pattern = this.patterns[i];
-            // If the texture hasn't loaded (still WHITE), skip alpha crossfade
-            // so we don't accidentally show a white/black block
-            if (!pattern || pattern.texture === PIXI.Texture.WHITE) continue;
+
+            if (!pattern) continue;
 
             // Scroll Position
             pattern.tilePosition.x = -wrappedScroll;

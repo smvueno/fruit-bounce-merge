@@ -1,32 +1,51 @@
 <!DOCTYPE html>
 <html>
+<head>
+<script src="https://pixijs.download/v8.0.4/pixi.min.js"></script>
+</head>
 <body>
-    <script src="https://pixijs.download/v8.1.0/pixi.js"></script>
-    <script>
-        async function run() {
-            const app = new PIXI.Application();
-            await app.init({ width: 800, height: 600 });
-            document.body.appendChild(app.canvas);
+<canvas id="game"></canvas>
+<script>
+async function init() {
+    const app = new PIXI.Application();
+    await app.init({ canvas: document.getElementById('game'), width: 800, height: 600, backgroundColor: 0x1099bb });
 
-            try {
-                // Testing PIXI.Texture.from with a fetch
-                const img = new Image();
-                img.src = '/assets/patterns/pattern_0.png';
-                await new Promise(r => img.onload = r);
-                const texture = PIXI.Texture.from(img);
+    // 1. Create a Sprite with WHITE texture
+    const bgSprite = new PIXI.Sprite(PIXI.Texture.WHITE);
+    bgSprite.width = 800;
+    bgSprite.height = 600;
+    bgSprite.tint = 0xFFF8E1;
+    app.stage.addChild(bgSprite);
 
-                const tiling = new PIXI.TilingSprite({
-                    texture,
-                    width: 800,
-                    height: 600
-                });
-                app.stage.addChild(tiling);
-                console.log('ADDED_TILING_SPRITE_FROM');
-            } catch (e) {
-                console.error(e);
-            }
-        }
-        run();
-    </script>
+    // 2. Create Pattern
+    const tilingSprite = new PIXI.TilingSprite({
+        texture: PIXI.Texture.WHITE,
+        width: 800,
+        height: 600
+    });
+
+    // Set to 0 alpha initially
+    tilingSprite.alpha = 0;
+    app.stage.addChild(tilingSprite);
+
+    // 3. Load image
+    console.log("Loading texture...");
+    PIXI.Assets.load('pattern_0.png').then((texture) => {
+        console.log("Texture loaded:", texture);
+        tilingSprite.texture = texture;
+        tilingSprite.tileScale.set(0.8);
+        tilingSprite.alpha = 1.0;
+
+        let scroll = 0;
+        app.ticker.add((time) => {
+            scroll += 1 * time.deltaTime;
+            tilingSprite.tilePosition.x = -scroll;
+        });
+    }).catch(e => {
+        console.error("Failed", e);
+    });
+}
+init();
+</script>
 </body>
 </html>

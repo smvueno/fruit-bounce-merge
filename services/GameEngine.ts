@@ -315,7 +315,10 @@ export class GameEngine {
         this.backgroundSystem = new BackgroundSystem(this.app);
 
         // Add background behind the gameAreaContainer
-        this.rootContainer.addChildAt(this.backgroundSystem.container, 0);
+        this.app.stage.addChildAt(this.backgroundSystem.container, 0);
+
+        // Call an initial resize to ensure background covers the screen immediately
+        this.handleResize();
 
         // Start Game
         this.spawnNextFruit();
