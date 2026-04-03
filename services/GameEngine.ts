@@ -315,7 +315,11 @@ export class GameEngine {
         this.backgroundSystem = new BackgroundSystem(this.app);
 
         // Add background behind the gameAreaContainer
+        // Make sure it's at index 0
         this.app.stage.addChildAt(this.backgroundSystem.container, 0);
+
+        // Let's debug background container
+        console.log("GameEngine: added BackgroundSystem container at index 0");
 
         // Call an initial resize to ensure background covers the screen immediately
         this.handleResize();

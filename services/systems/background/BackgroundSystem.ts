@@ -95,7 +95,7 @@ export class BackgroundSystem {
         this.gradientSprite.anchor.set(0, 0);
         this.container.addChild(this.gradientSprite);
 
-        patternContainer.alpha = 0.2;
+        patternContainer.alpha = 0.5; // Base opacity for patterns layer
         this.container.addChild(patternContainer);
 
         // 2. Pattern Layers
@@ -112,13 +112,8 @@ export class BackgroundSystem {
             });
 
             tilingSprite.tileScale.set(80 / size);
-            tilingSprite.alpha = 0;
+            tilingSprite.alpha = 0; // Hide until loaded
             tilingSprite.blendMode = 'normal';
-
-            // To prevent the pattern from vanishing completely on dark backgrounds,
-            // we could tint it lightly, but multiply against white is no-op.
-            // Let's remove the white tint so it multiplies the black pixels properly.
-            tilingSprite.tint = 0xFFFFFF;
 
             this.patterns[i] = tilingSprite;
             patternContainer.addChild(tilingSprite);
@@ -133,8 +128,19 @@ export class BackgroundSystem {
                     height: this.height > 0 ? this.height : (window.innerHeight || 600)
                 });
                 newTilingSprite.tileScale.set(80 / size);
-                newTilingSprite.alpha = this.patterns[i].alpha;
+                newTilingSprite.alpha = 0; // Initialize as invisible
                 newTilingSprite.blendMode = 'normal';
+
+                // Ensure the pattern is visually distinct by slightly boosting contrast
+                // The pattern is black (0,0,0) with varying alpha
+                const filter = new PIXI.ColorMatrixFilter();
+                filter.matrix = [
+                    0,  0,  0,  0,  0,  // R
+                    0,  0,  0,  0,  0,  // G
+                    0,  0,  0,  0,  0,  // B
+                    0,  0,  0,  1.5, 0  // Alpha multiplier to increase visibility of the pattern
+                ];
+                newTilingSprite.filters = [filter];
 
                 const index = patternContainer.getChildIndex(this.patterns[i]);
                 patternContainer.addChildAt(newTilingSprite, index);
@@ -227,18 +233,9 @@ export class BackgroundSystem {
             // Scroll Position (Vertical)
             pattern.tilePosition.y = wrappedScroll;
 
-            // Opacity Crossfade (transition: opacity 1.5s ease-in-out)
-            const targetAlpha = i === this.activePatternIndex ? 1.0 : 0;
-            if (pattern.alpha !== targetAlpha) {
-                const alphaDiff = targetAlpha - pattern.alpha;
-                // Roughly matches a 1.5s transition
-                pattern.alpha += alphaDiff * (1.0 / 1.5) * dtSeconds;
-
-                // Snap if close
-                if (Math.abs(pattern.alpha - targetAlpha) < 0.01) {
-                    pattern.alpha = targetAlpha;
-                }
-            }
+            // Alpha crossfade
+            const targetAlpha = (i === this.activePatternIndex) ? 1.0 : 0.0;
+            pattern.alpha += (targetAlpha - pattern.alpha) * dtSeconds * 3.0; // 3.0 speed
         }
 
         // 4. Update Background Color
