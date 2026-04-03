@@ -11,6 +11,7 @@ import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { ScoreController } from './systems/ScoreController';
 import { BackgroundSystem } from './systems/background/BackgroundSystem';
+import { CloudSystem } from './systems/background/CloudSystem';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -31,6 +32,7 @@ export class GameEngine {
     renderSystem: RenderSystem;
     scoreController: ScoreController;
     backgroundSystem: BackgroundSystem | null = null;
+    cloudSystem: CloudSystem | null = null;
 
     // Game State
     fruits: Particle[] = [];
@@ -320,6 +322,11 @@ export class GameEngine {
 
         // Let's debug background container
         console.log("GameEngine: added BackgroundSystem container at index 0");
+
+        // Initialize Cloud System
+        this.cloudSystem = new CloudSystem(this.app);
+        // Add clouds right above the background but below the game items
+        this.app.stage.addChildAt(this.cloudSystem.container, 1);
 
         // Call an initial resize to ensure background covers the screen immediately
         this.handleResize();
@@ -647,6 +654,10 @@ export class GameEngine {
         // Update Background
         if (this.backgroundSystem) {
             this.backgroundSystem.update(dtMs / 1000);
+        }
+
+        if (this.cloudSystem) {
+            this.cloudSystem.update(dtSeconds);
         }
 
         // 2. Update Physics
