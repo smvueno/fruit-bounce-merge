@@ -18,6 +18,7 @@ export default defineConfig(({ command, mode }) => {
     server: {
       port: 5100,
       host: '0.0.0.0',
+      allowedHosts: true,
     },
     plugins: [react(), injectBuildTime()],
     define: {
