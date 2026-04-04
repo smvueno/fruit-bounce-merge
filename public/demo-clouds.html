@@ -119,10 +119,11 @@
             const vh = app.screen.height;
 
             // Depth layers: 0=far (small, slow, dim), 1=mid, 2=near (big, fast, bright)
+            // Speeds halved for gentle, natural drift
             const layers = [
-                { scale: 0.4, alpha: 0.2, speed: 0.8, yRange: [0.05, 0.15], texIdx: 1 },  // far - 2-ball
-                { scale: 0.7, alpha: 0.35, speed: 1.5, yRange: [0.08, 0.20], texIdx: 0 },  // mid - 3-ball
-                { scale: 1.2, alpha: 0.55, speed: 2.5, yRange: [0.12, 0.25], texIdx: 0 },  // near - 3-ball
+                { scale: 0.4, alpha: 0.2, speed: 0.5, yRange: [0.05, 0.15], texIdx: 1 },  // far - 2-ball
+                { scale: 0.7, alpha: 0.35, speed: 1.0, yRange: [0.08, 0.20], texIdx: 0 },  // mid - 3-ball
+                { scale: 1.2, alpha: 0.55, speed: 1.5, yRange: [0.12, 0.25], texIdx: 0 },  // near - 3-ball
             ];
 
             for (let i = 0; i < count; i++) {
