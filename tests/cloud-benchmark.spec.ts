@@ -10,7 +10,7 @@ test.describe('Cloud Rendering Benchmark', () => {
     test.setTimeout(300_000);
 
     const TECHNIQUES = ['graphics', 'sprite', 'particleContainer', 'batchedGraphics'];
-    const CLOUD_COUNTS = [10, 50, 100, 250];
+    const CLOUD_COUNTS = [10, 50, 100, 250, 500, 1000];
     const TEST_DURATION_MS = 3000;
     const results: { technique: string; count: number; avgFps: number; minFps: number; maxFps: number; passed: boolean }[] = [];
 
