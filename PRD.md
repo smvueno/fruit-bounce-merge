@@ -300,6 +300,7 @@ Test the game at these viewport sizes during development:
 - `npx playwright test` — Run full test suite
 - `npx playwright test tests/cloud-benchmark.spec.ts` — Cloud rendering benchmark
 - `npx playwright test tests/screenshots.spec.ts` — Screenshot verification
+- `npx playwright test tests/benchmark.spec.ts` — Game stress test (50 fruits)
 - All tests must pass before every commit
 
 ### 13.5 Benchmark Pages (Manual)
@@ -336,3 +337,110 @@ Test the game at these viewport sizes during development:
 - Effects (merge particles, stars, bomb ghosts)
 - Danger line
 - Background (CSS gradient, but behind Pixi canvas)
+
+---
+
+## 17. Fruit Rendering — ABSOLUTE
+
+### 17.1 Architecture
+- **ALL fruits rendered via a single `ParticleContainer`** — 1 draw call for every fruit on screen
+- Each fruit = **1 `PIXI.Particle`** (lightweight, not a full Sprite or Container)
+- **Faces baked into fruit textures** — not separate Graphics objects
+- **Blinking** = swap to alternate texture (eyes squished), NOT scale.y animation
+- **Fever pulse** = scale.x/y on the Particle directly, NOT on a parent Container
+
+### 17.2 Texture Atlas
+- All fruit textures packed into a **single sprite sheet / texture atlas** at game init
+- Each fruit has **2 frames**: normal face + blink face
+- Texture resolution: `2x` (matches device DPR, capped at 2 for mobile)
+- Atlas allows ParticleContainer to use different textures per particle via sprite sheet UVs
+
+### 17.3 Face Baking Rules
+- Face (eyes + mouth) rendered into the fruit texture during atlas generation
+- Eyes: simple circles with pupils, facing forward
+- Blink frame: eyes rendered as thin horizontal lines (scale.y = 0.1 equivalent)
+- No dynamic look-direction — eyes face forward (trade-off for maximum performance)
+
+### 17.4 Performance Targets
+- **Max 50 fruits on screen** simultaneously
+- **1 draw call for ALL fruits** (single ParticleContainer)
+- **Zero Graphics objects** for fruit faces
+- **Zero Container wrappers** around fruit Sprites
+- Fruit rendering must not exceed **1ms per frame** at 50 fruits
+
+### 17.5 ParticleContainer Configuration
+```typescript
+new PIXI.ParticleContainer({
+    dynamicProperties: { position: true, scale: true, rotation: true, color: false },
+});
+```
+- **Dynamic:** position (x/y changes every frame), scale (fever pulse), rotation (fruit spin)
+- **Static:** color/alpha (set once, never changes per frame)
+
+### 17.6 Current vs Target
+| Aspect | Current | Target |
+|--------|---------|--------|
+| Container type | Individual Containers | Single ParticleContainer |
+| Objects per fruit | 3 (Container + Sprite + Graphics) | 1 (Particle) |
+| Draw calls (50 fruits) | 100+ | **1** |
+| Face rendering | Per-frame Graphics update | Baked texture swap |
+| Blinking | eyes.scale.y animation | Texture swap |
+| Total display objects (50 fruits) | 150+ | 50 (all in 1 container) |
+
+---
+
+## 18. Effect Rendering — ABSOLUTE
+
+### 18.1 Merge Burst Particles
+- Use **`ParticleContainer`** with `Particle` objects — NOT batched Graphics
+- Particles share a single circle/star texture from atlas
+- GPU instanced, 1 draw call for all burst particles
+- Max 30 burst particles simultaneously
+
+### 18.2 Stars / Score Popups
+- DOM-based (React), not Pixi — these are UI elements
+
+### 18.3 Bomb Ghost Effect
+- Single `Sprite` from pre-rendered texture, fades via alpha
+- Short-lived (0.5 seconds)
+
+### 18.4 Performance Targets
+- **All effects in 1 draw call** (ParticleContainer)
+- **Zero `Graphics.clear()` + redraw per frame** — too CPU-heavy
+- Max 50 effect particles simultaneously
+
+---
+
+## 19. Background Rendering — ABSOLUTE
+
+### 19.1 Implementation
+- CSS gradient on a full-viewport `<div>` (`position: fixed`, `inset: 0`, `z-index: 0`)
+- **No Pixi background** — CSS is more performant for full-screen gradients
+
+### 19.2 Color Cycling
+- **Normal mode:** cycle through 5 colors every **4 seconds**
+- **Fever mode:** cycle through 5 fever colors every **1.5 seconds**
+- CSS `transition: background 1.5s ease` for smooth morphing
+
+---
+
+## 20. Cloud Rendering — ABSOLUTE
+
+### 20.1 Implementation
+- **`ParticleContainer`** with `Particle` objects (GPU instanced, 1 draw call)
+- **5 clouds total** (1 per depth layer)
+- Two shapes: **3-ball** (near/mid) and **2-ball** (far)
+
+### 20.2 Depth System
+| Layer | Scale | Alpha | Speed | Shape |
+|-------|-------|-------|-------|-------|
+| Near | 1.4 | 0.65 | 55 px/s | 3-ball |
+| Mid-near | 1.1 | 0.55 | 40 px/s | 3-ball |
+| Mid | 0.8 | 0.40 | 28 px/s | 3-ball |
+| Mid-far | 0.6 | 0.30 | 20 px/s | 2-ball |
+| Far | 0.4 | 0.20 | 14 px/s | 2-ball |
+
+### 20.3 Looping
+- Clouds spawn **off-screen left** (staggered)
+- Drift right continuously
+- When fully off-screen right, **respawn off-screen left** (no snapping, no popping)
