@@ -36,6 +36,7 @@
     <script>
         let app = null;
         let testRunning = false;
+        let currentTicker = null;
 
         async function init() {
             app = new PIXI.Application();
@@ -57,18 +58,14 @@
             window.__ready = true;
         }
 
-        // Pre-render cloud to texture at high resolution for sharpness
         function createCloudTexture() {
             const g = new PIXI.Graphics();
             g.circle(0, -20, 20);
             g.circle(30, -30, 28);
             g.circle(60, -20, 20);
             g.fill({ color: 0xFFFFFF });
-
             const texture = app.renderer.generateTexture({
-                target: g,
-                resolution: 4,
-                antialias: true,
+                target: g, resolution: 4, antialias: true,
             });
             g.destroy();
             return texture;
@@ -81,6 +78,27 @@
             return bg;
         }
 
+        function makeClouds(count, vw, vh) {
+            const clouds = [];
+            for (let i = 0; i < count; i++) {
+                clouds.push({
+                    x: Math.random() * (vw + 200) - 100,
+                    y: Math.random() * (vh * 0.25),
+                    scale: 0.3 + Math.random() * 1.2,
+                    alpha: 0.3 + Math.random() * 0.5,
+                    speed: 0.5 + Math.random() * 2.5,
+                });
+            }
+            return clouds;
+        }
+
+        function animateClouds(clouds, vw) {
+            for (const c of clouds) {
+                c.x += c.userData.speed;
+                if (c.x > vw + 100) c.x = -100; // Loop: wrap to left side
+            }
+        }
+
         window.__startBenchmark = async function(config) {
             if (testRunning) return;
             testRunning = true;
@@ -91,12 +109,11 @@
 
             // Clear stage
             app.stage.removeChildren();
+            if (currentTicker) { app.ticker.remove(currentTicker); currentTicker = null; }
 
-            // Background
             const bg = createBackground();
             app.stage.addChild(bg);
 
-            // FPS tracking
             const fpsSamples = [];
             let frameCount = 0;
             let lastFpsTime = 0;
@@ -104,29 +121,24 @@
             let minFps = Infinity;
             let maxFps = 0;
 
-            // Update HUD
             document.getElementById('technique').textContent = technique;
             document.getElementById('count').textContent = count;
 
             let clouds = [];
             let cloudTexture = null;
             let batchGraphics = null;
+            let particleContainer = null;
 
-            // Setup based on technique
             if (technique === 'graphics') {
                 for (let i = 0; i < count; i++) {
                     const g = new PIXI.Graphics();
-                    const scale = 0.3 + Math.random() * 1.2;
-                    const alpha = 0.3 + Math.random() * 0.5;
-                    g.alpha = alpha;
-                    g.scale.set(scale);
-                    g.circle(0, -20, 20);
-                    g.circle(30, -30, 28);
-                    g.circle(60, -20, 20);
+                    const c = makeClouds(1, vw, vh)[0];
+                    g.alpha = c.alpha;
+                    g.scale.set(c.scale);
+                    g.circle(0, -20, 20); g.circle(30, -30, 28); g.circle(60, -20, 20);
                     g.fill({ color: 0xFFFFFF });
-                    g.x = Math.random() * (vw + 200) - 100;
-                    g.y = Math.random() * (vh * 0.25);
-                    g.userData = { speed: 0.5 + Math.random() * 2.5 };
+                    g.x = c.x; g.y = c.y;
+                    g.userData = { speed: c.speed };
                     clouds.push(g);
                     app.stage.addChild(g);
                 }
@@ -134,60 +146,43 @@
             else if (technique === 'sprite') {
                 cloudTexture = createCloudTexture();
                 for (let i = 0; i < count; i++) {
-                    const sprite = new PIXI.Sprite(cloudTexture);
-                    const scale = 0.3 + Math.random() * 1.2;
-                    sprite.alpha = 0.3 + Math.random() * 0.5;
-                    sprite.scale.set(scale);
-                    sprite.x = Math.random() * (vw + 200) - 100;
-                    sprite.y = Math.random() * (vh * 0.25);
-                    sprite.userData = { speed: 0.5 + Math.random() * 2.5 };
-                    clouds.push(sprite);
-                    app.stage.addChild(sprite);
+                    const s = new PIXI.Sprite(cloudTexture);
+                    const c = makeClouds(1, vw, vh)[0];
+                    s.alpha = c.alpha; s.scale.set(c.scale);
+                    s.x = c.x; s.y = c.y;
+                    s.userData = { speed: c.speed };
+                    clouds.push(s);
+                    app.stage.addChild(s);
                 }
             }
             else if (technique === 'particleContainer') {
                 cloudTexture = createCloudTexture();
-                const pc = new PIXI.ParticleContainer({
-                    maxSize: count,
-                    properties: { position: true, scale: true, alpha: true },
+                particleContainer = new PIXI.ParticleContainer({
+                    dynamicProperties: { position: true, scale: false, rotation: false, color: false },
                 });
-                app.stage.addChild(pc);
-
-                for (let i = 0; i < count; i++) {
-                    const sprite = new PIXI.Sprite(cloudTexture);
-                    const scale = 0.3 + Math.random() * 1.2;
-                    sprite.alpha = 0.3 + Math.random() * 0.5;
-                    sprite.scale.set(scale);
-                    sprite.x = Math.random() * (vw + 200) - 100;
-                    sprite.y = Math.random() * (vh * 0.25);
-                    sprite.userData = { speed: 0.5 + Math.random() * 2.5 };
-                    clouds.push(sprite);
-                    pc.addChild(sprite);
+                app.stage.addChild(particleContainer);
+                const data = makeClouds(count, vw, vh);
+                for (const c of data) {
+                    const p = new PIXI.Particle(cloudTexture);
+                    p.x = c.x; p.y = c.y;
+                    p.alpha = c.alpha;
+                    p.scaleX = c.scale; p.scaleY = c.scale;
+                    p.userData = { speed: c.speed };
+                    clouds.push(p);
+                    particleContainer.addParticle(p);
                 }
             }
             else if (technique === 'batchedGraphics') {
                 batchGraphics = new PIXI.Graphics();
                 app.stage.addChild(batchGraphics);
-
-                for (let i = 0; i < count; i++) {
-                    clouds.push({
-                        x: Math.random() * (vw + 200) - 100,
-                        y: Math.random() * (vh * 0.25),
-                        scale: 0.3 + Math.random() * 1.2,
-                        alpha: 0.3 + Math.random() * 0.5,
-                        speed: 0.5 + Math.random() * 2.5,
-                    });
-                }
+                clouds = makeClouds(count, vw, vh);
             }
 
-            // Run test
             const startTime = performance.now();
 
             return new Promise(resolve => {
-                const tickerFn = (ticker) => {
+                currentTicker = (ticker) => {
                     const elapsed = performance.now() - startTime;
-
-                    // FPS calculation
                     frameCount++;
                     if (elapsed - lastFpsTime >= 200) {
                         currentFps = (frameCount * 1000) / (elapsed - lastFpsTime);
@@ -197,66 +192,56 @@
                         if (currentFps < minFps) minFps = currentFps;
                         if (currentFps > maxFps) maxFps = currentFps;
 
-                        // Update HUD
                         const fpsEl = document.getElementById('fps');
                         fpsEl.textContent = currentFps.toFixed(1);
                         fpsEl.className = 'value ' + (currentFps >= 55 ? 'fps-good' : currentFps >= 30 ? 'fps-ok' : 'fps-bad');
-
                         const avg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
                         document.getElementById('avgFps').textContent = avg.toFixed(1);
                         document.getElementById('minFps').textContent = minFps === Infinity ? '-' : minFps.toFixed(1);
                         document.getElementById('elapsed').textContent = (elapsed / 1000).toFixed(1) + 's';
                     }
 
-                    // Animate clouds
+                    // Animate clouds with proper looping
                     if (technique === 'batchedGraphics') {
                         batchGraphics.clear();
-                        for (const cloud of clouds) {
-                            cloud.x += cloud.speed;
-                            if (cloud.x > vw + 100) cloud.x = -100;
-
-                            const s = cloud.scale;
-                            batchGraphics.circle(cloud.x, cloud.y - 20 * s, 20 * s);
-                            batchGraphics.circle(cloud.x + 30 * s, cloud.y - 30 * s, 28 * s);
-                            batchGraphics.circle(cloud.x + 60 * s, cloud.y - 20 * s, 20 * s);
-                            batchGraphics.fill({ color: 0xFFFFFF, alpha: cloud.alpha });
+                        for (const c of clouds) {
+                            c.x += c.speed;
+                            if (c.x > vw + 100) c.x = -100; // Loop
+                            const s = c.scale;
+                            batchGraphics.circle(c.x, c.y - 20 * s, 20 * s);
+                            batchGraphics.circle(c.x + 30 * s, c.y - 30 * s, 28 * s);
+                            batchGraphics.circle(c.x + 60 * s, c.y - 20 * s, 20 * s);
+                            batchGraphics.fill({ color: 0xFFFFFF, alpha: c.alpha });
                         }
                     } else {
-                        for (const cloud of clouds) {
-                            cloud.x += cloud.userData.speed;
-                            if (cloud.x > vw + 100) cloud.x = -100;
-                        }
+                        animateClouds(clouds, vw);
                     }
 
-                    // Subtle background morph
+                    // Background morph
                     const t = elapsed * 0.001;
                     const r = Math.floor(26 + Math.sin(t * 0.3) * 8);
                     const g = Math.floor(26 + Math.sin(t * 0.5 + 1) * 8);
                     const b = Math.floor(46 + Math.sin(t * 0.2 + 2) * 12);
                     bg.fill({ color: (r << 16) | (g << 8) | b });
 
-                    // Check if test is done
                     if (elapsed >= duration) {
-                        app.ticker.remove(tickerFn);
+                        app.ticker.remove(currentTicker);
+                        currentTicker = null;
                         testRunning = false;
 
                         const avgFps = fpsSamples.length > 0 ? fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length : 0;
-
                         window.__benchResults = {
-                            technique,
-                            count,
+                            technique, count,
                             avgFps,
                             minFps: minFps === Infinity ? 0 : minFps,
                             maxFps,
                             samples: fpsSamples.length,
                         };
                         window.__benchDone = true;
-
                         resolve(window.__benchResults);
                     }
                 };
-
-                app.ticker.add(tickerFn);
+                app.ticker.add(currentTicker);
             });
         };
 
