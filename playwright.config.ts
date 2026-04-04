@@ -5,7 +5,7 @@ export default defineConfig({
     timeout: 30_000,
     retries: 0,
     use: {
-        baseURL: 'http://localhost:4173',
+        baseURL: 'http://localhost:5100',
         headless: true,
     },
     projects: [
@@ -15,8 +15,8 @@ export default defineConfig({
         },
     ],
     webServer: {
-        command: 'npm run preview -- --port 4173',
-        url: 'http://localhost:4173',
+        command: 'npx vite --port 5100',
+        url: 'http://localhost:5100',
         reuseExistingServer: true,
         timeout: 60_000,
     },
