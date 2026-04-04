@@ -65,16 +65,15 @@ export class CloudRenderer {
     }
 
     /**
-     * Update cloud positions. Called from the Pixi ticker.
-     * @param elapsedMs Time elapsed since last frame
-     * @param screenPixelWidth Screen width in CSS pixels
+     * Update cloud positions. Called from the Pixi ticker each frame.
+     * @param screenWidth Screen width in CSS pixels
      * @param containerScreenY Container Y position on screen (CSS pixels)
      */
-    update(elapsedMs: number, screenPixelWidth: number, containerScreenY: number): void {
+    update(screenWidth: number, containerScreenY: number): void {
         if (this.startTime === 0) this.startTime = performance.now();
         const elapsed = (performance.now() - this.startTime) / 1000; // seconds
 
-        const vw = screenPixelWidth / 100;
+        const vw = screenWidth / 100;
         const totalDistance = 160 * vw;
         const startX = -50 * vw;
 

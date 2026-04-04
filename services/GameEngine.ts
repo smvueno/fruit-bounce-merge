@@ -10,6 +10,7 @@ import { InputSystem } from './systems/InputSystem';
 import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { ScoreController } from './systems/ScoreController';
+import { CloudRenderer } from './renderers/CloudRenderer';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -28,6 +29,7 @@ export class GameEngine {
     effectSystem: EffectSystem;
     renderSystem: RenderSystem;
     scoreController: ScoreController;
+    private cloudRenderer: CloudRenderer | null = null;
 
     // Game State
     fruits: Particle[] = [];
@@ -305,6 +307,9 @@ export class GameEngine {
 
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container);
+
+        // Initialize Cloud Renderer (screen-space, on the stage — not the scaled container)
+        this.cloudRenderer = new CloudRenderer(this.app.stage);
 
         // Start Game
         this.spawnNextFruit();
@@ -608,6 +613,11 @@ export class GameEngine {
 
         // 5. Render
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
+
+        // Update clouds (screen-space animation)
+        if (this.cloudRenderer && this.app) {
+            this.cloudRenderer.update(this.app.screen.width, this.container.position.y);
+        }
 
         // Sync Render State
         const renderCtx = {
