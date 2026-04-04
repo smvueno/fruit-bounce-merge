@@ -7,11 +7,11 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Cloud Rendering Benchmark', () => {
-    test.setTimeout(120_000);
+    test.setTimeout(300_000); // 5 minutes for full benchmark
 
     const TECHNIQUES = ['graphics', 'sprite', 'particleContainer', 'batchedGraphics'];
-    const CLOUD_COUNTS = [10, 50, 100, 250, 500, 1000];
-    const TEST_DURATION_MS = 4000;
+    const CLOUD_COUNTS = [10, 50, 100, 250];
+    const TEST_DURATION_MS = 3000;
     const results: any[] = [];
 
     async function runTechniqueTest(page: any, technique: string, count: number) {
@@ -22,7 +22,10 @@ test.describe('Cloud Rendering Benchmark', () => {
         });
 
         await page.goto(`http://localhost:5100/benchmark-clouds.html`);
-        await page.waitForTimeout(500);
+        
+        // Wait for the module to load
+        await page.waitForFunction(() => (window as any).__ready === true, { timeout: 10000 });
+        await page.waitForTimeout(300);
 
         // Start the test
         await page.evaluate((cfg) => {

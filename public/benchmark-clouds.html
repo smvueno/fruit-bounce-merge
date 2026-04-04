@@ -32,9 +32,8 @@
         <div class="row"><span class="label">Time:</span><span class="value" id="elapsed">-</span></div>
     </div>
 
-    <script type="module">
-        import * as PIXI from 'pixi.js';
-
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+    <script>
         let app = null;
         let testRunning = false;
 
@@ -54,6 +53,8 @@
             window.addEventListener('resize', () => {
                 app.renderer.resize(window.innerWidth, window.innerHeight);
             });
+
+            window.__ready = true;
         }
 
         // Pre-render cloud to texture at high resolution for sharpness
@@ -66,14 +67,13 @@
 
             const texture = app.renderer.generateTexture({
                 target: g,
-                resolution: 4, // High res for sharp scaling
+                resolution: 4,
                 antialias: true,
             });
             g.destroy();
             return texture;
         }
 
-        // Background with subtle morphing gradient
         function createBackground() {
             const bg = new PIXI.Graphics();
             bg.rect(0, 0, app.screen.width, app.screen.height);
@@ -99,7 +99,7 @@
             // FPS tracking
             const fpsSamples = [];
             let frameCount = 0;
-            let lastFpsTime = performance.now();
+            let lastFpsTime = 0;
             let currentFps = 0;
             let minFps = Infinity;
             let maxFps = 0;
@@ -109,9 +109,8 @@
             document.getElementById('count').textContent = count;
 
             let clouds = [];
-            let container = null;
-            let batchGraphics = null;
             let cloudTexture = null;
+            let batchGraphics = null;
 
             // Setup based on technique
             if (technique === 'graphics') {
@@ -134,9 +133,6 @@
             }
             else if (technique === 'sprite') {
                 cloudTexture = createCloudTexture();
-                const container = new PIXI.Container();
-                app.stage.addChild(container);
-
                 for (let i = 0; i < count; i++) {
                     const sprite = new PIXI.Sprite(cloudTexture);
                     const scale = 0.3 + Math.random() * 1.2;
@@ -146,7 +142,7 @@
                     sprite.y = Math.random() * (vh * 0.25);
                     sprite.userData = { speed: 0.5 + Math.random() * 2.5 };
                     clouds.push(sprite);
-                    container.addChild(sprite);
+                    app.stage.addChild(sprite);
                 }
             }
             else if (technique === 'particleContainer') {
@@ -190,7 +186,6 @@
             return new Promise(resolve => {
                 const tickerFn = (ticker) => {
                     const elapsed = performance.now() - startTime;
-                    const dt = ticker.deltaMS;
 
                     // FPS calculation
                     frameCount++;
