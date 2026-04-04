@@ -77,8 +77,8 @@ export class WallRenderer {
 
         // Mirror right wall so flat side faces game area
         if (side === 'right') {
+            g.pivot.set(40, 0);
             g.scale.set(-1, 1);
-            g.x = 80; // Adjust for the flip
         }
 
         return g;
