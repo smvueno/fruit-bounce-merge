@@ -269,7 +269,46 @@ tests/             # Playwright tests
 
 ---
 
-## 13. Commit Rules — ABSOLUTE
+## 13. Development & Testing Environment — ABSOLUTE
+
+### 13.1 Access URLs
+- **Local:** `http://localhost:5100`
+- **Network (Tailscale):** `http://pro.feist-crocodile.ts.net:5100`
+- Always test on **both** localhost and the Tailscale URL during development
+
+### 13.2 Manual Testing Checklist (Every Step)
+Before committing, verify manually via browser on `pro.feist-crocodile.ts.net`:
+- [ ] Start screen renders correctly
+- [ ] Game starts and canvas appears
+- [ ] Fruits drop and physics work
+- [ ] Walls visible on both left and right edges of game area
+- [ ] Ground visible and spans full viewport width
+- [ ] Clouds visible and animate above the game area
+- [ ] HUD displays correctly (score, timer, next fruit, save button)
+- [ ] Pause menu opens and closes
+- [ ] No visual clipping or misalignment at any screen size
+
+### 13.3 Multi-Size Testing
+Test the game at these viewport sizes during development:
+- **Mobile narrow:** 375×812 (iPhone 12 Mini)
+- **Mobile:** 390×844 (iPhone 12)
+- **Tablet:** 768×1024 (iPad)
+- **Desktop:** 1280×900
+- **Ultrawide:** 1920×1080
+
+### 13.4 Automated Testing
+- `npx playwright test` — Run full test suite
+- `npx playwright test tests/cloud-benchmark.spec.ts` — Cloud rendering benchmark
+- `npx playwright test tests/screenshots.spec.ts` — Screenshot verification
+- All tests must pass before every commit
+
+### 13.5 Benchmark Pages (Manual)
+- `http://localhost:5100/demo-clouds.html` — Interactive ParticleContainer cloud demo
+- `http://localhost:5100/benchmark-clouds.html` — Automated benchmark (4 techniques × 6 counts)
+
+---
+
+## 14. Commit Rules — ABSOLUTE
 
 - Small, descriptive commit messages
 - One logical change per commit
@@ -278,7 +317,7 @@ tests/             # Playwright tests
 
 ---
 
-## 14. What Stays as React DOM
+## 15. What Stays as React DOM
 
 - HUD (score, timer, level, next fruit, save button)
 - Pause menu
@@ -288,7 +327,7 @@ tests/             # Playwright tests
 - Point ticker
 - Debug menu
 
-## 15. What Goes Through Pixi
+## 16. What Goes Through Pixi
 
 - Fruit bodies and faces
 - Ground (wavy floor)
