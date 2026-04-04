@@ -4,12 +4,15 @@ import { Particle } from '../../types/GameObjects';
 import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
 import { GroundRenderer } from '../renderers/GroundRenderer';
 import { WallRenderer } from '../renderers/WallRenderer';
+import { EffectRenderer } from '../renderers/EffectRenderer';
+import { EffectParticle } from '../../types/GameObjects';
 
 export interface RenderContext {
     fruits: Particle[];
     currentFruit: Particle | null;
     feverActive: boolean;
     scaleFactor: number;
+    effectParticles?: EffectParticle[];
 }
 
 export class RenderSystem {
@@ -24,6 +27,7 @@ export class RenderSystem {
     // Pixi renderers (replacing separate 2D canvases)
     private groundRenderer: GroundRenderer | null = null;
     private wallRenderer: WallRenderer | null = null;
+    private effectRenderer: EffectRenderer | null = null;
 
     // Screen dimensions for ground/wall rendering
     private _screenWidth = 0;
@@ -40,6 +44,7 @@ export class RenderSystem {
         // Initialize new Pixi-based renderers
         this.groundRenderer = new GroundRenderer(container);
         this.wallRenderer = new WallRenderer(container);
+        this.effectRenderer = new EffectRenderer(container);
 
         container.addChild(this.dangerLine);
 
@@ -254,6 +259,11 @@ export class RenderSystem {
                     face.position.set(lookX * 0.5, lookY * 0.5);
                 }
             }
+        }
+
+        // Render effect particles (merge bursts, stars, suck particles, bomb ghosts)
+        if (this.effectRenderer && ctx.effectParticles) {
+            this.effectRenderer.render(ctx.effectParticles);
         }
     }
 

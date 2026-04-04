@@ -624,7 +624,8 @@ export class GameEngine {
             fruits: this.fruits,
             currentFruit: this.currentFruit,
             feverActive: isFever,
-            scaleFactor: this.scaleFactor
+            scaleFactor: this.scaleFactor,
+            effectParticles: this.effectSystem.visualParticles
         };
         this.renderSystem.renderSync(renderCtx);
     }

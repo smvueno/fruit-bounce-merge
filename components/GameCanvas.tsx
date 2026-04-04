@@ -14,7 +14,6 @@ import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
-import { EffectCanvas } from './EffectCanvas';
 import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
 import { ScoreFlyEffect } from './ScoreFlyEffect';
@@ -282,18 +281,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 fever={fever}
             />
 
-            {/* 1.5. Ground & Walls — now rendered by Pixi.js inside the game canvas */}
-
-            {/* 1.7. Effect Canvas - Overlay on top of walls */}
-            {gameAreaDimensions.width > 0 && (
-                <EffectCanvas
-                    engine={engineRef.current}
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
+            {/* 1.5. Ground, Walls & Effects — now rendered by Pixi.js inside the game canvas */}
 
             {/* 1.8. Point Ticker - Overlay for score popups */}
             {gameAreaDimensions.width > 0 && (
