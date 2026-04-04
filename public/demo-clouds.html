@@ -44,7 +44,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
     <script>
-        let app, pc, cloudTexture, particles = [];
+        let app, pc, cloudTextures = [], particles = [];
 
         async function init() {
             app = new PIXI.Application();
@@ -63,14 +63,23 @@
                 rebuild();
             });
 
-            // Create cloud texture
-            const g = new PIXI.Graphics();
-            g.circle(0, -20, 20);
-            g.circle(30, -30, 28);
-            g.circle(60, -20, 20);
-            g.fill({ color: 0xFFFFFF });
-            cloudTexture = app.renderer.generateTexture({ target: g, resolution: 4, antialias: true });
-            g.destroy();
+            // Create cloud textures — 3-ball and 2-ball variants
+            const cloud3 = new PIXI.Graphics();
+            cloud3.circle(0, -20, 20);
+            cloud3.circle(30, -30, 28);
+            cloud3.circle(60, -20, 20);
+            cloud3.fill({ color: 0xFFFFFF });
+            const texture3 = app.renderer.generateTexture({ target: cloud3, resolution: 4, antialias: true });
+            cloud3.destroy();
+
+            const cloud2 = new PIXI.Graphics();
+            cloud2.circle(0, -15, 18);
+            cloud2.circle(28, -25, 24);
+            cloud2.fill({ color: 0xFFFFFF });
+            const texture2 = app.renderer.generateTexture({ target: cloud2, resolution: 4, antialias: true });
+            cloud2.destroy();
+
+            cloudTextures = [texture3, texture2];
 
             // ParticleContainer
             pc = new PIXI.ParticleContainer({
@@ -109,14 +118,33 @@
             const vw = app.screen.width;
             const vh = app.screen.height;
 
+            // Depth layers: 0=far (small, slow, dim), 1=mid, 2=near (big, fast, bright)
+            const layers = [
+                { scale: 0.4, alpha: 0.2, speed: 0.8, yRange: [0.05, 0.15], texIdx: 1 },  // far - 2-ball
+                { scale: 0.7, alpha: 0.35, speed: 1.5, yRange: [0.08, 0.20], texIdx: 0 },  // mid - 3-ball
+                { scale: 1.2, alpha: 0.55, speed: 2.5, yRange: [0.12, 0.25], texIdx: 0 },  // near - 3-ball
+            ];
+
             for (let i = 0; i < count; i++) {
-                const p = new PIXI.Particle(cloudTexture);
-                p.x = Math.random() * (vw + 200) - 100;
-                p.y = Math.random() * (vh * 0.25);
-                p.alpha = 0.3 + Math.random() * 0.5;
-                p.scaleX = 0.3 + Math.random() * 1.2;
-                p.scaleY = 0.3 + Math.random() * 1.2;
-                p.userData = { speed: 0.5 + Math.random() * 2.5 };
+                // Pick a depth layer (weighted toward mid/far for natural look)
+                const r = Math.random();
+                const layer = r < 0.35 ? layers[0] : r < 0.7 ? layers[1] : layers[2];
+
+                // Add some variation within the layer
+                const scaleVar = layer.scale * (0.8 + Math.random() * 0.4);
+                const speedVar = layer.speed * (0.7 + Math.random() * 0.6);
+                const alphaVar = layer.alpha * (0.8 + Math.random() * 0.4);
+                const yMin = vh * layer.yRange[0];
+                const yMax = vh * layer.yRange[1];
+
+                const tex = cloudTextures[layer.texIdx];
+                const p = new PIXI.Particle(tex);
+                p.x = Math.random() * (vw + 300) - 150;
+                p.y = yMin + Math.random() * (yMax - yMin);
+                p.alpha = alphaVar;
+                p.scaleX = scaleVar;
+                p.scaleY = scaleVar;
+                p.userData = { speed: speedVar };
                 particles.push(p);
                 pc.addParticle(p);
             }
