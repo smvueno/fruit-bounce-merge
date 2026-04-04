@@ -3,7 +3,7 @@ import * as PIXI from 'pixi.js';
 /**
  * Renders animated clouds in Pixi screen-space.
  * Replaces CloudsCanvas.tsx — draws clouds using Pixi ticker.
- * Lives on the Pixi stage (screen coordinates), not the scaled game container.
+ * Lives on the Pixi stage (screen coordinates), starting from y=0.
  */
 interface CloudData {
     sprite: PIXI.Graphics;
@@ -16,7 +16,6 @@ interface CloudData {
 export class CloudRenderer {
     private container: PIXI.Container;
     private clouds: CloudData[] = [];
-    private zoneHeight: number = 180;
     private startTime: number = 0;
 
     constructor(stage: PIXI.Container) {
@@ -65,10 +64,11 @@ export class CloudRenderer {
 
     /**
      * Update cloud positions. Called from the Pixi ticker.
+     * The cloud zone is the band above the game area: [0, containerTop]
      * @param screenWidth Screen width in CSS pixels
-     * @param containerScreenY Container Y position on screen (CSS pixels)
+     * @param containerTop Container Y position on screen (CSS pixels) - this is the bottom of the cloud zone
      */
-    update(screenWidth: number, containerScreenY: number): void {
+    update(screenWidth: number, containerTop: number): void {
         if (this.startTime === 0) this.startTime = performance.now();
         const elapsed = (performance.now() - this.startTime) / 1000;
 
@@ -76,9 +76,9 @@ export class CloudRenderer {
         const totalDistance = 160 * vw;
         const startX = -50 * vw;
 
-        // Zone: above the game container
-        const zoneTop = containerScreenY - 140;
-        const zoneH = this.zoneHeight;
+        // Cloud zone: from y=0 down to containerTop
+        // yPercent 0 = top of zone (y=0), yPercent 1 = bottom of zone (y=containerTop)
+        const zoneBottom = containerTop;
 
         for (const cloud of this.clouds) {
             const cycleTime = cloud.duration;
@@ -88,7 +88,8 @@ export class CloudRenderer {
             if (progress < 0) progress += 1;
 
             const currentX = startX + (totalDistance * progress);
-            const canvasY = zoneTop + (cloud.yPercent * zoneH);
+            // Cloud y ranges from 0 (top) to containerTop (bottom of zone)
+            const canvasY = cloud.yPercent * zoneBottom;
 
             cloud.sprite.x = currentX;
             cloud.sprite.y = canvasY;

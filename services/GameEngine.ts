@@ -478,7 +478,7 @@ export class GameEngine {
             this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, yOffset, xOffset);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(actualW, actualH, yOffset, xOffset, actualH);
+            this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, yOffset, xOffset, actualH);
         }
     }
 
