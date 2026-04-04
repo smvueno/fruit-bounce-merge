@@ -1,19 +1,55 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect, useState, useCallback } from 'react';
 
 interface LayoutContainerProps {
     children: ReactNode;
+    onSizeChange?: (width: number, height: number, top: number, left: number) => void;
 }
 
-export const LayoutContainer: React.FC<LayoutContainerProps> = ({ children }) => {
+export const LayoutContainer: React.FC<LayoutContainerProps> = ({ children, onSizeChange }) => {
+    const [containerRect, setContainerRect] = useState({ width: 0, height: 0, top: 0, left: 0 });
+
+    const updateSize = useCallback(() => {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const aspectRatio = 4 / 5;
+
+        let containerWidth: number;
+        let containerHeight: number;
+
+        if (vw / vh < aspectRatio) {
+            // Narrow screen: width-constrained
+            containerWidth = vw;
+            containerHeight = vw / aspectRatio;
+        } else {
+            // Wide screen: height-constrained
+            containerHeight = vh;
+            containerWidth = vh * aspectRatio;
+        }
+
+        const left = (vw - containerWidth) / 2;
+        const top = (vh - containerHeight) / 2;
+
+        setContainerRect({ width: containerWidth, height: containerHeight, top, left });
+        onSizeChange?.(containerWidth, containerHeight, top, left);
+    }, [onSizeChange]);
+
+    useEffect(() => {
+        updateSize();
+        window.addEventListener('resize', updateSize);
+        return () => window.removeEventListener('resize', updateSize);
+    }, [updateSize]);
+
     return (
-        <div className="w-full h-[100svh] flex justify-center overflow-hidden">
-            {/* 
-                Container roughly limits to mobile aspect ratio (~9:20) on desktop via max-w.
-                On mobile, it fills the width (because screen < max-w usually).
-            */}
-            <div className="relative w-full max-w-[50svh] h-full flex flex-col">
-                {children}
-            </div>
+        <div
+            className="fixed flex flex-col"
+            style={{
+                width: containerRect.width,
+                height: containerRect.height,
+                top: containerRect.top,
+                left: containerRect.left,
+            }}
+        >
+            {children}
         </div>
     );
 };

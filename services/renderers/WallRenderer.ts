@@ -20,11 +20,7 @@ export class WallRenderer {
 
     /**
      * Draw both grass walls in screen coordinates.
-     * @param gameAreaWidth Game area width in CSS pixels
-     * @param gameAreaHeight Game area height in CSS pixels
-     * @param containerTop Container Y position on screen (CSS pixels)
-     * @param containerLeft Container X position on screen (CSS pixels)
-     * @param screenHeight Viewport height in CSS pixels
+     * Walls are positioned exactly at the left and right edges of the game area.
      */
     draw(gameAreaWidth: number, gameAreaHeight: number, containerTop: number, containerLeft: number, screenHeight: number): void {
         this.leftWall.removeChildren();
@@ -34,13 +30,13 @@ export class WallRenderer {
         const topMargin = 60;
         const wallHeight = screenHeight - topMargin;
 
-        // Left wall: positioned at containerLeft, overlapping the game area edge by ~10px
-        this.leftWall.x = containerLeft - 10;
+        // Left wall: positioned so its right edge touches the game area left edge
+        this.leftWall.x = containerLeft - wallWidth;
         this.leftWall.y = topMargin;
         this.leftWall.addChild(this.drawWallShape(wallHeight, 'left'));
 
-        // Right wall: positioned at containerLeft + gameAreaWidth - wallWidth + 10, overlapping the game area edge
-        this.rightWall.x = containerLeft + gameAreaWidth - wallWidth + 10;
+        // Right wall: positioned so its left edge touches the game area right edge
+        this.rightWall.x = containerLeft + gameAreaWidth;
         this.rightWall.y = topMargin;
         this.rightWall.addChild(this.drawWallShape(wallHeight, 'right'));
     }

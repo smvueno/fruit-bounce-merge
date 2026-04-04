@@ -7,7 +7,7 @@ interface GameAreaProps {
 
 export const GameArea: React.FC<GameAreaProps> = React.memo(({ children, canvasRef }) => {
     return (
-        <div className="relative w-full aspect-[4/5] bg-transparent overflow-visible">
+        <div className="relative w-full h-full bg-transparent overflow-hidden">
             {/* Full-viewport canvas for Pixi rendering */}
             <canvas
                 ref={canvasRef}

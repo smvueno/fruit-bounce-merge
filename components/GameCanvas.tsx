@@ -1,6 +1,6 @@
 
 // ... imports
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { DANGER_Y_PERCENT } from '../constants';
@@ -116,6 +116,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     };
 
     // --- Track Game Area Position ---
+    // The LayoutContainer now handles sizing. We just need to track the game area ref position.
+    const handleLayoutSizeChange = useCallback((_width: number, _height: number, _top: number, _left: number) => {
+        // LayoutContainer size changed, update game area dimensions
+        requestAnimationFrame(() => {
+            if (gameAreaRef.current) {
+                const rect = gameAreaRef.current.getBoundingClientRect();
+                setGameAreaDimensions({
+                    width: rect.width,
+                    height: rect.height,
+                    top: rect.top,
+                    left: rect.left
+                });
+            }
+        });
+    }, []);
+
     useEffect(() => {
         const updateGameAreaPosition = () => {
             if (gameAreaRef.current) {
@@ -324,10 +340,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             {/* 1.2 Clouds Overlay — now rendered by Pixi.js inside the game canvas */}
 
             {/* 2. Main Layout Container */}
-            <LayoutContainer>
+            <LayoutContainer onSizeChange={handleLayoutSizeChange}>
 
-                {/* TOP UI (HUD) - Flexible spacer with 20px top padding as requested */}
-                <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1">
+                {/* TOP UI (HUD) - Compact top bar */}
+                <div className="shrink-0 flex flex-col justify-start relative z-30 pt-[8px] pb-[4px] px-2">
                     <GameHUD
                         score={currentStateScore}
                         playTime={playTime}
@@ -338,24 +354,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     />
                 </div>
 
-                {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
-                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
+                {/* 3. Game Area - Fills remaining space between HUD and bottom controls */}
+                <div ref={gameAreaRef} className="flex-1 relative z-10 min-h-0">
                     <GameArea canvasRef={canvasRef}>
-                        {/* Overlays moved to root level for correct z-index stacking */}
-                        {/* New Danger Overlay sits INSIDE the game area scaling context */}
                         <DangerOverlay dangerTime={limitTime} />
                     </GameArea>
                 </div>
 
-                {/* BOTTOM UI - Fixed height spacer. */}
-                <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
+                {/* BOTTOM UI - Compact bottom bar */}
+                <div className="shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[8px]">
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handlePauseToggle}
-                            className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                            className="w-11 h-11 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
                             aria-label="Pause Game"
                         >
-                            <Pause size={24} fill="currentColor" />
+                            <Pause size={22} fill="currentColor" />
                         </button>
                     </div>
                 </div>
