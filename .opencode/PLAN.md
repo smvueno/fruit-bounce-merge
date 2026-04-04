@@ -243,19 +243,9 @@ Every step must pass this test matrix:
 
 ---
 
-## Open Questions for User
-
-1. **Fruit face rendering:** Current approach has faces as separate Graphics children (enables look-direction + blinking). For ParticleContainer optimization, faces need to be baked into textures. Should we:
-   - (A) Bake faces into fruit textures (simpler, loses dynamic look-direction)
-   - (B) Keep faces as separate containers but use a secondary ParticleContainer (more complex, keeps features)
-   - (C) Use a Sprite sheet with multiple face expressions per fruit (middle ground)
-
-2. **JuiceOverlay:** The current CSS mask-based wave animation is quite nice. Should we:
-   - (A) Recreate it in Pixi Graphics (full Pixi migration)
-   - (B) Keep it as CSS (it's performant and only 1 DOM element)
-
-3. **Background blobs:** The animated gradient blobs in App.tsx — should these move into Pixi too, or stay as CSS?
-
-4. **HUD elements** (score, timer, next fruit preview) — currently React components. Should these stay as React overlay or move into Pixi?
-
-5. **Scope confirmation:** Is this the right order? Should we prioritize certain phases over others?
+## User-Decided Architecture
+- **Fruit faces:** Baked into textures with blink-frame swap (most performant + simplest)
+- **JuiceOverlay:** Keep as CSS (1 DOM element, works fine)
+- **Background blobs:** Remove → replace with soft animated gradient background
+- **HUD elements:** Keep as React overlay (score, timer, next fruit preview)
+- **Commit style:** Small, reversible commits per micro-step
