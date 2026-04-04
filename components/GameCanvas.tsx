@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
-import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../constants';
+import { DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
 // Components
@@ -73,8 +73,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
     // Visual State
-    const [bgPatternIndex, setBgPatternIndex] = useState(0);
-    const [bgColor, setBgColor] = useState(FRUIT_DEFS[FruitTier.CHERRY].color);
 
     // Game Area Position for Ground Canvas
     const [gameAreaDimensions, setGameAreaDimensions] = useState({
@@ -117,15 +115,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         }
     };
 
-    // --- Background Cycle Effect ---
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setBgPatternIndex(prev => (prev + 1) % 4);
-        }, 25000);
-        return () => clearInterval(interval);
-    }, []);
-
-    // --- Track Game Area Position for Ground Canvas ---
+    // --- Track Game Area Position ---
     useEffect(() => {
         const updateGameAreaPosition = () => {
             if (gameAreaRef.current) {
@@ -199,7 +189,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
             onMaxFruit: (t: FruitTier) => {
-                if (FRUIT_DEFS[t]) setBgColor(FRUIT_DEFS[t].patternColor);
                 setMaxTier(prev => Math.max(prev, t));
             },
             onTimeUpdate: (ms: number) => setPlayTime(ms),
@@ -275,11 +264,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     return (
         <>
             {/* 1. Full Screen Background */}
-            <GameBackground
-                patternIndex={bgPatternIndex}
-                bgColor={bgColor}
-                fever={fever}
-            />
+            <GameBackground fever={fever} />
 
             {/* 1.5. Ground, Walls & Effects — now rendered by Pixi.js inside the game canvas */}
 
