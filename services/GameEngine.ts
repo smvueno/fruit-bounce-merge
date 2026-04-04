@@ -396,6 +396,10 @@ export class GameEngine {
 
         // Redraw static elements
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
+        // Redraw environment (ground + walls)
+        const actualW = this.app.screen.width;
+        const actualH = this.app.screen.height;
+        this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
 
         return true;
     }
@@ -419,6 +423,9 @@ export class GameEngine {
         const yOffset = (actualH - logicalH) / 2;
 
         this.container.position.set(xOffset, yOffset);
+
+        // Update Pixi-based ground and wall renderers
+        this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
     }
 
     reset() {

@@ -1,7 +1,9 @@
 import * as PIXI from 'pixi.js';
 import { FruitTier } from '../../types';
-import { Particle, EffectParticle } from '../../types/GameObjects';
+import { Particle } from '../../types/GameObjects';
 import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
+import { GroundRenderer } from '../renderers/GroundRenderer';
+import { WallRenderer } from '../renderers/WallRenderer';
 
 export interface RenderContext {
     fruits: Particle[];
@@ -14,16 +16,20 @@ export class RenderSystem {
     app: PIXI.Application | undefined;
     container: PIXI.Container | undefined;
     fruitSprites: Map<number, PIXI.Container> = new Map();
-    // Optimization: Cache face+eyes refs to avoid getChildByLabel() scan every frame
-    faceRefs: Map<number, { face: PIXI.Container; eyes: PIXI.DisplayObject | null }> = new Map();
+    faceRefs: Map<number, { face: PIXI.Container; eyes: PIXI.Container | null }> = new Map();
     textures: Map<FruitTier, PIXI.Texture> = new Map();
-    floorGraphics: PIXI.Graphics;
     dangerLine: PIXI.Graphics;
-    // Optimization: Only redraw danger line when active state changes
     private _lastDangerActive: boolean | null = null;
 
+    // Pixi renderers (replacing separate 2D canvases)
+    private groundRenderer: GroundRenderer | null = null;
+    private wallRenderer: WallRenderer | null = null;
+
+    // Screen dimensions for ground/wall rendering
+    private _screenWidth = 0;
+    private _screenHeight = 0;
+
     constructor() {
-        this.floorGraphics = new PIXI.Graphics();
         this.dangerLine = new PIXI.Graphics();
     }
 
@@ -31,10 +37,29 @@ export class RenderSystem {
         this.app = app;
         this.container = container;
 
-        container.addChild(this.floorGraphics);
+        // Initialize new Pixi-based renderers
+        this.groundRenderer = new GroundRenderer(container);
+        this.wallRenderer = new WallRenderer(container);
+
         container.addChild(this.dangerLine);
 
         this.initTextures();
+    }
+
+    /**
+     * Called when screen dimensions change (from GameEngine.handleResize).
+     */
+    updateEnvironment(screenWidth: number, screenHeight: number, vWidth: number, vHeight: number, scaleFactor: number): void {
+        this._screenWidth = screenWidth;
+        this._screenHeight = screenHeight;
+
+        // Redraw ground and walls with new dimensions
+        if (this.groundRenderer) {
+            this.groundRenderer.draw(vWidth, vHeight, screenWidth, scaleFactor, 0);
+        }
+        if (this.wallRenderer) {
+            this.wallRenderer.draw(vHeight, scaleFactor, vWidth);
+        }
     }
 
     generateAllTextures(): Map<FruitTier, PIXI.Texture> {
@@ -51,8 +76,6 @@ export class RenderSystem {
             console.warn('[RenderSystem] Cannot generate textures: WebGL Context is lost.');
             return map;
         }
-
-        // Renderer reset block removed (Unsafe/Dead Code)
 
         Object.values(FRUIT_DEFS).forEach(def => {
             try {
@@ -104,8 +127,8 @@ export class RenderSystem {
         this.fruitSprites.set(p.id, sprite);
         this.container.addChild(sprite);
 
-        // Optimization: Cache face+eyes refs so renderSync() avoids getChildByLabel() every frame
-        const eyes = face.getChildByLabel ? face.getChildByLabel("eyes") : null;
+        // Cache face+eyes refs
+        const eyes = face.getChildByLabel ? (face.getChildByLabel("eyes") as PIXI.Container) : null;
         this.faceRefs.set(p.id, { face, eyes });
     }
 
@@ -128,8 +151,8 @@ export class RenderSystem {
         });
         this.fruitSprites.clear();
         this.faceRefs.clear();
-        this._lastDangerActive = null; // Force danger line redraw after reset
-        this.floorGraphics.clear(); // Will need redraw
+        this._lastDangerActive = null;
+        this.dangerLine.clear();
     }
 
     refreshGraphics(): boolean {
@@ -138,17 +161,23 @@ export class RenderSystem {
             const newTextures = this.generateAllTextures();
 
             if (newTextures.size > 0) {
-                // 1. Destroy all current textures to free GPU memory
                 this.textures.forEach(tex => {
                     if (tex.destroy) tex.destroy(true);
                 });
                 this.textures.clear();
 
-                // 2. Swap in new textures
                 newTextures.forEach((v, k) => this.textures.set(k, v));
 
-                // 3. Reset sprites (re-create them with new textures)
                 this.reset();
+
+                // Redraw environment
+                if (this.app && this.container) {
+                    this.updateEnvironment(
+                        this._screenWidth, this._screenHeight,
+                        600, 750,
+                        this.container.scale.x
+                    );
+                }
 
                 console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.textures.size}`);
                 return true;
@@ -164,44 +193,8 @@ export class RenderSystem {
 
     // --- Rendering Logic ---
 
-    getFloorY(x: number, height: number) {
-        const baseY = height - 60;
-        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
-    }
-
-    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
-        this.floorGraphics.clear();
-
-        const bottomY = ((screenHeight - containerY) / scaleFactor) + 200;
-
-        // Calculate extended width to cover full screen
-        const virtualScreenWidth = screenWidth / scaleFactor;
-        const gameCenter = width / 2;
-        const startX = gameCenter - (virtualScreenWidth / 2);
-        const endX = gameCenter + (virtualScreenWidth / 2);
-
-        const step = 5;
-        this.floorGraphics.moveTo(startX, bottomY);
-        this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
-        for (let x = startX; x <= endX; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
-        }
-        this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
-        this.floorGraphics.lineTo(endX, bottomY);
-        this.floorGraphics.closePath();
-        this.floorGraphics.fill({ color: 0x76C043 });
-        this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
-
-        // Decorations - keep relative to game area center
-        this.floorGraphics.circle(50, height, 15);
-        this.floorGraphics.circle(80, height + 20, 20);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-        this.floorGraphics.circle(width - 100, height, 25);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-    }
-
     drawDangerLine(width: number, height: number, active: boolean) {
-        // Optimization: Skip redraw if state hasn't changed — PIXI.Graphics clear+draw is not free
+        // Optimization: Skip redraw if state hasn't changed
         if (this._lastDangerActive === active) return;
         this._lastDangerActive = active;
 
@@ -249,7 +242,7 @@ export class RenderSystem {
                     p.scaleY * rhythmicScaleY
                 );
 
-                // Optimization: Use cached face/eyes refs — avoids getChildByLabel() O(N) scan per fruit per frame
+                // Use cached face/eyes refs
                 const refs = this.faceRefs.get(p.id);
                 if (refs) {
                     const { face, eyes } = refs;
