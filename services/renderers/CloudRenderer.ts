@@ -1,29 +1,28 @@
 import * as PIXI from 'pixi.js';
 
 /**
- * Renders animated clouds in Pixi.
- * Replaces CloudsCanvas.tsx — draws clouds using Pixi ticker instead of separate rAF loop.
- * Clouds live in the band above the game area.
+ * Renders animated clouds in Pixi screen-space.
+ * Replaces CloudsCanvas.tsx — draws clouds using Pixi ticker.
+ * Lives on the Pixi stage (screen coordinates), not the scaled game container.
  */
-interface Cloud {
+interface CloudData {
     sprite: PIXI.Graphics;
     yPercent: number;
-    duration: number; // seconds for one full pass
-    delay: number;    // seconds offset
+    duration: number;
+    delay: number;
     opacity: number;
 }
 
 export class CloudRenderer {
     private container: PIXI.Container;
-    private clouds: Cloud[] = [];
-    private zoneTop: number = 0;
+    private clouds: CloudData[] = [];
     private zoneHeight: number = 180;
     private startTime: number = 0;
 
-    constructor(parent: PIXI.Container) {
+    constructor(stage: PIXI.Container) {
         this.container = new PIXI.Container();
-        this.container.zIndex = -200; // Behind everything
-        parent.addChild(this.container);
+        this.container.zIndex = -200;
+        stage.addChild(this.container);
 
         this.createClouds();
     }
@@ -65,26 +64,25 @@ export class CloudRenderer {
     }
 
     /**
-     * Update cloud positions. Called from the Pixi ticker each frame.
+     * Update cloud positions. Called from the Pixi ticker.
      * @param screenWidth Screen width in CSS pixels
      * @param containerScreenY Container Y position on screen (CSS pixels)
      */
     update(screenWidth: number, containerScreenY: number): void {
         if (this.startTime === 0) this.startTime = performance.now();
-        const elapsed = (performance.now() - this.startTime) / 1000; // seconds
+        const elapsed = (performance.now() - this.startTime) / 1000;
 
         const vw = screenWidth / 100;
         const totalDistance = 160 * vw;
         const startX = -50 * vw;
 
-        // Zone boundaries
+        // Zone: above the game container
         const zoneTop = containerScreenY - 140;
         const zoneH = this.zoneHeight;
 
         for (const cloud of this.clouds) {
             const cycleTime = cloud.duration;
-            const delayMs = cloud.delay;
-            const totalTime = elapsed - delayMs;
+            const totalTime = elapsed - cloud.delay;
 
             let progress = (totalTime % cycleTime) / cycleTime;
             if (progress < 0) progress += 1;

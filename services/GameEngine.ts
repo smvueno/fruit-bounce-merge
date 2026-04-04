@@ -11,6 +11,7 @@ import { EffectSystem } from './systems/EffectSystem';
 import { RenderSystem } from './systems/RenderSystem';
 import { ScoreController } from './systems/ScoreController';
 import { CloudRenderer } from './renderers/CloudRenderer';
+import { WallRenderer } from './renderers/WallRenderer';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -30,6 +31,12 @@ export class GameEngine {
     renderSystem: RenderSystem;
     scoreController: ScoreController;
     private cloudRenderer: CloudRenderer | null = null;
+    private wallRenderer: WallRenderer | null = null;
+    // Screen-space coordinates for wall/cloud renderers
+    private _screenWidth = 0;
+    private _screenHeight = 0;
+    private _containerTop = 0;
+    private _containerLeft = 0;
 
     // Game State
     fruits: Particle[] = [];
@@ -308,8 +315,14 @@ export class GameEngine {
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container);
 
-        // Initialize Cloud Renderer (screen-space, on the stage — not the scaled container)
+        // Initialize Cloud Renderer (screen-space, on the stage)
         this.cloudRenderer = new CloudRenderer(this.app.stage);
+
+        // Initialize Wall Renderer (screen-space, on the stage)
+        this.wallRenderer = new WallRenderer(this.app.stage);
+
+        // Re-run resize to update screen-space renderers now that they exist
+        this.handleResize();
 
         // Start Game
         this.spawnNextFruit();
@@ -429,7 +442,18 @@ export class GameEngine {
 
         this.container.position.set(xOffset, yOffset);
 
-        // Update Pixi-based ground and wall renderers
+        // Track screen-space coordinates for wall/cloud renderers
+        this._screenWidth = actualW;
+        this._screenHeight = actualH;
+        this._containerTop = yOffset;
+        this._containerLeft = xOffset;
+
+        // Update screen-space renderers (walls, clouds)
+        if (this.wallRenderer) {
+            this.wallRenderer.draw(actualW, actualH, yOffset, xOffset, actualH);
+        }
+
+        // Update virtual-space ground renderer (inside the game container)
         this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
     }
 
@@ -616,7 +640,7 @@ export class GameEngine {
 
         // Update clouds (screen-space animation)
         if (this.cloudRenderer && this.app) {
-            this.cloudRenderer.update(this.app.screen.width, this.container.position.y);
+            this.cloudRenderer.update(this._screenWidth, this._containerTop);
         }
 
         // Sync Render State
