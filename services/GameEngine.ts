@@ -12,6 +12,7 @@ import { RenderSystem } from './systems/RenderSystem';
 import { ScoreController } from './systems/ScoreController';
 import { CloudRenderer } from './renderers/CloudRenderer';
 import { WallRenderer } from './renderers/WallRenderer';
+import { GroundRenderer } from './renderers/GroundRenderer';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -32,11 +33,14 @@ export class GameEngine {
     scoreController: ScoreController;
     private cloudRenderer: CloudRenderer | null = null;
     private wallRenderer: WallRenderer | null = null;
-    // Screen-space coordinates for wall/cloud renderers
+    private groundRenderer: GroundRenderer | null = null;
+    // Screen-space coordinates for wall/cloud/ground renderers
     private _screenWidth = 0;
     private _screenHeight = 0;
     private _containerTop = 0;
     private _containerLeft = 0;
+    private _gameAreaWidth = 0;
+    private _gameAreaHeight = 0;
 
     // Game State
     fruits: Particle[] = [];
@@ -321,6 +325,9 @@ export class GameEngine {
         // Initialize Wall Renderer (screen-space, on the stage)
         this.wallRenderer = new WallRenderer(this.app.stage);
 
+        // Initialize Ground Renderer (screen-space, on the stage)
+        this.groundRenderer = new GroundRenderer(this.app.stage);
+
         // Re-run resize to update screen-space renderers now that they exist
         this.handleResize();
 
@@ -415,9 +422,25 @@ export class GameEngine {
         // Redraw static elements
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
         // Redraw environment (ground + walls)
+        if (this.groundRenderer) {
+            this.groundRenderer.draw(
+                this._screenWidth, this._screenHeight,
+                this._gameAreaWidth, this._gameAreaHeight,
+                this._containerTop, this._containerLeft
+            );
+        }
+        if (this.wallRenderer) {
+            this.wallRenderer.draw(
+                this._screenWidth, this._screenHeight,
+                this._containerTop, this._containerLeft,
+                this._screenHeight
+            );
+        }
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
         this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
+        this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft);
+        this.wallRenderer?.draw(actualW, actualH, this._containerTop, this._containerLeft, actualH);
 
         return true;
     }
@@ -442,19 +465,21 @@ export class GameEngine {
 
         this.container.position.set(xOffset, yOffset);
 
-        // Track screen-space coordinates for wall/cloud renderers
+        // Track screen-space coordinates for wall/cloud/ground renderers
         this._screenWidth = actualW;
         this._screenHeight = actualH;
         this._containerTop = yOffset;
         this._containerLeft = xOffset;
+        this._gameAreaWidth = V_WIDTH * this.scaleFactor;
+        this._gameAreaHeight = V_HEIGHT * this.scaleFactor;
 
-        // Update screen-space renderers (walls, clouds)
+        // Update screen-space renderers (ground, walls, clouds)
+        if (this.groundRenderer) {
+            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, yOffset, xOffset);
+        }
         if (this.wallRenderer) {
             this.wallRenderer.draw(actualW, actualH, yOffset, xOffset, actualH);
         }
-
-        // Update virtual-space ground renderer (inside the game container)
-        this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
     }
 
     reset() {

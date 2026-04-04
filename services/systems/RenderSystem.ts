@@ -25,13 +25,7 @@ export class RenderSystem {
     private _lastDangerActive: boolean | null = null;
 
     // Pixi renderers (replacing separate 2D canvases)
-    private groundRenderer: GroundRenderer | null = null;
-    private wallRenderer: WallRenderer | null = null;
     private effectRenderer: EffectRenderer | null = null;
-
-    // Screen dimensions for ground/wall rendering
-    private _screenWidth = 0;
-    private _screenHeight = 0;
 
     constructor() {
         this.dangerLine = new PIXI.Graphics();
@@ -42,8 +36,6 @@ export class RenderSystem {
         this.container = container;
 
         // Initialize new Pixi-based renderers
-        this.groundRenderer = new GroundRenderer(container);
-        this.wallRenderer = new WallRenderer(container);
         this.effectRenderer = new EffectRenderer(container);
 
         container.addChild(this.dangerLine);
@@ -53,18 +45,11 @@ export class RenderSystem {
 
     /**
      * Called when screen dimensions change (from GameEngine.handleResize).
+     * This method is now a no-op since ground/wall renderers are managed by GameEngine.
+     * Kept for backward compatibility.
      */
-    updateEnvironment(screenWidth: number, screenHeight: number, vWidth: number, vHeight: number, scaleFactor: number): void {
-        this._screenWidth = screenWidth;
-        this._screenHeight = screenHeight;
-
-        // Redraw ground and walls with new dimensions
-        if (this.groundRenderer) {
-            this.groundRenderer.draw(vWidth, vHeight, screenWidth, scaleFactor, 0);
-        }
-        if (this.wallRenderer) {
-            this.wallRenderer.draw(vHeight, scaleFactor, vWidth);
-        }
+    updateEnvironment(_screenWidth: number, _screenHeight: number, _vWidth: number, _vHeight: number, _scaleFactor: number): void {
+        // Ground and wall rendering is now handled directly by GameEngine
     }
 
     generateAllTextures(): Map<FruitTier, PIXI.Texture> {
@@ -175,14 +160,7 @@ export class RenderSystem {
 
                 this.reset();
 
-                // Redraw environment
-                if (this.app && this.container) {
-                    this.updateEnvironment(
-                        this._screenWidth, this._screenHeight,
-                        600, 750,
-                        this.container.scale.x
-                    );
-                }
+                // Redraw environment (ground/walls handled by GameEngine)
 
                 console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.textures.size}`);
                 return true;
