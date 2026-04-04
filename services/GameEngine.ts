@@ -320,7 +320,7 @@ export class GameEngine {
         this.renderSystem.initialize(this.app, this.container);
 
         // Initialize Cloud Renderer (screen-space, on the stage)
-        this.cloudRenderer = new CloudRenderer(this.app.stage);
+        this.cloudRenderer = new CloudRenderer(this.app.stage, this.app.renderer);
 
         // Initialize Wall Renderer (screen-space, on the stage)
         this.wallRenderer = new WallRenderer(this.app.stage);
