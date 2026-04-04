@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
+import { NewGameEngine } from '../services/new/NewGameEngine';
 import { DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
@@ -32,7 +33,7 @@ interface GameCanvasProps {
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const engineRef = useRef<GameEngine | null>(null);
+    const engineRef = useRef<NewGameEngine | null>(null);
     const gameAreaRef = useRef<HTMLDivElement>(null);
 
     // Game State
@@ -141,89 +142,53 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     useEffect(() => {
         if (!canvasRef.current) return;
 
-        const engine = new GameEngine(canvasRef.current, settings, {
-            // Score Updates
-            onScore: (amt: number, total: number) => {
-                // We intentionally ignore 'total' here to keep the HUD detached
-                // The HUD only updates via Suck Up (onStreakEnd)
-                // However, if total is 0 (reset), we should sync.
-                if (total === 0) {
-                    setCurrentStateScore(0);
-                    setScore(0);
-                }
-            },
+        const engine = new NewGameEngine(canvasRef.current, settings);
 
-            // Core Game Events
-            onGameOver: (stats: GameStats) => {
-                // Force sync HUD to Real Score on Game Over to ensure no points are lost
-                setCurrentStateScore(stats.score);
-                setScore(stats.score);
-                onGameOver(stats);
-            },
-
-            // Combo & Fever
-            onCombo: (c: number) => setCombo(c),
-            onFeverStart: (mult: number) => {
-                setFever(true);
-                setCurrentFeverMult(mult);
-            },
-            onFeverEnd: (finalScore?: number) => {
-                setFever(false);
-                // Legacy support cleanup
-                // We don't use this for score sync anymore (GameEngine calls onStreakEnd)
-                // But we keep it to ensure fever state is cleared in UI
-            },
-
-            // New Score System Events
-            onPopupStash: () => {
-                setPopupData(null); // Hide popup temporarily
-            },
-            onPopupRestore: (data: PopupData) => {
-                setPopupData(data); // Restore popup
-            },
-            // Updated signature to accept totalRealScore
-            onStreakEnd: (amount: number, totalRealScore: number) => {
-                triggerSuckUp(amount, totalRealScore);
-            },
-
-            // Visuals
-            onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
-            onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
-            onNextFruit: (t: FruitTier) => setNextFruit(t),
-            onMaxFruit: (t: FruitTier) => {
-                setMaxTier(prev => Math.max(prev, t));
-            },
-            onTimeUpdate: (ms: number) => setPlayTime(ms),
-            onSaveUpdate: (t: FruitTier | null) => setSavedFruit(t),
-            onCelebration: () => {
-                setShowCelebration(true);
-                setTimeout(() => setShowCelebration(false), 4000);
-            },
-            onPointEvent: (event: PointEvent) => {
-                setLatestPointEvent(event);
-            },
-            onPopupUpdate: (data: PopupData) => {
-                setPopupData(data);
-                lastPopupDataRef.current = data; // Cache context
-
-                // Update Color
-                let c = '#fbbf24'; // Default Yellow
-                if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80';
-                else if (data.type === PopUpType.FRENZY) c = '#facc15';
-                else if (data.type === PopUpType.CHAIN) c = '#fb923c';
-                setPopupColor(c);
+        // Wire callbacks
+        engine.onScore = (amt: number, total: number) => {
+            if (total === 0) {
+                setCurrentStateScore(0);
+                setScore(0);
             }
-        });
+        };
+        engine.onGameOver = (stats: GameStats) => {
+            setCurrentStateScore(stats.score);
+            setScore(stats.score);
+            onGameOver(stats);
+        };
+        engine.onCombo = (c: number) => setCombo(c);
+        engine.onFeverStart = (mult: number) => {
+            setFever(true);
+            setCurrentFeverMult(mult);
+        };
+        engine.onFeverEnd = () => setFever(false);
+        engine.onDanger = (active: boolean, ms: number) => setLimitTime(active ? ms : 0);
+        engine.onJuiceUpdate = (j: number, max: number) => setJuice((j / max) * 100);
+        engine.onNextFruit = (t: FruitTier) => setNextFruit(t);
+        engine.onMaxFruit = (t: FruitTier) => setMaxTier(prev => Math.max(prev, t));
+        engine.onTimeUpdate = (ms: number) => setPlayTime(ms);
+        engine.onCelebration = () => {
+            setShowCelebration(true);
+            setTimeout(() => setShowCelebration(false), 4000);
+        };
+        engine.onPointEvent = (event: PointEvent) => setLatestPointEvent(event);
+        engine.onPopupUpdate = (data: PopupData) => {
+            setPopupData(data);
+            lastPopupDataRef.current = data;
+            let c = '#fbbf24';
+            if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80';
+            else if (data.type === PopUpType.FRENZY) c = '#facc15';
+            else if (data.type === PopUpType.CHAIN) c = '#fb923c';
+            setPopupColor(c);
+        };
 
         engine.initialize().then(() => {
             engineRef.current = engine;
 
-            // Debug: expose engine globally for testing
             if (typeof window !== 'undefined') {
                 (window as any).__gameEngine = engine;
             }
 
-            // After engine init + DOM layout, update game area rect
             requestAnimationFrame(() => {
                 if (gameAreaRef.current && engineRef.current) {
                     const rect = gameAreaRef.current.getBoundingClientRect();

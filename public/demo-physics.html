@@ -117,7 +117,7 @@
                 dynamicProperties: {
                     position: true,
                     scale: true,
-                    rotation: true,
+                    rotation: false,
                     color: false,
                 },
             });
@@ -172,8 +172,6 @@
                 id, x, y, vx: 0, vy: 0,
                 radius: f.radius,
                 tier,
-                rotation: 0,
-                vr: (Math.random() - 0.5) * 0.05,
                 particle,
             };
             fruits.push(fruit);
@@ -218,14 +216,13 @@
                 f.vy *= FRICTION;
                 f.x += f.vx;
                 f.y += f.vy;
-                f.rotation += f.vr;
 
                 // Floor collision
                 if (f.y + f.radius > FLOOR_Y) {
                     f.y = FLOOR_Y - f.radius;
                     f.vy *= -FLOOR_DAMPING;
                     f.vx *= 0.9;
-                    f.vr *= 0.9;
+                    f.vr = 0;
                 }
 
                 // Wall collisions
@@ -296,7 +293,6 @@
             for (const f of fruits) {
                 f.particle.x = f.x;
                 f.particle.y = f.y;
-                f.particle.rotation = f.rotation;
             }
 
             renderMs = performance.now() - t0;
