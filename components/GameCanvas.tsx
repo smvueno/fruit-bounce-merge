@@ -1,6 +1,6 @@
 
 // ... imports
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
 import { DANGER_Y_PERCENT } from '../constants';
@@ -116,22 +116,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     };
 
     // --- Track Game Area Position ---
-    // The LayoutContainer now handles sizing. We just need to track the game area ref position.
-    const handleLayoutSizeChange = useCallback((_width: number, _height: number, _top: number, _left: number) => {
-        // LayoutContainer size changed, update game area dimensions
-        requestAnimationFrame(() => {
-            if (gameAreaRef.current) {
-                const rect = gameAreaRef.current.getBoundingClientRect();
-                setGameAreaDimensions({
-                    width: rect.width,
-                    height: rect.height,
-                    top: rect.top,
-                    left: rect.left
-                });
-            }
-        });
-    }, []);
-
     useEffect(() => {
         const updateGameAreaPosition = () => {
             if (gameAreaRef.current) {
@@ -142,6 +126,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     top: rect.top,
                     left: rect.left
                 });
+                // Update engine with actual DOM game area bounds
+                engineRef.current?.updateGameAreaRect(rect.left, rect.top, rect.width, rect.height);
             }
         };
 
@@ -229,13 +215,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             }
         });
 
-        engine.initialize().catch(e => console.error("Game init failed", e));
-        engineRef.current = engine;
+        engine.initialize().then(() => {
+            engineRef.current = engine;
 
-        // Debug: expose engine globally for testing
-        if (typeof window !== 'undefined') {
-            (window as any).__gameEngine = engine;
-        }
+            // Debug: expose engine globally for testing
+            if (typeof window !== 'undefined') {
+                (window as any).__gameEngine = engine;
+            }
+
+            // After engine init + DOM layout, update game area rect
+            requestAnimationFrame(() => {
+                if (gameAreaRef.current && engineRef.current) {
+                    const rect = gameAreaRef.current.getBoundingClientRect();
+                    engineRef.current.updateGameAreaRect(rect.left, rect.top, rect.width, rect.height);
+                    setGameAreaDimensions({
+                        width: rect.width,
+                        height: rect.height,
+                        top: rect.top,
+                        left: rect.left
+                    });
+                }
+            });
+        }).catch(e => console.error("Game init failed", e));
 
         return () => {
             engine.cleanup();
@@ -340,7 +341,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             {/* 1.2 Clouds Overlay — now rendered by Pixi.js inside the game canvas */}
 
             {/* 2. Main Layout Container */}
-            <LayoutContainer onSizeChange={handleLayoutSizeChange}>
+            <LayoutContainer>
 
                 {/* TOP UI (HUD) - Compact top bar */}
                 <div className="shrink-0 flex flex-col justify-start relative z-30 pt-[8px] pb-[4px] px-2">

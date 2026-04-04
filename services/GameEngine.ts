@@ -450,35 +450,77 @@ export class GameEngine {
 
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
-        const viewW = actualW / 1.4;
-        const viewH = actualH / 1.4;
 
-        this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
-        this.container.scale.set(this.scaleFactor);
+        // If we have a game area rect, use it to calculate scale
+        if (this._gameAreaWidth > 0 && this._gameAreaHeight > 0) {
+            this.scaleFactor = Math.min(this._gameAreaWidth / V_WIDTH, this._gameAreaHeight / V_HEIGHT);
+            this.container.scale.set(this.scaleFactor);
 
-        // Center the container in the canvas
-        const logicalW = V_WIDTH * this.scaleFactor;
-        const logicalH = V_HEIGHT * this.scaleFactor;
-
-        const xOffset = (actualW - logicalW) / 2;
-        const yOffset = (actualH - logicalH) / 2;
-
-        this.container.position.set(xOffset, yOffset);
+            // Center container within the canvas
+            const logicalW = V_WIDTH * this.scaleFactor;
+            const logicalH = V_HEIGHT * this.scaleFactor;
+            const xOffset = (actualW - logicalW) / 2;
+            const yOffset = (actualH - logicalH) / 2;
+            this.container.position.set(xOffset, yOffset);
+        } else {
+            // Fallback: estimate from canvas size
+            const viewW = actualW / 1.4;
+            const viewH = actualH / 1.4;
+            this.scaleFactor = Math.min(viewW / V_WIDTH, viewH / V_HEIGHT);
+            this.container.scale.set(this.scaleFactor);
+            const logicalW = V_WIDTH * this.scaleFactor;
+            const logicalH = V_HEIGHT * this.scaleFactor;
+            const xOffset = (actualW - logicalW) / 2;
+            const yOffset = (actualH - logicalH) / 2;
+            this.container.position.set(xOffset, yOffset);
+        }
 
         // Track screen-space coordinates for wall/cloud/ground renderers
         this._screenWidth = actualW;
         this._screenHeight = actualH;
-        this._containerTop = yOffset;
-        this._containerLeft = xOffset;
-        this._gameAreaWidth = V_WIDTH * this.scaleFactor;
-        this._gameAreaHeight = V_HEIGHT * this.scaleFactor;
+        this._containerTop = this._gameAreaHeight > 0 ? (actualH - this._gameAreaHeight) / 2 : this._containerTop;
+        this._containerLeft = this._gameAreaWidth > 0 ? (actualW - this._gameAreaWidth) / 2 : this._containerLeft;
 
         // Update screen-space renderers (ground, walls, clouds)
         if (this.groundRenderer) {
-            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, yOffset, xOffset);
+            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, yOffset, xOffset, actualH);
+            this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, actualH);
+        }
+    }
+
+    /**
+     * Update the game area rectangle in screen coordinates.
+     * Called when the DOM layout changes (responsive resize).
+     */
+    updateGameAreaRect(left: number, top: number, width: number, height: number): void {
+        if (!this.app || !this.app.screen) return;
+
+        this._containerLeft = left;
+        this._containerTop = top;
+        this._gameAreaWidth = width;
+        this._gameAreaHeight = height;
+        this._screenWidth = this.app.screen.width;
+        this._screenHeight = this.app.screen.height;
+
+        // Recalculate scale and container position
+        this.scaleFactor = Math.min(width / V_WIDTH, height / V_HEIGHT);
+        this.container.scale.set(this.scaleFactor);
+
+        // Center container within the canvas
+        const logicalW = V_WIDTH * this.scaleFactor;
+        const logicalH = V_HEIGHT * this.scaleFactor;
+        const xOffset = (this._screenWidth - logicalW) / 2;
+        const yOffset = (this._screenHeight - logicalH) / 2;
+        this.container.position.set(xOffset, yOffset);
+
+        // Update screen-space renderers
+        if (this.groundRenderer) {
+            this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, height, top, left);
+        }
+        if (this.wallRenderer) {
+            this.wallRenderer.draw(width, height, top, left, this._screenHeight);
         }
     }
 
