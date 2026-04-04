@@ -215,9 +215,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
         engine.initialize().catch(e => console.error("Game init failed", e));
         engineRef.current = engine;
+
+        // Debug: expose engine globally for testing
+        if (typeof window !== 'undefined') {
+            (window as any).__gameEngine = engine;
+        }
+
         return () => {
             engine.cleanup();
             engineRef.current = null;
+            if (typeof window !== 'undefined') {
+                delete (window as any).__gameEngine;
+            }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
