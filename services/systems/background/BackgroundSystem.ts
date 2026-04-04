@@ -51,43 +51,31 @@ export class BackgroundSystem {
 
         // Let's create a main layer for patterns to handle alpha correctly
         const patternContainer = new PIXI.Container();
-        patternContainer.alpha = 0.2;
+        // The pattern container itself needs a base color if we want to multiply.
+        // Let's match the old React setup.
+        // The old React setup was:
+        // <div bg="#FFF8E1" (or dynamic color) opacity=0.35>
+        //   <div gradient="rgba(255,255,255,0.9)" />
+        //   <div pattern opacity=0.2 />
+        // </div>
 
+        // This means the BASE background is always behind the 0.35 opacity layer!
+        // We need a base background!
+
+        // Let's rethink the structure:
+        // 1. Base Layer: Solid color (e.g., #FFF8E1)
+        // 2. Dynamic Color Layer: bgSprite, opacity 0.35
+        // 3. Gradient Layer: White vignette
+        // 4. Pattern Layer: Black patterns, opacity 0.2
+
+        // Add a base sprite that is always #FFF8E1
+        const baseSprite = new PIXI.Sprite(PIXI.Texture.WHITE);
+        baseSprite.tint = 0xFFF8E1;
+        this.container.addChild(baseSprite);
+
+        // The bgSprite is the dynamic colored one, opacity 0.35
+        this.bgSprite.alpha = 0.35;
         this.container.addChild(this.bgSprite);
-        this.container.addChild(patternContainer);
-
-        // 2. Pattern Layers
-        const patternSizes = [100, 60, 80, 80];
-
-        // Wait to load all assets first, then build the sprites
-        for (let i = 0; i < BACKGROUND_PATTERNS.length; i++) {
-            const size = patternSizes[i];
-
-            PIXI.Assets.load(BACKGROUND_PATTERNS[i]).then((texture) => {
-                if (texture.source) texture.source.scaleMode = 'linear';
-
-                const tilingSprite = new PIXI.TilingSprite({
-                    texture: texture,
-                    width: this.width > 0 ? this.width : (window.innerWidth || 800),
-                    height: this.height > 0 ? this.height : (window.innerHeight || 600)
-                });
-
-                tilingSprite.tileScale.set(80 / size);
-
-                tilingSprite.alpha = i === this.activePatternIndex ? 1.0 : 0;
-                tilingSprite.blendMode = 'multiply';
-
-                this.patterns[i] = tilingSprite;
-                patternContainer.addChild(tilingSprite);
-
-                // Force a resize right away to fit bounds
-                tilingSprite.width = this.width > 0 ? this.width : (window.innerWidth || 800);
-                tilingSprite.height = this.height > 0 ? this.height : (window.innerHeight || 600);
-
-            }).catch(e => {
-                console.error(`Failed to load pattern ${BACKGROUND_PATTERNS[i]}:`, e);
-            });
-        }
 
         // 3. Gradient Mask Overlay
         const gradCanvas = document.createElement('canvas');
@@ -106,11 +94,76 @@ export class BackgroundSystem {
         this.gradientSprite = new PIXI.Sprite(gradTexture);
         this.gradientSprite.anchor.set(0, 0);
         this.container.addChild(this.gradientSprite);
+
+        patternContainer.alpha = 0.5; // Base opacity for patterns layer
+        this.container.addChild(patternContainer);
+
+        // 2. Pattern Layers
+        const patternSizes = [100, 60, 80, 80];
+
+        // Create initial placeholder TilingSprites to ensure order and avoid async loading issues
+        for (let i = 0; i < BACKGROUND_PATTERNS.length; i++) {
+            const size = patternSizes[i];
+
+            const tilingSprite = new PIXI.TilingSprite({
+                texture: PIXI.Texture.WHITE,
+                width: this.width > 0 ? this.width : (window.innerWidth || 800),
+                height: this.height > 0 ? this.height : (window.innerHeight || 600)
+            });
+
+            tilingSprite.tileScale.set(80 / size);
+            tilingSprite.alpha = 0; // Hide until loaded
+            tilingSprite.blendMode = 'normal';
+
+            this.patterns[i] = tilingSprite;
+            patternContainer.addChild(tilingSprite);
+
+            PIXI.Assets.load(BACKGROUND_PATTERNS[i]).then((texture) => {
+                if (texture.source) texture.source.scaleMode = 'linear';
+
+                // Recreate TilingSprite with new texture to fix WebGL caching bug on first load
+                const newTilingSprite = new PIXI.TilingSprite({
+                    texture: texture,
+                    width: this.width > 0 ? this.width : (window.innerWidth || 800),
+                    height: this.height > 0 ? this.height : (window.innerHeight || 600)
+                });
+                newTilingSprite.tileScale.set(80 / size);
+                newTilingSprite.alpha = 0; // Initialize as invisible
+                newTilingSprite.blendMode = 'normal';
+
+                // Ensure the pattern is visually distinct by slightly boosting contrast
+                // The pattern is black (0,0,0) with varying alpha
+                const filter = new PIXI.ColorMatrixFilter();
+                filter.matrix = [
+                    0,  0,  0,  0,  0,  // R
+                    0,  0,  0,  0,  0,  // G
+                    0,  0,  0,  0,  0,  // B
+                    0,  0,  0,  1.5, 0  // Alpha multiplier to increase visibility of the pattern
+                ];
+                newTilingSprite.filters = [filter];
+
+                const index = patternContainer.getChildIndex(this.patterns[i]);
+                patternContainer.addChildAt(newTilingSprite, index);
+                patternContainer.removeChild(this.patterns[i]);
+
+                this.patterns[i] = newTilingSprite;
+
+            }).catch(e => {
+                console.error(`Failed to load pattern ${BACKGROUND_PATTERNS[i]}:`, e);
+            });
+        }
     }
 
     public resize(width: number, height: number) {
         this.width = width;
         this.height = height;
+
+        // The base Sprite is at index 0
+        const baseSprite = this.container.children[0] as PIXI.Sprite;
+        if (baseSprite) {
+            baseSprite.width = width;
+            baseSprite.height = height;
+        }
 
         // Resize Background Sprite
         this.bgSprite.width = width;
@@ -177,21 +230,12 @@ export class BackgroundSystem {
 
             if (!pattern) continue;
 
-            // Scroll Position
-            pattern.tilePosition.x = -wrappedScroll;
+            // Scroll Position (Vertical)
+            pattern.tilePosition.y = wrappedScroll;
 
-            // Opacity Crossfade (transition: opacity 1.5s ease-in-out)
-            const targetAlpha = i === this.activePatternIndex ? 1.0 : 0;
-            if (pattern.alpha !== targetAlpha) {
-                const alphaDiff = targetAlpha - pattern.alpha;
-                // Roughly matches a 1.5s transition
-                pattern.alpha += alphaDiff * (1.0 / 1.5) * dtSeconds;
-
-                // Snap if close
-                if (Math.abs(pattern.alpha - targetAlpha) < 0.01) {
-                    pattern.alpha = targetAlpha;
-                }
-            }
+            // Alpha crossfade
+            const targetAlpha = (i === this.activePatternIndex) ? 1.0 : 0.0;
+            pattern.alpha += (targetAlpha - pattern.alpha) * dtSeconds * 3.0; // 3.0 speed
         }
 
         // 4. Update Background Color
