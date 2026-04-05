@@ -94,6 +94,8 @@ export class InputSystem {
         const r = ctx.currentFruit ? ctx.currentFruit.radius : 20;
         this.aimX = Math.max(r, Math.min(ctx.width - r, x));
         this.dragAnchorX = this.aimX;
-        this.dragAnchorY = (ctx.height * SPAWN_Y_PERCENT) + (Math.min(y, ctx.height * 0.4) - ctx.height * 0.2) * 0.1;
+        // Expanded vertical range: clamp finger Y to 10%-50% of height with 0.25 multiplier
+        // (was 20%-40% with 0.1 — felt too restrictive for dragging up/down)
+        this.dragAnchorY = (ctx.height * SPAWN_Y_PERCENT) + (Math.max(ctx.height * 0.1, Math.min(y, ctx.height * 0.5)) - ctx.height * 0.2) * 0.25;
     }
 }
