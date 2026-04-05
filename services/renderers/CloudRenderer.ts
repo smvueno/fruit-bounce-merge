@@ -25,10 +25,13 @@ interface CloudLayer {
 
 export class CloudRenderer {
     private pc: PIXI.ParticleContainer;
-    private skyGradient: PIXI.Graphics;
+    private skySprite: PIXI.Sprite;
     private clouds: CloudData[] = [];
     private textures: PIXI.Texture[] = [];
     private layers: CloudLayer[] = [];
+    private _skyTexture: PIXI.Texture | null = null;
+    private _lastSkyWidth = 0;
+    private _lastSkyHeight = 0;
 
     // 3-ball cloud width in local coords: 60+20=80, 2-ball: 28+24=52
     private readonly CLOUD_WIDTH_3 = 100;
@@ -38,7 +41,6 @@ export class CloudRenderer {
         this.textures = this.createCloudTextures(renderer);
 
         // Depth layers: near (big/fast/bright) → far (small/slow/dimmer)
-        // Increased alpha for better visibility
         this.layers = [
             { scale: 1.6, alpha: 0.85, speed: 55, yPercent: 0.10, texIndex: 0 },
             { scale: 1.3, alpha: 0.75, speed: 40, yPercent: 0.25, texIndex: 0 },
@@ -47,10 +49,10 @@ export class CloudRenderer {
             { scale: 0.55, alpha: 0.45, speed: 14, yPercent: 0.80, texIndex: 1 },
         ];
 
-        // Sky gradient backdrop for cloud visibility
-        this.skyGradient = new PIXI.Graphics();
-        this.skyGradient.zIndex = -210; // Behind clouds (-200)
-        stage.addChild(this.skyGradient);
+        // Sky gradient backdrop (Sprite with canvas gradient texture)
+        this.skySprite = new PIXI.Sprite();
+        this.skySprite.zIndex = -210;
+        stage.addChild(this.skySprite);
 
         this.pc = new PIXI.ParticleContainer({
             dynamicProperties: {
@@ -99,8 +101,6 @@ export class CloudRenderer {
             particle.scaleX = layer.scale;
             particle.scaleY = layer.scale;
 
-            // Spread initial X positions across the screen + off-screen left
-            // Stagger so they don't all start at the same position
             const stagger = (vw + scaledWidth * 2) / this.layers.length;
             particle.x = -scaledWidth + (i * stagger);
 
@@ -120,19 +120,40 @@ export class CloudRenderer {
      * @param containerTop Container Y position on screen (CSS pixels)
      */
     update(screenWidth: number, containerTop: number): void {
-        // Update sky gradient
-        this.skyGradient.clear();
+        // Update sky gradient using canvas for proper gradient blending
         const gradientHeight = containerTop;
         if (gradientHeight > 0) {
-            // Main gradient layer
-            this.skyGradient.rect(0, 0, screenWidth, gradientHeight);
-            this.skyGradient.fill({ color: 0x3B82F6, alpha: 0.35 });
-            // Brighter top layer for gradient effect
-            this.skyGradient.rect(0, 0, screenWidth, gradientHeight * 0.6);
-            this.skyGradient.fill({ color: 0x60A5FA, alpha: 0.25 });
-            // Lightest at very top
-            this.skyGradient.rect(0, 0, screenWidth, gradientHeight * 0.3);
-            this.skyGradient.fill({ color: 0x93C5FD, alpha: 0.15 });
+            // Only recreate texture when size changes (avoid per-frame allocation)
+            if (!this._skyTexture || this._lastSkyWidth !== screenWidth || this._lastSkyHeight !== gradientHeight) {
+                if (this._skyTexture) this._skyTexture.destroy(true);
+
+                const canvas = document.createElement('canvas');
+                canvas.width = screenWidth;
+                canvas.height = gradientHeight;
+                const ctx = canvas.getContext('2d')!;
+
+                // Smooth vertical gradient from dark blue (top) to transparent (bottom)
+                const gradient = ctx.createLinearGradient(0, 0, 0, gradientHeight);
+                gradient.addColorStop(0, 'rgba(37, 99, 235, 0.55)');     // #2563EB dark blue
+                gradient.addColorStop(0.3, 'rgba(59, 130, 246, 0.35)');   // #3B82F6
+                gradient.addColorStop(0.6, 'rgba(96, 165, 250, 0.18)');   // #60A5FA
+                gradient.addColorStop(0.85, 'rgba(147, 197, 253, 0.06)'); // #93C5FD
+                gradient.addColorStop(1, 'rgba(147, 197, 253, 0)');       // transparent
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, screenWidth, gradientHeight);
+
+                this._skyTexture = PIXI.Texture.from(canvas);
+                this._lastSkyWidth = screenWidth;
+                this._lastSkyHeight = gradientHeight;
+            }
+
+            this.skySprite.texture = this._skyTexture;
+            this.skySprite.width = screenWidth;
+            this.skySprite.height = gradientHeight;
+            this.skySprite.visible = true;
+        } else {
+            this.skySprite.visible = false;
         }
 
         const speedFactor = screenWidth / 1280;
