@@ -7,9 +7,10 @@ import React, { ReactNode, useEffect, useState, useCallback } from 'react';
  * 
  * The game area maintains 4:5 aspect ratio.
  * HUD (~80px) and controls (~60px) are outside the game area.
- * LayoutContainer width = gameAreaWidth + padding*2 (so inner content matches game area).
+ * LayoutContainer width = game area width (exactly matching the 4:5 area).
+ * Padding (8px) is applied inside the container, not expanding it.
  */
-const PADDING = 8;
+const PADDING = 16;
 const HUD_HEIGHT = 80;
 const CONTROLS_HEIGHT = 60;
 
@@ -25,12 +26,10 @@ export const LayoutContainer: React.FC<{ children: ReactNode }> = ({ children })
         const availableHeight = vh - HUD_HEIGHT - CONTROLS_HEIGHT;
         // Game area width based on 4:5 aspect ratio
         const gameAreaWidth = availableHeight * aspectRatio;
-        // Container width = game area width + padding on both sides
-        const containerWidth = gameAreaWidth + PADDING * 2;
 
         // On narrow screens, fill the width
-        // On wide screens, constrain to container width
-        const width = Math.min(vw, containerWidth);
+        // On wide screens, constrain to game area width
+        const width = Math.min(vw, gameAreaWidth);
 
         setContainerWidth(width);
     }, []);
@@ -45,9 +44,12 @@ export const LayoutContainer: React.FC<{ children: ReactNode }> = ({ children })
         <div className="fixed inset-0 flex flex-col items-center justify-center">
             <div
                 className="flex flex-col h-full"
-                style={{ width: containerWidth || '100%', padding: `${PADDING}px 0`, boxSizing: 'border-box' }}
+                style={{ width: containerWidth || '100%' }}
             >
-                {children}
+                {/* Inner wrapper with consistent padding */}
+                <div className="flex flex-col h-full w-full" style={{ padding: `${PADDING}px`, boxSizing: 'border-box' }}>
+                    {children}
+                </div>
             </div>
         </div>
     );
