@@ -286,7 +286,7 @@ export class GameEngine {
     }
 
     async initialize() {
-        this.gameInit?.initialize();
+        await this.gameInit?.initialize();
     }
     handleResize() {
         this.gameResize?.handleResize();
