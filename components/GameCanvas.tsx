@@ -294,7 +294,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             <LayoutContainer>
 
                 {/* TOP UI (HUD) */}
-                <div className="shrink-0 flex flex-col justify-start relative z-30 px-24 pt-20">
+                <div className="shrink-0 flex flex-col justify-start relative z-30" style={{ paddingLeft: '8%', paddingRight: '8%', paddingTop: '3%' }}>
                     <GameHUD
                         score={currentStateScore}
                         playTime={playTime}
@@ -313,7 +313,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
 
                 {/* BOTTOM UI */}
-                <div className="shrink-0 flex flex-col justify-end items-center z-40 w-full pb-20">
+                <div className="shrink-0 flex flex-col justify-end items-center z-40 w-full" style={{ paddingBottom: '3%' }}>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={handlePauseToggle}

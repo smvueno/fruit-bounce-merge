@@ -31,13 +31,15 @@ export class WallRenderer {
         const V_HEIGHT = 750;
         const overlap = 5; // px overlap into game area
 
-        // Left wall: inner edge (local x=70) positioned at x=overlap
+        // Left wall: inner edge (local x=70) positioned at x=overlap (5px inside game area)
         this.leftWall.x = overlap - 70;
         this.leftWall.y = 35;
         this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
 
-        // Right wall: mirrored, inner edge at V_WIDTH with grass cap overlap
-        this.rightWall.x = V_WIDTH + 70;
+        // Right wall: mirrored (scale.x = -1), inner edge at V_WIDTH - overlap
+        // After mirror, local x=70 maps to container.x + (-70)
+        // We want: container.x + (-70) = V_WIDTH - overlap → container.x = V_WIDTH - overlap + 70
+        this.rightWall.x = V_WIDTH - overlap + 70;
         this.rightWall.y = 35;
         this.rightWall.scale.x = -1;
         this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
