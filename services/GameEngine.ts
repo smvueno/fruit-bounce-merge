@@ -34,7 +34,6 @@ export class GameEngine {
     private cloudRenderer: CloudRenderer | null = null;
     private wallRenderer: WallRenderer | null = null;
     private groundRenderer: GroundRenderer | null = null;
-    // Screen-space coordinates for wall/cloud/ground renderers
     private _screenWidth = 0;
     private _screenHeight = 0;
     private _containerTop = 0;
@@ -319,14 +318,14 @@ export class GameEngine {
         // Initialize Render System
         this.renderSystem.initialize(this.app, this.container);
 
+        // Initialize Ground Renderer (inside the game container — virtual coords)
+        this.groundRenderer = new GroundRenderer(this.container);
+
         // Initialize Cloud Renderer (screen-space, on the stage)
         this.cloudRenderer = new CloudRenderer(this.app.stage, this.app.renderer);
 
         // Initialize Wall Renderer (screen-space, on the stage)
         this.wallRenderer = new WallRenderer(this.app.stage);
-
-        // Initialize Ground Renderer (screen-space, on the stage)
-        this.groundRenderer = new GroundRenderer(this.app.stage);
 
         // Re-run resize to update screen-space renderers now that they exist
         this.handleResize();
@@ -423,12 +422,7 @@ export class GameEngine {
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
         // Redraw environment (ground + walls)
         if (this.groundRenderer) {
-            this.groundRenderer.draw(
-                this._screenWidth, this._screenHeight,
-                this._gameAreaWidth, this._gameAreaHeight,
-                this._containerTop, this._containerLeft,
-                this.scaleFactor
-            );
+            this.groundRenderer.draw(this._screenWidth, this._screenHeight, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
         if (this.wallRenderer) {
             this.wallRenderer.draw(
@@ -440,7 +434,7 @@ export class GameEngine {
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
         this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
-        this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, this.scaleFactor);
+        this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         this.wallRenderer?.draw(actualW, actualH, this._containerTop, this._containerLeft, actualH);
 
         return true;
@@ -484,7 +478,7 @@ export class GameEngine {
 
         // Update screen-space renderers (ground, walls, clouds)
         if (this.groundRenderer) {
-            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, this.scaleFactor);
+            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
         if (this.wallRenderer) {
             this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, actualH);
@@ -518,7 +512,7 @@ export class GameEngine {
 
         // Update screen-space renderers
         if (this.groundRenderer) {
-            this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, height, top, left, this.scaleFactor);
+            this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, this.scaleFactor, left);
         }
         if (this.wallRenderer) {
             this.wallRenderer.draw(width, height, top, left, this._screenHeight);

@@ -1,73 +1,71 @@
 import * as PIXI from 'pixi.js';
 
 /**
- * Renders the wavy ground floor in Pixi screen-space.
- * Aligned to the physics floor: y = V_HEIGHT - 15 = 735 in virtual coords.
- * Uses the Pixi container's position (not DOM) for accurate alignment.
+ * Renders the wavy ground floor inside the game container (virtual coords).
+ * This ensures ground stays perfectly aligned with fruits at any screen size.
+ * Ground extends beyond game area to cover screen edges.
  */
 export class GroundRenderer {
     private fillGraphics: PIXI.Graphics;
     private strokeGraphics: PIXI.Graphics;
-    private container: PIXI.Container;
 
-    constructor(stage: PIXI.Container) {
-        this.container = new PIXI.Container();
+    constructor(parent: PIXI.Container) {
         this.fillGraphics = new PIXI.Graphics();
         this.strokeGraphics = new PIXI.Graphics();
-        this.container.addChild(this.fillGraphics);
-        this.container.addChild(this.strokeGraphics);
-        this.container.zIndex = 5;
-        stage.addChild(this.container);
+        // Ground sits below fruits
+        this.fillGraphics.zIndex = -100;
+        this.strokeGraphics.zIndex = -100;
+        parent.addChild(this.fillGraphics);
+        parent.addChild(this.strokeGraphics);
     }
 
     /**
-     * Draw the ground floor in screen coordinates.
-     * @param viewWidth Viewport width in CSS pixels
+     * Draw the ground floor in virtual coordinates.
+     * @param viewWidth Viewport width in CSS pixels (for extending beyond game area)
      * @param viewHeight Viewport height in CSS pixels
      * @param gameAreaWidth Game area width in CSS pixels
-     * @param gameAreaHeight Game area height in CSS pixels
-     * @param containerTop Pixi container Y position on screen (CSS pixels) — NOT DOM position
-     * @param containerLeft Pixi container X position on screen (CSS pixels) — NOT DOM position
      * @param scaleFactor Scale factor between virtual and screen coords
+     * @param containerLeft Pixi container X position on screen (CSS pixels)
      */
-    draw(viewWidth: number, viewHeight: number, gameAreaWidth: number, gameAreaHeight: number, containerTop: number, containerLeft: number, scaleFactor: number): void {
+    draw(viewWidth: number, _viewHeight: number, gameAreaWidth: number, scaleFactor: number, containerLeft: number): void {
         this.fillGraphics.clear();
         this.strokeGraphics.clear();
 
+        const V_WIDTH = 600;
         const V_HEIGHT = 750;
 
         // Physics floor is at V_HEIGHT - 15 = 735 in virtual coords
-        // Convert to screen Y using the Pixi container's position
         const virtualFloorY = V_HEIGHT - 15;
-        const gameFloorY = containerTop + (virtualFloorY * scaleFactor);
 
-        // Helper to get wave Y at screen X (relative to game area)
-        const getWaveY = (screenX: number): number => {
-            const visualRelX = screenX - containerLeft;
-            const virtualX = visualRelX / scaleFactor;
-            const virtualWaveHeight = Math.sin(virtualX * 0.015) * 10 + Math.cos(virtualX * 0.04) * 5;
-            const visualWaveHeight = virtualWaveHeight * scaleFactor;
-            return gameFloorY + visualWaveHeight;
+        // How many virtual units the screen extends beyond the game area on each side
+        const screenVWidth = viewWidth / scaleFactor;
+        const gameCenter = V_WIDTH / 2;
+        const startX = gameCenter - (screenVWidth / 2);
+        const endX = gameCenter + (screenVWidth / 2);
+
+        // Helper to get wave Y at virtual X
+        const getWaveY = (virtualX: number): number => {
+            const wave = Math.sin(virtualX * 0.015) * 10 + Math.cos(virtualX * 0.04) * 5;
+            return virtualFloorY + wave;
         };
 
         // Draw fill (closed polygon - no stroke)
         const step = 5;
         const fillPoints: number[] = [];
-        fillPoints.push(0, viewHeight);
-        fillPoints.push(0, getWaveY(0));
-        for (let x = 0; x <= viewWidth; x += step) {
+        fillPoints.push(startX, V_HEIGHT + 200);
+        fillPoints.push(startX, getWaveY(startX));
+        for (let x = startX; x <= endX; x += step) {
             fillPoints.push(x, getWaveY(x));
         }
-        fillPoints.push(viewWidth, getWaveY(viewWidth));
-        fillPoints.push(viewWidth, viewHeight);
+        fillPoints.push(endX, getWaveY(endX));
+        fillPoints.push(endX, V_HEIGHT + 200);
 
         this.fillGraphics.poly(fillPoints);
         this.fillGraphics.fill({ color: 0x76C043 });
 
         // Draw stroke as open line (top edge only, no bottom line)
-        // Use moveTo/lineTo instead of poly() to avoid auto-closing
         const strokePoints: number[] = [];
-        for (let x = 0; x <= viewWidth; x += step) {
+        for (let x = startX; x <= endX; x += step) {
             strokePoints.push(x, getWaveY(x));
         }
         if (strokePoints.length >= 4) {
@@ -78,21 +76,22 @@ export class GroundRenderer {
         }
         this.strokeGraphics.stroke({ width: 4, color: 0x2E5A1C });
 
-        // Decorative circles
+        // Decorative circles (in virtual coords, relative to game area)
         const addDecoration = (x: number, y: number, radius: number, alpha: number = 0.2) => {
             this.fillGraphics.circle(x, y, radius);
             this.fillGraphics.fill({ color: 0x558B2F, alpha });
         };
 
-        addDecoration(containerLeft + 50, gameFloorY, 15);
-        addDecoration(containerLeft + 80, gameFloorY + 20, 20);
-        addDecoration(containerLeft + gameAreaWidth - 100, gameFloorY, 25);
+        addDecoration(50, virtualFloorY, 15);
+        addDecoration(80, virtualFloorY + 20, 20);
+        addDecoration(V_WIDTH - 100, virtualFloorY, 25);
 
+        // Extra decorations for extended areas
         if (containerLeft > 100) {
-            addDecoration(50, gameFloorY + 10, 18);
+            addDecoration(startX + 50, virtualFloorY + 10, 18);
         }
-        if (viewWidth - (containerLeft + gameAreaWidth) > 100) {
-            addDecoration(viewWidth - 50, gameFloorY + 10, 18);
+        if (viewWidth / scaleFactor - (containerLeft / scaleFactor + V_WIDTH) > 100) {
+            addDecoration(endX - 50, virtualFloorY + 10, 18);
         }
     }
 }
