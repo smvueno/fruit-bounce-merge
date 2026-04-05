@@ -16,6 +16,7 @@ import { GroundRenderer } from './renderers/GroundRenderer';
 import { JuiceRenderer } from './renderers/JuiceRenderer';
 import { GameVisibility } from './GameVisibility';
 import { GameResize } from './GameResize';
+import { GameInput } from './GameInput';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -133,9 +134,10 @@ export class GameEngine {
     // Optimization: O(1) fruit lookups in updateGameLogic (replaces .find() per active effect per frame)
     private _fruitsById: Map<number, Particle> = new Map();
 
-    private spawnTimeout: any = null;
+    spawnTimeout: any = null;
     private gameVisibility: GameVisibility | null = null;
     private gameResize: GameResize | null = null;
+    private gameInput: GameInput | null = null;
     private visibilityHandler: (() => void) | null = null;
     private contextRestoredHandler: (() => void) | null = null;
 
@@ -262,6 +264,7 @@ export class GameEngine {
 
         this.gameVisibility = new GameVisibility(this);
         this.gameResize = new GameResize(this);
+        this.gameInput = new GameInput(this);
     }
 
     setPaused(paused: boolean) {
@@ -357,10 +360,7 @@ export class GameEngine {
         this.app.stage.eventMode = 'static';
         if (this.app.screen) this.app.stage.hitArea = this.app.screen;
 
-        this.app.stage.on('pointerdown', this.onPointerDown.bind(this));
-        this.app.stage.on('pointermove', this.onPointerMove.bind(this));
-        this.app.stage.on('pointerup', this.onPointerUp.bind(this));
-        this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
+        this.gameInput!.registerListeners(this.app.stage);
 
         // Handle Visibility Changes (Context Loss Prevention)
         const handlers = this.gameVisibility!.registerListeners(this.canvasElement);
@@ -431,54 +431,24 @@ export class GameEngine {
 
     // --- Input Delegation ---
 
-    getInputContext() {
-        return {
-            containerX: this.container.position.x,
-            containerY: this.container.position.y,
-            scaleFactor: this.scaleFactor,
-            width: this.width,
-            height: this.height,
-            paused: this.paused,
-            currentFruit: this.currentFruit,
-            canDrop: this.canDrop
-        };
-    }
-
     onPointerDown(e: PIXI.FederatedPointerEvent) {
-        if (this.paused) return;
-        this.audio.resume();
-        this.inputSystem.onPointerDown(e, this.getInputContext());
+        this.gameInput?.onPointerDown(e);
     }
 
     onPointerMove(e: PIXI.FederatedPointerEvent) {
-        this.inputSystem.onPointerMove(e, this.getInputContext());
+        this.gameInput?.onPointerMove(e);
     }
 
     onPointerUp(e: PIXI.FederatedPointerEvent) {
-        const result = this.inputSystem.onPointerUp(e, this.getInputContext());
-        if (result && this.currentFruit) {
+        this.gameInput?.onPointerUp(e);
+    }
 
-            // Notify ScoreController about turn end
-            this.scoreController.handleTurnEnd({ didMerge: this.didMergeThisTurn });
-            this.didMergeThisTurn = false;
+    spawnNextFruit() {
+        this.gameInput?.spawnNextFruit();
+    }
 
-            this.currentFruit.isStatic = false;
-            this.currentFruit.vx = result.vx;
-            this.currentFruit.vy = result.vy;
-            this.currentFruit.angularVelocity = result.vx * 0.05;
-            this.fruits.push(this.currentFruit);
-            this.currentFruit = null;
-            this.canDrop = false;
-
-            // Clear any existing timeout just in case
-            if (this.spawnTimeout) clearTimeout(this.spawnTimeout);
-
-            this.spawnTimeout = setTimeout(() => {
-                this.canDrop = true;
-                this.spawnTimeout = null;
-                this.spawnNextFruit();
-            }, GAME_CONFIG.spawnDelay);
-        }
+    forceCurrentFruit(tier: FruitTier) {
+        this.gameInput?.forceCurrentFruit(tier);
     }
 
     // --- Update Loop ---
@@ -709,61 +679,6 @@ export class GameEngine {
     }
 
     // --- Action Methods ---
-
-    spawnNextFruit() {
-        if (!this.canDrop) return;
-
-        let maxTier = FruitTier.CHERRY;
-        for (const p of this.fruits) {
-            if (!p.isStatic && p.tier !== FruitTier.TOMATO && p.tier !== FruitTier.BOMB && p.tier !== FruitTier.RAINBOW) {
-                if (p.tier > maxTier) maxTier = p.tier;
-            }
-        }
-        this.onMaxFruit(maxTier);
-        if (maxTier > this.stats.maxTier) {
-            this.stats.maxTier = maxTier;
-        }
-
-        let tier = this.nextFruitQueue.shift();
-        if (tier === undefined) tier = this.pickRandomFruit(maxTier);
-
-        const nextLookahead = this.pickRandomFruit(maxTier);
-        this.nextFruitQueue.push(nextLookahead);
-
-        this.onNextFruit(nextLookahead);
-
-        this.nextFruitTier = tier;
-        this.canSwap = true;
-        this.currentFruit = new Particle(
-            this.width / 2,
-            this.height * SPAWN_Y_PERCENT,
-            FRUIT_DEFS[tier],
-            this.nextId++
-        );
-        this.currentFruit.isStatic = true;
-
-        // Input System Update for Anchor
-        this.inputSystem.dragAnchorX = this.width / 2;
-        this.inputSystem.dragAnchorY = this.height * SPAWN_Y_PERCENT;
-
-        this.renderSystem.createSprite(this.currentFruit);
-    }
-
-    forceCurrentFruit(tier: FruitTier) {
-        if (!this.currentFruit) return;
-
-        this.renderSystem.removeSprite(this.currentFruit);
-
-        this.nextFruitTier = tier;
-        this.currentFruit = new Particle(
-            this.currentFruit.x,
-            this.currentFruit.y,
-            FRUIT_DEFS[tier],
-            this.nextId++
-        );
-        this.currentFruit.isStatic = true;
-        this.renderSystem.createSprite(this.currentFruit);
-    }
 
     merge(p1: Particle, p2: Particle) {
         let nextTier: number;
