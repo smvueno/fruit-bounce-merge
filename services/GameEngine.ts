@@ -276,16 +276,17 @@ export class GameEngine {
         this.app = new PIXI.Application();
 
         try {
+            // Use full device pixel ratio (no cap) for maximum sharpness on mobile
             const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-            const cappedDpr = Math.min(window.devicePixelRatio || 1, 3);
+            const dpr = window.devicePixelRatio || 1;
 
             await this.app.init({
                 canvas: this.canvasElement,
                 backgroundAlpha: 0,
                 width: this.canvasElement.clientWidth,
                 height: this.canvasElement.clientHeight,
-                antialias: true, // Enable antialias on all devices for sharp edges
-                resolution: cappedDpr,
+                antialias: true,
+                resolution: dpr,
                 autoDensity: true,
                 preference: 'webgl',
                 resizeTo: this.canvasElement
