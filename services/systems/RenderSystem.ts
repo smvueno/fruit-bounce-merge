@@ -235,6 +235,8 @@ export class RenderSystem {
                     const lookX = Math.min(10, Math.max(-10, p.vx));
                     const lookY = Math.min(10, Math.max(-10, p.vy));
                     face.position.set(lookX * 0.5, lookY * 0.5);
+                    // Counter-rotate face to keep it upright
+                    face.rotation = -p.rotation;
                 }
             }
         }
