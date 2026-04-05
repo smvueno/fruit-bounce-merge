@@ -53,21 +53,20 @@ export class RenderSystem {
         const gl = this.app.renderer.gl || (this.app.renderer.context && this.app.renderer.context.gl);
         if (gl && gl.isContextLost && gl.isContextLost()) return { normal: normalMap, blink: blinkMap };
 
-        // Generate textures at 4x resolution for crisp rendering even when scaled
-        const TEX_SCALE = 4;
-
+        // Generate textures using generateTexture() — same approach as clouds for crisp vector rendering
+        // generateTexture() auto-fits bounds, so the fruit is centered and rendered at 4x resolution
         for (const def of Object.values(FRUIT_DEFS)) {
             try {
-                const size = Math.ceil((def.radius * 2 + 20) * TEX_SCALE);
-
                 // Normal: body + face with open eyes
                 const normC = new PIXI.Container();
                 def.renderPixiBody(normC, def.radius);
                 const normFace = this.createFace(def.tier, def.radius);
                 normC.addChild(normFace);
-                normC.position.set(size / 2, size / 2);
-                const normTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: 1, antialias: true });
-                this.app.renderer.render({ container: normC, target: normTex });
+                const normTex = this.app.renderer.generateTexture({
+                    target: normC,
+                    resolution: 4,
+                    antialias: true,
+                });
                 normalMap.set(def.tier, normTex);
                 normC.destroy({ children: true });
 
@@ -76,9 +75,11 @@ export class RenderSystem {
                 def.renderPixiBody(blinkC, def.radius);
                 const blinkFace = this.createFace(def.tier, def.radius, true);
                 blinkC.addChild(blinkFace);
-                blinkC.position.set(size / 2, size / 2);
-                const blinkTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: 1, antialias: true });
-                this.app.renderer.render({ container: blinkC, target: blinkTex });
+                const blinkTex = this.app.renderer.generateTexture({
+                    target: blinkC,
+                    resolution: 4,
+                    antialias: true,
+                });
                 blinkMap.set(def.tier, blinkTex);
                 blinkC.destroy({ children: true });
             } catch (e) {
