@@ -6,9 +6,9 @@ import React, { ReactNode, useEffect, useState, useCallback } from 'react';
  * On narrow screens, everything fills the width.
  * 
  * The game area maintains 4:5 aspect ratio.
- * HUD and controls have consistent padding (8px) on all sides.
+ * Padding is applied consistently on all sides.
  */
-const HUD_PADDING = 8;
+const PADDING = 8;
 
 export const LayoutContainer: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [containerWidth, setContainerWidth] = useState(0);
@@ -40,7 +40,7 @@ export const LayoutContainer: React.FC<{ children: ReactNode }> = ({ children })
         >
             <div
                 className="flex flex-col h-full"
-                style={{ width: containerWidth || '100%', padding: `${HUD_PADDING}px` }}
+                style={{ width: containerWidth || '100%', padding: `${PADDING}px`, boxSizing: 'border-box' }}
             >
                 {children}
             </div>
