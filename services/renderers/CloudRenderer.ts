@@ -25,6 +25,7 @@ interface CloudLayer {
 
 export class CloudRenderer {
     private pc: PIXI.ParticleContainer;
+    private skyGradient: PIXI.Graphics;
     private clouds: CloudData[] = [];
     private textures: PIXI.Texture[] = [];
     private layers: CloudLayer[] = [];
@@ -36,14 +37,20 @@ export class CloudRenderer {
     constructor(stage: PIXI.Container, renderer: PIXI.Renderer) {
         this.textures = this.createCloudTextures(renderer);
 
-        // Depth layers: near (big/fast) → far (small/slow)
+        // Depth layers: near (big/fast/bright) → far (small/slow/dimmer)
+        // Increased alpha for better visibility
         this.layers = [
-            { scale: 1.4, alpha: 0.65, speed: 55, yPercent: 0.15, texIndex: 0 },
-            { scale: 1.1, alpha: 0.55, speed: 40, yPercent: 0.30, texIndex: 0 },
-            { scale: 0.8, alpha: 0.40, speed: 28, yPercent: 0.50, texIndex: 0 },
-            { scale: 0.6, alpha: 0.30, speed: 20, yPercent: 0.70, texIndex: 1 },
-            { scale: 0.4, alpha: 0.20, speed: 14, yPercent: 0.85, texIndex: 1 },
+            { scale: 1.6, alpha: 0.85, speed: 55, yPercent: 0.10, texIndex: 0 },
+            { scale: 1.3, alpha: 0.75, speed: 40, yPercent: 0.25, texIndex: 0 },
+            { scale: 1.0, alpha: 0.65, speed: 28, yPercent: 0.40, texIndex: 0 },
+            { scale: 0.8, alpha: 0.55, speed: 20, yPercent: 0.60, texIndex: 1 },
+            { scale: 0.55, alpha: 0.45, speed: 14, yPercent: 0.80, texIndex: 1 },
         ];
+
+        // Sky gradient backdrop for cloud visibility
+        this.skyGradient = new PIXI.Graphics();
+        this.skyGradient.zIndex = -210; // Behind clouds (-200)
+        stage.addChild(this.skyGradient);
 
         this.pc = new PIXI.ParticleContainer({
             dynamicProperties: {
@@ -108,17 +115,33 @@ export class CloudRenderer {
     }
 
     /**
-     * Update cloud positions. Called from the Pixi ticker.
-     * Clouds drift right continuously. When fully off-screen right, respawn off-screen left.
+     * Update cloud positions and sky gradient.
+     * @param screenWidth Screen width in CSS pixels
+     * @param containerTop Container Y position on screen (CSS pixels)
      */
-    update(screenWidth: number, containerTop: number, _deltaMs?: number): void {
+    update(screenWidth: number, containerTop: number): void {
+        // Update sky gradient
+        this.skyGradient.clear();
+        // Gradient from top to containerTop (game area top)
+        const gradientHeight = containerTop;
+        if (gradientHeight > 0) {
+            this.skyGradient.rect(0, 0, screenWidth, gradientHeight);
+            this.skyGradient.fill({
+                color: new PIXI.Color(0x60A5FA).setAlpha(0.15).toNumber(),
+            });
+            // Create a subtle gradient effect by layering
+            this.skyGradient.rect(0, 0, screenWidth, gradientHeight * 0.6);
+            this.skyGradient.fill({
+                color: new PIXI.Color(0x60A5FA).setAlpha(0.1).toNumber(),
+            });
+        }
+
         const speedFactor = screenWidth / 1280;
 
         for (const cloud of this.clouds) {
-            cloud.particle.x += cloud.speed * speedFactor * (1 / 60); // per-frame at 60fps
+            cloud.particle.x += cloud.speed * speedFactor * (1 / 60);
             cloud.particle.y = cloud.yPercent * containerTop;
 
-            // Respawn off-screen left when fully off-screen right
             if (cloud.particle.x > screenWidth + cloud.cloudWidth) {
                 cloud.particle.x = -cloud.cloudWidth;
             }

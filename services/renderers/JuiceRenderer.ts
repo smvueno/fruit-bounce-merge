@@ -17,8 +17,9 @@ export class JuiceRenderer {
     constructor(parent: PIXI.Container) {
         this.graphics = new PIXI.Graphics();
         this.waveGraphics = new PIXI.Graphics();
-        this.graphics.zIndex = -10;
-        this.waveGraphics.zIndex = -9;
+        // Juice sits behind ground (-100) and walls (-50)
+        this.graphics.zIndex = -110;
+        this.waveGraphics.zIndex = -110;
         parent.addChild(this.graphics);
         parent.addChild(this.waveGraphics);
     }
@@ -41,7 +42,10 @@ export class JuiceRenderer {
         const V_WIDTH = 600;
         const V_HEIGHT = 750;
         const DANGER_Y = V_HEIGHT * 0.13; // 97.5
-        const MAX_HEIGHT = V_HEIGHT - DANGER_Y; // 652.5
+        // Water reaches slightly above danger line at 100% (about 20px above)
+        // So at ~95% juice, water top is exactly at danger line
+        const OVERFLOW = 20;
+        const MAX_HEIGHT = V_HEIGHT - DANGER_Y + OVERFLOW; // 672.5
 
         // Smooth interpolation to target level
         const speed = 2.0; // units per second
