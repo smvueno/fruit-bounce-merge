@@ -8,34 +8,33 @@
 
 ### 1.1 Pixi Canvas
 - **Single canvas** at `100vw × 100vh`, `position: fixed`, `inset: 0`
-- **All game rendering** goes through this canvas: fruits, ground, walls, clouds, effects, danger line
+- **All game rendering** goes through this canvas: fruits, ground, walls, clouds, effects, danger line, juice
 - Canvas z-index: `0` (behind all React UI overlays)
 
 ### 1.2 Centered Column
-- A **single centered column** contains: HUD → Game Area → Ground/Pause
-- Column scales to use **maximum** viewport space while maintaining internal proportions
-- **Never clips** — scales down on narrow viewports, scales up on wide viewports
+- A **single centered column** contains: HUD → Game Area → Pause Button
+- Column width = game area width (4:5 aspect ratio based on viewport height minus HUD/controls)
+- **Never clips** — scales down on narrow viewports, constrained on wide viewports
 - Always **centered horizontally and vertically** within the viewport
-- **Nothing in the column may exceed the column width**
+- HUD and controls have **percentage-based padding** (8% left/right, 6% top/bottom) for consistent spacing on all screen sizes
 
 ### 1.3 Column Internal Structure (top to bottom)
 ```
 ┌─────────────────────────────────┐
-│         HUD (compact)           │  ← Score, timer, level, next fruit, save
+│  HUD (8% L/R, 6% top padding)   │  ← Score, timer, level, next fruit, save
 ├─────────────────────────────────┤
 │                                 │
 │     GAME AREA (4:5 ratio)       │  ← Fruits, physics, danger line
 │                                 │
 ├─────────────────────────────────┤
-│   GROUND + PAUSE BUTTON [⏸]    │  ← Ground overlaps game area slightly
+│   PAUSE BUTTON [⏸] (6% bottom)  │
 └─────────────────────────────────┘
 ```
 
 ### 1.4 Full-Viewport Elements (behind column)
-- **Background**: Soft gradient filling entire viewport (`100vw × 100vh`)
+- **Background**: Soft animated gradient filling entire viewport
 - **Clouds**: Animated clouds in screen space, spanning full viewport width above the column
-- **Ground**: Wavy ground spans full `100vw`, top edge overlaps game area by a few pixels, wave pattern loops consistently at any viewport width
-- **Walls**: Positioned at left and right edges of the game area, inner edges overlap the game area by ~2-5px (framing effect)
+- **Sky gradient**: Blue gradient behind clouds for visibility
 
 ---
 
@@ -61,10 +60,6 @@
 | Floor base | **690** | `750 - 60` (with wave ±15) |
 | Physics floor | **735** | `750 - 15` |
 
-### 2.4 Playable Area
-- Height: **~592.5** virtual units (from danger line y=97.5 to floor base y=690)
-- Width: **600** virtual units
-
 ---
 
 ## 3. Rendering Architecture
@@ -77,119 +72,182 @@
 ### 3.2 Pixi Stage Structure (z-index order)
 ```
 Stage (screen space, 100vw × 100vh)
+├── Sky Gradient (zIndex: -210) — screen space, behind clouds
 ├── Clouds (zIndex: -200) — screen space, full viewport width
 ├── Game Container (zIndex: 0) — scaled, centered in canvas
-│   ├── Ground (zIndex: -100) — virtual coords
-│   ├── Walls (zIndex: -50) — virtual coords
+│   ├── Ground (zIndex: -100) — virtual coords, extends to viewport bottom
+│   ├── Juice (zIndex: -110) — virtual coords, behind ground
+│   ├── Walls (zIndex: 50) — virtual coords, ABOVE fruits
 │   ├── Danger Line (zIndex: 0) — virtual coords
 │   ├── Effect Particles (zIndex: 0) — virtual coords
 │   └── Fruit Sprites (zIndex: 0) — virtual coords
-├── Ground Overlay (zIndex: 5) — screen space, full 100vw
-└── Wall Overlays (zIndex: 5) — screen space, at game area edges
 ```
 
-### 3.3 Screen-Space Renderers (on Pixi stage)
-| Renderer | Position | Purpose |
-|----------|----------|---------|
-| `CloudRenderer` | Screen space, y=0 to containerTop | Animated clouds above game area |
-| `GroundRenderer` | Screen space, full 100vw | Wavy ground spanning viewport |
-| `WallRenderer` | Screen space, at game area edges | Left + right grass walls |
-
-### 3.4 Virtual-Space Renderers (inside game container)
-| Renderer | Position | Purpose |
-|----------|----------|---------|
-| `EffectRenderer` | Virtual coords | Merge particles, stars, bomb ghosts |
-| `RenderSystem` | Virtual coords | Fruit sprites, danger line |
+### 3.3 Renderer Coordinate Systems
+| Renderer | Coordinate System | Parent |
+|----------|------------------|--------|
+| `CloudRenderer` | Screen space | Pixi stage |
+| `Sky Gradient` | Screen space | Pixi stage |
+| `GroundRenderer` | Virtual coords | Game container |
+| `JuiceRenderer` | Virtual coords | Game container |
+| `WallRenderer` | Virtual coords | Game container |
+| `EffectRenderer` | Virtual coords | Game container |
+| `RenderSystem` | Virtual coords | Game container |
 
 ---
 
 ## 4. Wall Positioning — Absolute Rules
 
 ### 4.1 Placement
-- **Left wall**: Inner edge overlaps game area left edge by **~2-5px**
-- **Right wall**: Inner edge overlaps game area right edge by **~2-5px**
-- Walls extend from just below HUD down to bottom of screen
+- **Both walls**: Inner edge overlaps game area by **5px**
+- Walls use **bezier curves** (`quadraticCurveTo`, `bezierCurveTo`) for smooth organic shapes
 - Wall width: **80px** (fixed)
+- Walls positioned **above fruits** (zIndex 50)
 
-### 4.2 Coordinate Calculation
+### 4.2 Coordinate Calculation (virtual coords)
 ```
-leftWall.x = gameAreaLeft - wallWidth + overlap
-rightWall.x = gameAreaLeft + gameAreaWidth - overlap
+leftWall.x = overlap - 70          // = -65 (5px overlap)
+rightWall.x = V_WIDTH - overlap + 70  // = 665, with scale.x = -1
 ```
-Where `overlap` is ~2-5px for the framing effect.
+Both walls must overlap the game area by exactly the same amount (5px).
+
+### 4.3 Wall Height
+- Fixed to game area height (V_HEIGHT = 750)
+- Does NOT extend to viewport bottom — ground handles that
 
 ---
 
 ## 5. Ground — Absolute Rules
 
 ### 5.1 Width
-- Ground spans **full 100vw** (viewport width)
-- Wave pattern must loop consistently at any viewport width
-- No clipping or distortion when viewport changes
+- Ground spans **full viewport width** in virtual coords
+- Wave pattern loops consistently at any viewport width
 
-### 5.2 Overlap
-- Ground top edge overlaps game area bottom by **a few pixels** (framing effect)
-- Ground extends to bottom of viewport
+### 5.2 Height
+- Ground extends to **bottom of viewport** on any screen size
+- Uses `screenVHeight = Math.max(V_HEIGHT, viewHeight / scaleFactor)`
 
 ### 5.3 Wave Pattern
-- Must match original GroundCanvas exactly:
-  - `waveY = gameFloorY + sin(virtualX * 0.015) * 10 + cos(virtualX * 0.04) * 5`
-  - Step size: **5px**
-  - Stroke width: **4px**, color: `#2E5A1C`
-  - Fill color: `#76C043`
-  - Decorative circles at game area edges
+- `waveY = virtualFloorY + sin(virtualX * 0.015) * 10 + cos(virtualX * 0.04) * 5`
+- Step size: **5px**
+- Stroke: `moveTo/lineTo` (not `poly()`) to avoid auto-closing bottom line
+- Fill color: `#76C043`, Stroke color: `#2E5A1C`
 
 ---
 
 ## 6. Clouds — Absolute Rules
 
-### 6.1 Position
-- Clouds live in screen space, spanning **full 100vw**
-- Zone: from `y=0` (top of screen) to `y=containerTop` (top of game area)
-- 5 cloud layers with different scales, opacities, and animation speeds
+### 6.1 Implementation
+- **`ParticleContainer`** with `Particle` objects (GPU instanced, 1 draw call)
+- **5 clouds total** (1 per depth layer)
+- Two shapes: **3-ball** (near/mid) and **2-ball** (far)
 
-### 6.2 Animation
-- Use **Pixi.js ticker** — NO separate `requestAnimationFrame` loop
-- Clouds drift left-to-right continuously
-- Speeds: 12s to 30s per full pass (varies by layer)
+### 6.2 Depth System
+| Layer | Scale | Alpha | Speed | Shape |
+|-------|-------|-------|-------|-------|
+| Near | 1.6 | 0.85 | 55 px/s | 3-ball |
+| Mid-near | 1.3 | 0.75 | 40 px/s | 3-ball |
+| Mid | 1.0 | 0.65 | 28 px/s | 3-ball |
+| Mid-far | 0.8 | 0.55 | 20 px/s | 2-ball |
+| Far | 0.55 | 0.45 | 14 px/s | 2-ball |
+
+### 6.3 Looping
+- Clouds spawn **off-screen left** (staggered)
+- Drift right continuously
+- When fully off-screen right, **respawn off-screen left** (no snapping, no popping)
+
+### 6.4 Sky Gradient
+- Canvas `createLinearGradient()` with 5 color stops
+- From dark blue (#2563EB, 55% alpha) at top to transparent at bottom
+- Behind clouds (zIndex -210), regenerated only on resize
 
 ---
 
 ## 7. Background — Absolute Rules
 
 ### 7.1 Design
-- Soft gradient filling entire viewport (`100vw × 100vh`)
+- Soft animated gradient filling entire viewport (`100vw × 100vh`)
 - **No pattern cycling**, no animated blobs
 - Clean, minimal, doesn't distract from gameplay
 - Fever mode: purple-tinted gradient
 
 ### 7.2 Implementation
 - CSS gradient on a full-viewport div
-- `position: fixed`, `inset: 0`, `z-index: -1` (behind everything)
+- `position: fixed`, `inset: 0`, `z-index: 0` (behind Pixi canvas)
 - Transition on fever state change: `2s ease`
 
 ---
 
-## 8. HUD — Absolute Rules
+## 8. Juice/Water Overlay — Absolute Rules
 
-### 8.1 Width
-- HUD **must never exceed** the column width (same as game area width)
-- HUD is compact — does not steal space from game area
+### 8.1 Implementation
+- **Pixi Graphics** inside game container (virtual coords)
+- Behind ground (zIndex -110)
+- Animated wave on top edge using `Math.sin()`
+- Smooth interpolation to target level (speed: 2.0 units/sec)
 
-### 8.2 Contents
-- Score display
-- Timer
-- Level indicator
-- Next fruit preview
-- Save/swap button
-
-### 8.3 Position
-- Directly above the 4:5 game area
-- Same width as the game area column
+### 8.2 Height
+- At 100% juice, water reaches **20px above danger line**
+- At ~95% juice, water top is exactly at danger line
+- Color: blue (#60A5FA) normal, purple (#A855F7) fever
+- Opacity: 40% fill, 60% wave edge
 
 ---
 
-## 9. Game Constants — ABSOLUTE
+## 9. HUD — Absolute Rules
+
+### 9.1 Width
+- HUD **must never exceed** the game area width
+- Constrained by LayoutContainer
+
+### 9.2 Padding
+- **Left/Right**: 8% of container width
+- **Top**: 6% of container height
+- **Bottom**: 6% of container height (pause button)
+- Percentage-based for consistent spacing on all screen sizes
+
+### 9.3 Contents
+- Score display (left)
+- Timer (left, below score)
+- Level indicator (left, below timer)
+- Next fruit preview (right)
+- Save/swap button (right, below next)
+- SCORE and NEXT labels on same baseline
+
+---
+
+## 10. Fruit Rendering — Current Implementation
+
+### 10.1 Architecture
+- Each fruit = **1 `PIXI.Sprite`** with baked texture (body + face)
+- **Faces baked into textures** at init time — not separate Graphics objects
+- **Blinking** = swap between normal/blink texture
+- **Fever pulse** = scale.x/y on the Sprite directly
+
+### 10.2 Texture Generation
+- `generateTexture()` with `resolution: 4` and `antialias: true`
+- Two textures per fruit: normal face + blink face
+- Textures stored in Maps: `normalTextures` and `blinkTextures`
+
+### 10.3 Performance
+- ~10 draw calls for 50 fruits (Pixi v8 auto-batches by texture)
+- Zero per-frame face CPU work
+- Blinking = texture swap (GPU operation)
+
+---
+
+## 11. Effect Rendering — Current Implementation
+
+### 11.1 Merge Burst Particles
+- **Batched Graphics** — single Graphics object with multiple circles
+- Updates every frame (acceptable for short-lived particles)
+
+### 11.2 Bomb Ghost Effect
+- Single `Sprite` from pre-rendered texture, fades via alpha
+
+---
+
+## 12. Game Constants — ABSOLUTE
 
 > **Never change these values without explicit approval.**
 
@@ -208,60 +266,72 @@ PHYSICS_GRAVITY = 0.8
 PHYSICS_FRICTION = 0.98
 WALL_DAMPING = 0.5
 FLOOR_DAMPING = 0.4
-FRICTION_SLIDE = 0.99
-FRICTION_LOCK = 0.5
-SUBSTEPS = 3 (mobile) / 4 (desktop)
+SUBSTEPS = 4
 ```
 
 ---
 
-## 10. File Organization — ABSOLUTE
+## 13. Pixi.js Configuration — ABSOLUTE
 
-### 10.1 Structure
+### 13.1 Canvas Init
+```typescript
+antialias: true,           // Enabled on ALL devices
+resolution: devicePixelRatio,  // No cap — full DPR for sharpness
+autoDensity: true,
+preference: 'webgl',
+```
+
+### 13.2 Ticker
+- `maxFPS: 0` (uncapped — runs at display refresh rate)
+- Physics runs at fixed 60fps via substeps
+
+---
+
+## 14. File Organization — ABSOLUTE
+
+### 14.1 Structure
 ```
 services/
   fruits/          # One file per fruit (~50-60 lines each)
-  renderers/       # Pixi renderers (Ground, Wall, Cloud, Effect)
+  renderers/       # Pixi renderers (Ground, Wall, Cloud, Effect, Juice)
   systems/         # Game systems (Physics, Input, Render, Score)
-  managers/        # Extracted from GameEngine (FruitManager, EffectManager, DangerManager)
-  PixiGameApp.ts   # Pure Pixi wrapper
-  GameEngine.ts    # Orchestration only
+  GameEngine.ts    # Main orchestrator
 components/        # React components
 types/             # TypeScript types
-utils/             # Utility functions
-hooks/             # React hooks
 tests/             # Playwright tests
 ```
 
-### 10.2 File Size Limits
+### 14.2 File Size Limits
 - **Soft limit**: 300 lines
 - **Hard limit**: 400 lines — must split before exceeding
 - No god files
 
 ---
 
-## 11. Testing — ABSOLUTE
+## 15. Testing — ABSOLUTE
 
-### 11.1 Requirements
+### 15.1 Requirements
 - Every change must pass **all Playwright tests**
 - Screenshot verification after each step
 - Small, reversible commits per step
 - No breaking changes without immediate fix
 
-### 11.2 Test Suite
-- `tests/game.spec.ts` — Core gameplay tests
-- `tests/visual-regression.spec.ts` — Visual parity tests
-- `tests/screenshots.spec.ts` — Screenshot capture for review
-- `tests/benchmark.spec.ts` — Performance stress test
-
-### 11.3 Playwright Config
+### 15.2 Playwright Config
 - Headless Chrome with `--enable-unsafe-swiftshader` for WebGL
 - Dev server on port **5100**
 - `reuseExistingServer: true`
 
+### 15.3 Multi-Size Testing
+Test at these viewport sizes during development:
+- **Mobile narrow:** 375×812
+- **Mobile:** 390×844
+- **Tablet:** 768×1024
+- **Desktop:** 1280×900
+- **Ultrawide:** 1920×1080
+
 ---
 
-## 12. Dev Server — ABSOLUTE
+## 16. Dev Server — ABSOLUTE
 
 - Port: **5100** (reserved)
 - Host: `0.0.0.0` (external access)
@@ -269,56 +339,36 @@ tests/             # Playwright tests
 
 ---
 
-## 13. Development & Testing Environment — ABSOLUTE
+## 17. Development & Testing Environment
 
-### 13.1 Access URLs
+### 17.1 Access URLs
 - **Local:** `http://localhost:5100`
 - **Network (Tailscale):** `http://pro.feist-crocodile.ts.net:5100`
-- Always test on **both** localhost and the Tailscale URL during development
 
-### 13.2 Manual Testing Checklist (Every Step)
-Before committing, verify manually via browser on `pro.feist-crocodile.ts.net`:
+### 17.2 Manual Testing Checklist
+Before committing, verify manually:
 - [ ] Start screen renders correctly
 - [ ] Game starts and canvas appears
 - [ ] Fruits drop and physics work
-- [ ] Walls visible on both left and right edges of game area
-- [ ] Ground visible and spans full viewport width
+- [ ] Walls visible on both sides, overlapping game area by 5px each
+- [ ] Ground visible and spans full viewport width, extends to bottom
 - [ ] Clouds visible and animate above the game area
-- [ ] HUD displays correctly (score, timer, next fruit, save button)
+- [ ] HUD displays correctly with consistent padding
 - [ ] Pause menu opens and closes
 - [ ] No visual clipping or misalignment at any screen size
 
-### 13.3 Multi-Size Testing
-Test the game at these viewport sizes during development:
-- **Mobile narrow:** 375×812 (iPhone 12 Mini)
-- **Mobile:** 390×844 (iPhone 12)
-- **Tablet:** 768×1024 (iPad)
-- **Desktop:** 1280×900
-- **Ultrawide:** 1920×1080
-
-### 13.4 Automated Testing
-- `npx playwright test` — Run full test suite
-- `npx playwright test tests/cloud-benchmark.spec.ts` — Cloud rendering benchmark
-- `npx playwright test tests/screenshots.spec.ts` — Screenshot verification
-- `npx playwright test tests/benchmark.spec.ts` — Game stress test (50 fruits)
-- All tests must pass before every commit
-
-### 13.5 Benchmark Pages (Manual)
-- `http://localhost:5100/demo-clouds.html` — Interactive ParticleContainer cloud demo
-- `http://localhost:5100/benchmark-clouds.html` — Automated benchmark (4 techniques × 6 counts)
-
 ---
 
-## 14. Commit Rules — ABSOLUTE
+## 18. Commit Rules — ABSOLUTE
 
 - Small, descriptive commit messages
 - One logical change per commit
 - Must pass all tests before committing
-- Format: `step: [description]` or `fix: [description]`
+- Format: `fix: [description]` or `feat: [description]`
 
 ---
 
-## 15. What Stays as React DOM
+## 19. What Stays as React DOM
 
 - HUD (score, timer, level, next fruit, save button)
 - Pause menu
@@ -328,119 +378,65 @@ Test the game at these viewport sizes during development:
 - Point ticker
 - Debug menu
 
-## 16. What Goes Through Pixi
+## 20. What Goes Through Pixi
 
-- Fruit bodies and faces
-- Ground (wavy floor)
-- Walls (grass walls)
-- Clouds (animated)
+- Fruit bodies and faces (baked textures)
+- Ground (wavy floor, extends to viewport bottom)
+- Walls (grass walls, above fruits)
+- Clouds (animated, screen space)
 - Effects (merge particles, stars, bomb ghosts)
 - Danger line
-- Background (CSS gradient, but behind Pixi canvas)
+- Juice/water overlay (animated wave)
+- Sky gradient (behind clouds)
+- Background (CSS gradient, behind Pixi canvas)
 
 ---
 
-## 17. Fruit Rendering — ABSOLUTE
+## 21. Lessons Learned — Things to Be Careful Of
 
-### 17.1 Architecture
-- **ALL fruits rendered via a single `ParticleContainer`** — 1 draw call for every fruit on screen
-- Each fruit = **1 `PIXI.Particle`** (lightweight, not a full Sprite or Container)
-- **Faces baked into fruit textures** — not separate Graphics objects
-- **Blinking** = swap to alternate texture (eyes squished), NOT scale.y animation
-- **Fever pulse** = scale.x/y on the Particle directly, NOT on a parent Container
+### 21.1 Coordinate Systems
+- **Screen space** = Pixi stage coordinates (pixels). Used for: clouds, sky gradient.
+- **Virtual space** = Game container coordinates (600×750). Used for: ground, walls, fruits, effects, juice.
+- **NEVER mix coordinate systems** — a renderer must be either in the stage OR in the container, not both.
+- When moving a renderer between stage and container, ALL position calculations must change.
 
-### 17.2 Texture Atlas
-- All fruit textures packed into a **single sprite sheet / texture atlas** at game init
-- Each fruit has **2 frames**: normal face + blink face
-- Texture resolution: `2x` (matches device DPR, capped at 2 for mobile)
-- Atlas allows ParticleContainer to use different textures per particle via sprite sheet UVs
+### 21.2 Wall Positioning
+- Walls are mirrored using `scale.x = -1` on the right wall.
+- After mirroring: `rightWall.x = V_WIDTH - overlap + 70` (not `V_WIDTH + 70`).
+- The `+70` accounts for the wall's inner edge being at local x=70.
+- **Always verify both walls have the same overlap** — it's easy to get one side wrong.
 
-### 17.3 Face Baking Rules
-- Face (eyes + mouth) rendered into the fruit texture during atlas generation
-- Eyes: simple circles with pupils, facing forward
-- Blink frame: eyes rendered as thin horizontal lines (scale.y = 0.1 equivalent)
-- No dynamic look-direction — eyes face forward (trade-off for maximum performance)
+### 21.3 Ground Extension
+- Ground must extend to the **bottom of the viewport** on any screen size.
+- Use `screenVHeight = Math.max(V_HEIGHT, viewHeight / scaleFactor)`.
+- The bottom of the ground polygon should be at `screenVHeight + 100` (buffer).
 
-### 17.4 Performance Targets
-- **Max 50 fruits on screen** simultaneously
-- **1 draw call for ALL fruits** (single ParticleContainer)
-- **Zero Graphics objects** for fruit faces
-- **Zero Container wrappers** around fruit Sprites
-- Fruit rendering must not exceed **1ms per frame** at 50 fruits
+### 21.4 Fruit Textures
+- Use `generateTexture()` NOT `RenderTexture.create()` + `renderer.render()`.
+- `generateTexture()` auto-fits bounds and centers content correctly.
+- Resolution should be **4** for crisp vector-like rendering.
+- Always set `antialias: true`.
 
-### 17.5 ParticleContainer Configuration
-```typescript
-new PIXI.ParticleContainer({
-    dynamicProperties: { position: true, scale: true, rotation: true, color: false },
-});
-```
-- **Dynamic:** position (x/y changes every frame), scale (fever pulse), rotation (fruit spin)
-- **Static:** color/alpha (set once, never changes per frame)
+### 21.5 Pixi v8 ParticleContainer
+- `Particle` requires `anchorX` and `anchorY` to be set (or it crashes with `.trim()` error).
+- `addParticle()` and `removeParticle()` are the correct methods.
+- One texture per container — can't mix textures in a single ParticleContainer.
+- Moving a particle between containers requires `removeParticle()` + `addParticle()`.
 
-### 17.6 Current vs Target
-| Aspect | Current | Target |
-|--------|---------|--------|
-| Container type | Individual Containers | Single ParticleContainer |
-| Objects per fruit | 3 (Container + Sprite + Graphics) | 1 (Particle) |
-| Draw calls (50 fruits) | 100+ | **1** |
-| Face rendering | Per-frame Graphics update | Baked texture swap |
-| Blinking | eyes.scale.y animation | Texture swap |
-| Total display objects (50 fruits) | 150+ | 50 (all in 1 container) |
+### 21.6 LayoutContainer Width
+- LayoutContainer width = `(viewportHeight - HUD_HEIGHT - CONTROLS_HEIGHT) * 4/5`.
+- This ensures the container width exactly matches the game area width.
+- HUD and controls padding is percentage-based, not fixed pixels.
 
----
+### 21.7 Headless Chrome Testing
+- Headless Chrome uses SwiftShader (software rendering) — no hardware GPU.
+- FPS in headless will be 3-5x lower than on a real device.
+- Always use `--enable-unsafe-swiftshader` flag for WebGL to work at all.
+- Visual verification should be done on a real device, not just headless tests.
 
-## 18. Effect Rendering — ABSOLUTE
-
-### 18.1 Merge Burst Particles
-- Use **`ParticleContainer`** with `Particle` objects — NOT batched Graphics
-- Particles share a single circle/star texture from atlas
-- GPU instanced, 1 draw call for all burst particles
-- Max 30 burst particles simultaneously
-
-### 18.2 Stars / Score Popups
-- DOM-based (React), not Pixi — these are UI elements
-
-### 18.3 Bomb Ghost Effect
-- Single `Sprite` from pre-rendered texture, fades via alpha
-- Short-lived (0.5 seconds)
-
-### 18.4 Performance Targets
-- **All effects in 1 draw call** (ParticleContainer)
-- **Zero `Graphics.clear()` + redraw per frame** — too CPU-heavy
-- Max 50 effect particles simultaneously
-
----
-
-## 19. Background Rendering — ABSOLUTE
-
-### 19.1 Implementation
-- CSS gradient on a full-viewport `<div>` (`position: fixed`, `inset: 0`, `z-index: 0`)
-- **No Pixi background** — CSS is more performant for full-screen gradients
-
-### 19.2 Color Cycling
-- **Normal mode:** cycle through 5 colors every **4 seconds**
-- **Fever mode:** cycle through 5 fever colors every **1.5 seconds**
-- CSS `transition: background 1.5s ease` for smooth morphing
-
----
-
-## 20. Cloud Rendering — ABSOLUTE
-
-### 20.1 Implementation
-- **`ParticleContainer`** with `Particle` objects (GPU instanced, 1 draw call)
-- **5 clouds total** (1 per depth layer)
-- Two shapes: **3-ball** (near/mid) and **2-ball** (far)
-
-### 20.2 Depth System
-| Layer | Scale | Alpha | Speed | Shape |
-|-------|-------|-------|-------|-------|
-| Near | 1.4 | 0.65 | 55 px/s | 3-ball |
-| Mid-near | 1.1 | 0.55 | 40 px/s | 3-ball |
-| Mid | 0.8 | 0.40 | 28 px/s | 3-ball |
-| Mid-far | 0.6 | 0.30 | 20 px/s | 2-ball |
-| Far | 0.4 | 0.20 | 14 px/s | 2-ball |
-
-### 20.3 Looping
-- Clouds spawn **off-screen left** (staggered)
-- Drift right continuously
-- When fully off-screen right, **respawn off-screen left** (no snapping, no popping)
+### 21.8 What NOT to Change
+- **Physics constants** — gravity, friction, damping, substeps. These are finely tuned.
+- **Wall bezier curves** — the original design values produce the beautiful organic shapes.
+- **Ground wave formula** — matches the original GroundCanvas exactly.
+- **Virtual resolution** (600×750) — all physics and positions depend on this.
+- **4:5 aspect ratio** — core to the game's visual identity.
