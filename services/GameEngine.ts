@@ -649,23 +649,24 @@ export class GameEngine {
     update(ticker: PIXI.Ticker) {
         if (this.paused) return;
 
-        // Fixed-timestep accumulator: accumulate real elapsed time, then drain
-        // in fixed 1/60s steps. This decouples physics from display refresh rate.
-        // On 120Hz displays the ticker fires twice as often but we still only
-        // run one physics step per 16.67ms of accumulated time.
+        // Fixed-timestep accumulator for stable physics (dropped fruits)
+        // BUT: always update current fruit position every frame for responsive input
         const elapsedMs = ticker.deltaMS;
         this._accumulator += elapsedMs;
 
         // Safety cap: prevent spiral of death if tab was backgrounded
         if (this._accumulator > 250) this._accumulator = 250;
 
-        // Drain accumulator in fixed steps
+        // Always update current fruit position every frame (responsive input)
+        this._updateCurrentFruit();
+
+        // Drain accumulator in fixed steps for physics (dropped fruits)
         while (this._accumulator >= this._fixedDtMs) {
             this._accumulator -= this._fixedDtMs;
             this._runFixedStep();
         }
 
-        // Render every frame (interpolation could be added later if needed)
+        // Render every frame
         this._renderFrame();
 
         // --- Performance Tracking ---
@@ -694,6 +695,18 @@ export class GameEngine {
             }
         }
         this._perfLastTime = _perfNow;
+    }
+
+    /** Update current fruit position every frame for responsive input (not tied to physics tick) */
+    private _updateCurrentFruit() {
+        if (!this.inputSystem.isAiming || !this.currentFruit) return;
+
+        const r = this.currentFruit.radius;
+        const clampedX = Math.max(r, Math.min(this.width - r, this.inputSystem.aimX));
+        const clampedY = (this.height * 0.06) + (Math.min(this.inputSystem.dragAnchorY, this.height * 0.4) - this.height * 0.2) * 0.1;
+
+        this.currentFruit.x = clampedX;
+        this.currentFruit.y = clampedY;
     }
 
     /** Run one fixed 1/60s timestep of game logic + physics */
