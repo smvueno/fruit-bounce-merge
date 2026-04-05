@@ -21,13 +21,9 @@ export class GroundRenderer {
 
     /**
      * Draw the ground floor in virtual coordinates.
-     * @param viewWidth Viewport width in CSS pixels (for extending beyond game area)
-     * @param viewHeight Viewport height in CSS pixels
-     * @param gameAreaWidth Game area width in CSS pixels
-     * @param scaleFactor Scale factor between virtual and screen coords
-     * @param containerLeft Pixi container X position on screen (CSS pixels)
+     * Ground extends to the bottom of the viewport on any screen size.
      */
-    draw(viewWidth: number, _viewHeight: number, gameAreaWidth: number, scaleFactor: number, containerLeft: number): void {
+    draw(viewWidth: number, viewHeight: number, gameAreaWidth: number, scaleFactor: number, containerLeft: number): void {
         this.fillGraphics.clear();
         this.strokeGraphics.clear();
 
@@ -37,8 +33,9 @@ export class GroundRenderer {
         // Physics floor is at V_HEIGHT - 15 = 735 in virtual coords
         const virtualFloorY = V_HEIGHT - 15;
 
-        // How many virtual units the screen extends beyond the game area on each side
+        // How many virtual units the screen extends beyond the game area
         const screenVWidth = viewWidth / scaleFactor;
+        const screenVHeight = Math.max(V_HEIGHT, viewHeight / scaleFactor);
         const gameCenter = V_WIDTH / 2;
         const startX = gameCenter - (screenVWidth / 2);
         const endX = gameCenter + (screenVWidth / 2);
@@ -52,13 +49,13 @@ export class GroundRenderer {
         // Draw fill (closed polygon - no stroke)
         const step = 5;
         const fillPoints: number[] = [];
-        fillPoints.push(startX, V_HEIGHT + 200);
+        fillPoints.push(startX, screenVHeight + 100);
         fillPoints.push(startX, getWaveY(startX));
         for (let x = startX; x <= endX; x += step) {
             fillPoints.push(x, getWaveY(x));
         }
         fillPoints.push(endX, getWaveY(endX));
-        fillPoints.push(endX, V_HEIGHT + 200);
+        fillPoints.push(endX, screenVHeight + 100);
 
         this.fillGraphics.poly(fillPoints);
         this.fillGraphics.fill({ color: 0x76C043 });

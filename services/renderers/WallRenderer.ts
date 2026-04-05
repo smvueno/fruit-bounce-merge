@@ -22,9 +22,8 @@ export class WallRenderer {
     /**
      * Draw both grass walls in virtual coordinates.
      * Walls overlap the game area by ~5px for a seamless framing effect.
-     * Walls extend to the bottom of the viewport on any screen size.
      */
-    draw(viewWidth: number, viewHeight: number, scaleFactor: number, _containerLeft: number): void {
+    draw(_viewWidth: number, _viewHeight: number, scaleFactor: number, _containerLeft: number): void {
         this.leftWall.clear();
         this.rightWall.clear();
 
@@ -32,19 +31,16 @@ export class WallRenderer {
         const V_HEIGHT = 750;
         const overlap = 5; // px overlap into game area
 
-        // Wall height extends to bottom of viewport (in virtual coords)
-        const wallHeight = Math.max(V_HEIGHT, viewHeight / scaleFactor);
-
         // Left wall: inner edge (local x=70) positioned at x=overlap
         this.leftWall.x = overlap - 70;
         this.leftWall.y = 35;
-        this.drawWallShape(this.leftWall, wallHeight - 35, 'left');
+        this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
 
         // Right wall: mirrored, inner edge at V_WIDTH with grass cap overlap
         this.rightWall.x = V_WIDTH + 70;
         this.rightWall.y = 35;
         this.rightWall.scale.x = -1;
-        this.drawWallShape(this.rightWall, wallHeight - 35, 'right');
+        this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
     }
 
     private drawWallShape(g: PIXI.Graphics, height: number, _side: 'left' | 'right'): void {
