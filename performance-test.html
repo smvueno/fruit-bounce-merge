@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fruit Bounce — FPS Performance Profiler</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #111;
+            color: #fff;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        canvas { display: block; }
+
+        #hud {
+            position: fixed; top: 10px; left: 10px; z-index: 1000;
+            background: rgba(0,0,0,0.92); padding: 16px; border-radius: 10px;
+            min-width: 340px; font-size: 12px; line-height: 1.7;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(8px);
+        }
+        #hud h2 { margin-bottom: 6px; color: #4ade80; font-size: 14px; font-weight: 700; }
+        #hud .row { display: flex; justify-content: space-between; align-items: center; }
+        #hud .label { color: #94a3b8; }
+        #hud .value { color: #fbbf24; font-weight: 700; font-variant-numeric: tabular-nums; }
+        #hud .fps-good { color: #4ade80; }
+        #hud .fps-ok { color: #fbbf24; }
+        #hud .fps-bad { color: #ef4444; }
+        #hud .section { border-top: 1px solid rgba(255,255,255,0.1); margin-top: 8px; padding-top: 8px; }
+        #hud .section-title { color: #60a5fa; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+        #controls {
+            position: fixed; bottom: 10px; left: 10px; z-index: 1000;
+            background: rgba(0,0,0,0.92); padding: 16px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 400px;
+        }
+        #controls h3 { color: #60a5fa; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        #controls button {
+            background: #3b82f6; color: #fff; border: none; padding: 7px 14px;
+            margin: 3px; border-radius: 6px; cursor: pointer; font-family: inherit;
+            font-size: 11px; font-weight: 600; transition: all 0.15s;
+        }
+        #controls button:hover { background: #2563eb; }
+        #controls button.active { background: #4ade80; color: #000; }
+        #controls button.danger { background: #ef4444; }
+        #controls button.danger:hover { background: #dc2626; }
+        #controls .row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+        #controls .label { color: #94a3b8; font-size: 10px; margin-bottom: 4px; }
+
+        #results {
+            position: fixed; top: 10px; right: 10px; z-index: 1000;
+            background: rgba(0,0,0,0.92); padding: 16px; border-radius: 10px;
+            max-height: 85vh; overflow-y: auto; font-size: 11px;
+            min-width: 380px; border: 1px solid rgba(255,255,255,0.1);
+        }
+        #results h3 { color: #4ade80; margin-bottom: 8px; font-size: 13px; }
+        #results table { width: 100%; border-collapse: collapse; }
+        #results th, #results td { padding: 4px 6px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 10px; }
+        #results th { color: #94a3b8; font-weight: 600; }
+        #results .pass { color: #4ade80; }
+        #results .fail { color: #ef4444; }
+        #results .warn { color: #fbbf24; }
+
+        #graph-container {
+            position: fixed; bottom: 10px; right: 10px; z-index: 1000;
+            background: rgba(0,0,0,0.92); padding: 12px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        #graph-container canvas { border-radius: 6px; }
+        #graph-container .title { color: #60a5fa; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+
+        .test-desc {
+            color: #94a3b8;
+            font-size: 10px;
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <h2>🔬 FPS Performance Profiler</h2>
+        <div class="row"><span class="label">Test:</span><span class="value" id="testName">Idle</span></div>
+        <div class="row"><span class="label">Status:</span><span class="value" id="testStatus">Ready</span></div>
+        <div class="section">
+            <div class="section-title">Frame Timing</div>
+            <div class="row"><span class="label">FPS (current):</span><span class="value" id="fps">—</span></div>
+            <div class="row"><span class="label">FPS (avg):</span><span class="value" id="avgFps">—</span></div>
+            <div class="row"><span class="label">FPS (min):</span><span class="value" id="minFps">—</span></div>
+            <div class="row"><span class="label">FPS (p99):</span><span class="value" id="p99Fps">—</span></div>
+            <div class="row"><span class="label">Frame Time:</span><span class="value" id="frameTime">—</span></div>
+            <div class="row"><span class="label">Frame Time (max):</span><span class="value" id="maxFrameTime">—</span></div>
+            <div class="row"><span class="label">Frame Budget:</span><span class="value" id="frameBudget">16.67ms</span></div>
+        </div>
+        <div class="section">
+            <div class="section-title">Scene Stats</div>
+            <div class="row"><span class="label">Fruits:</span><span class="value" id="fruitCount">0</span></div>
+            <div class="row"><span class="label">Particles:</span><span class="value" id="particleCount">0</span></div>
+            <div class="row"><span class="label">Draw Calls (est):</span><span class="value" id="drawCalls">—</span></div>
+            <div class="row"><span class="label">Textures:</span><span class="value" id="textureCount">—</span></div>
+        </div>
+        <div class="section">
+            <div class="section-title">Memory</div>
+            <div class="row"><span class="label">JS Heap:</span><span class="value" id="heapUsed">—</span></div>
+            <div class="row"><span class="label">GPU Mem:</span><span class="value" id="gpuMem">—</span></div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <h3>Performance Tests</h3>
+        <div class="label">Individual Tests</div>
+        <div class="row">
+            <button onclick="runTest('baseline')">Baseline (Empty)</button>
+            <button onclick="runTest('fruits')">Fruit Stress</button>
+            <button onclick="runTest('particles')">Particle Stress</button>
+            <button onclick="runTest('merges')">Merge Storm</button>
+        </div>
+        <div class="row">
+            <button onclick="runTest('physics')">Physics Load</button>
+            <button onclick="runTest('render')">Render Load</button>
+            <button onclick="runTest('css')">CSS Overlay</button>
+            <button onclick="runTest('fullgame')">Full Game Sim</button>
+        </div>
+        <div class="label">Full Suite</div>
+        <div class="row">
+            <button onclick="runAllTests()" style="background:#4ade80;color:#000">▶ Run All Tests</button>
+            <button onclick="stopTest()" class="danger">⏹ Stop</button>
+        </div>
+        <div class="test-desc">
+            Each test runs for 8 seconds. We measure FPS stability, frame time consistency, and identify the bottleneck (CPU vs GPU).
+            "Pass" = avg FPS ≥ 58, min FPS ≥ 55, p99 FPS ≥ 56.
+        </div>
+    </div>
+
+    <div id="results">
+        <h3>📊 Test Results</h3>
+        <table>
+            <thead><tr><th>Test</th><th>Avg FPS</th><th>Min FPS</th><th>P99 FPS</th><th>Avg ms</th><th>Max ms</th><th>Result</th></tr></thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+        <div id="summary" style="margin-top:10px;color:#94a3b8;font-size:10px;"></div>
+    </div>
+
+    <div id="graph-container">
+        <div class="title">FPS Timeline (last 10s)</div>
+        <canvas id="fpsGraph" width="360" height="120"></canvas>
+    </div>
+
+    <script type="module">
+        import * as PIXI from 'pixi.js';
+
+        // ============================================================
+        // CONFIGURATION
+        // ============================================================
+        const TEST_DURATION = 8000; // 8 seconds per test
+        const FPS_SAMPLE_INTERVAL = 250; // Sample FPS every 250ms
+
+        // ============================================================
+        // PIXI APPLICATION
+        // ============================================================
+        let app = null;
+        let running = false;
+        let stopRequested = false;
+        let testResults = [];
+        let currentTestName = 'Idle';
+
+        // FPS tracking
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+        let currentFps = 60;
+        let fpsSamples = [];
+        let frameTimes = [];
+        let minFps = Infinity;
+        let maxFrameTime = 0;
+
+        // Graph
+        const graphCanvas = document.getElementById('fpsGraph');
+        const graphCtx = graphCanvas.getContext('2d');
+        let graphData = [];
+
+        async function init() {
+            app = new PIXI.Application();
+            await app.init({
+                width: window.innerWidth,
+                height: window.innerHeight,
+                backgroundAlpha: 0,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true,
+                preference: 'webgl',
+            });
+            document.body.insertBefore(app.canvas, document.body.firstChild);
+            app.ticker.maxFPS = 60;
+
+            window.addEventListener('resize', () => {
+                app.renderer.resize(window.innerWidth, window.innerHeight);
+            });
+
+            // Start graph animation
+            animateGraph();
+        }
+
+        // ============================================================
+        // FPS TRACKING
+        // ============================================================
+        function sampleFPS() {
+            const now = performance.now();
+            const elapsed = now - lastFpsTime;
+            if (elapsed >= FPS_SAMPLE_INTERVAL && frameCount > 0) {
+                currentFps = (frameCount * 1000) / elapsed;
+                frameCount = 0;
+                lastFpsTime = now;
+                fpsSamples.push(currentFps);
+                if (currentFps < minFps) minFps = currentFps;
+                graphData.push(currentFps);
+                if (graphData.length > 200) graphData.shift();
+            }
+        }
+
+        function updateHUD() {
+            const fpsEl = document.getElementById('fps');
+            fpsEl.textContent = currentFps.toFixed(1);
+            fpsEl.className = 'value ' + (currentFps >= 58 ? 'fps-good' : currentFps >= 50 ? 'fps-ok' : 'fps-bad');
+
+            if (fpsSamples.length > 0) {
+                const avg = fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length;
+                document.getElementById('avgFps').textContent = avg.toFixed(1);
+
+                const sorted = [...fpsSamples].sort((a, b) => a - b);
+                const p99Idx = Math.floor(sorted.length * 0.01);
+                const p99 = sorted[p99Idx] || sorted[0];
+                document.getElementById('p99Fps').textContent = p99.toFixed(1);
+                document.getElementById('minFps').textContent = minFps === Infinity ? '—' : minFps.toFixed(1);
+
+                const avgFrameTime = fpsSamples.reduce((a, b) => a + (1000 / b), 0) / fpsSamples.length;
+                document.getElementById('frameTime').textContent = avgFrameTime.toFixed(1) + 'ms';
+                document.getElementById('maxFrameTime').textContent = maxFrameTime.toFixed(1) + 'ms';
+            }
+
+            // Memory
+            const mem = performance.memory;
+            if (mem) {
+                document.getElementById('heapUsed').textContent = (mem.usedJSHeapSize / 1048576).toFixed(1) + 'MB';
+            }
+        }
+
+        function animateGraph() {
+            const w = graphCanvas.width;
+            const h = graphCanvas.height;
+            graphCtx.fillStyle = 'rgba(0,0,0,0.9)';
+            graphCtx.fillRect(0, 0, w, h);
+
+            // Draw 60fps line
+            const y60 = h - (60 / 120) * h;
+            graphCtx.strokeStyle = 'rgba(74, 222, 128, 0.3)';
+            graphCtx.setLineDash([4, 4]);
+            graphCtx.beginPath();
+            graphCtx.moveTo(0, y60);
+            graphCtx.lineTo(w, y60);
+            graphCtx.stroke();
+            graphCtx.setLineDash([]);
+
+            // Draw 50fps line
+            const y50 = h - (50 / 120) * h;
+            graphCtx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
+            graphCtx.setLineDash([4, 4]);
+            graphCtx.beginPath();
+            graphCtx.moveTo(0, y50);
+            graphCtx.lineTo(w, y50);
+            graphCtx.stroke();
+            graphCtx.setLineDash([]);
+
+            // Draw data
+            if (graphData.length > 1) {
+                graphCtx.beginPath();
+                graphCtx.strokeStyle = '#4ade80';
+                graphCtx.lineWidth = 2;
+                const step = w / 200;
+                for (let i = 0; i < graphData.length; i++) {
+                    const x = i * step;
+                    const y = h - (Math.min(graphData[i], 120) / 120) * h;
+                    if (i === 0) graphCtx.moveTo(x, y);
+                    else graphCtx.lineTo(x, y);
+                }
+                graphCtx.stroke();
+            }
+
+            requestAnimationFrame(animateGraph);
+        }
+
+        // ============================================================
+        // HELPER: Create fruit-like sprites
+        // ============================================================
+        function createFruitTexture(radius, color) {
+            const g = new PIXI.Graphics();
+            g.circle(0, 0, radius);
+            g.fill({ color });
+            // Simple face
+            g.circle(-radius * 0.25, -radius * 0.15, radius * 0.1);
+            g.circle(radius * 0.25, -radius * 0.15, radius * 0.1);
+            g.fill({ color: 0x000000 });
+            const tex = app.renderer.generateTexture({ target: g, resolution: 2 });
+            g.destroy();
+            return tex;
+        }
+
+        const FRUIT_COLORS = [0xFF6B6B, 0xFFA500, 0xFFD700, 0x4CAF50, 0x2196F3, 0x9C27B0, 0xE91E63, 0x795548, 0x607D8B, 0xFF5722];
+
+        // ============================================================
+        // TEST: Baseline (Empty scene)
+        // ============================================================
+        async function testBaseline() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: Fruit Stress (many sprites)
+        // ============================================================
+        async function testFruitStress() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            const fruits = [];
+            const vw = 600, vh = 750;
+            const scale = Math.min(app.screen.width / vw, app.screen.height / vh);
+
+            // Simulate 50 fruits bouncing
+            for (let i = 0; i < 50; i++) {
+                const tier = Math.floor(Math.random() * FRUIT_COLORS.length);
+                const radius = 10 + tier * 4;
+                const tex = createFruitTexture(radius, FRUIT_COLORS[tier]);
+                const sprite = new PIXI.Sprite(tex);
+                sprite.anchor.set(0.5);
+                sprite.x = 50 + Math.random() * (vw - 100);
+                sprite.y = 50 + Math.random() * (vh - 100);
+                sprite.scale.set(scale);
+                sprite.userData = {
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4,
+                    radius,
+                    gravity: 0.8
+                };
+                fruits.push(sprite);
+                app.stage.addChild(sprite);
+            }
+
+            document.getElementById('fruitCount').textContent = fruits.length;
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+
+                    // Simple physics for each fruit
+                    for (const f of fruits) {
+                        const ud = f.userData;
+                        ud.vy += ud.gravity;
+                        f.x += ud.vx;
+                        f.y += ud.vy;
+
+                        if (f.y + ud.radius > vh) { f.y = vh - ud.radius; ud.vy *= -0.5; }
+                        if (f.x - ud.radius < 0) { f.x = ud.radius; ud.vx *= -0.5; }
+                        if (f.x + ud.radius > vw) { f.x = vw - ud.radius; ud.vx *= -0.5; }
+                    }
+
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: Particle Stress (effect particles)
+        // ============================================================
+        async function testParticleStress() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            const particles = [];
+            const vw = 600, vh = 750;
+
+            // Spawn and update 200 particles
+            for (let i = 0; i < 200; i++) {
+                const g = new PIXI.Graphics();
+                g.circle(0, 0, 2 + Math.random() * 4);
+                g.fill({ color: FRUIT_COLORS[Math.floor(Math.random() * FRUIT_COLORS.length)], alpha: 0.6 + Math.random() * 0.4 });
+                g.x = Math.random() * vw;
+                g.y = Math.random() * vh;
+                g.userData = {
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8 - 2,
+                    life: 1.0,
+                    decay: 0.005 + Math.random() * 0.01
+                };
+                particles.push(g);
+                app.stage.addChild(g);
+            }
+
+            document.getElementById('particleCount').textContent = particles.length;
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+
+                    for (const p of particles) {
+                        const ud = p.userData;
+                        p.x += ud.vx;
+                        p.y += ud.vy;
+                        ud.vy += 0.1;
+                        ud.life -= ud.decay;
+                        p.alpha = Math.max(0, ud.life);
+
+                        if (ud.life <= 0) {
+                            ud.life = 1;
+                            p.x = Math.random() * vw;
+                            p.y = vh;
+                            ud.vx = (Math.random() - 0.5) * 8;
+                            ud.vy = -3 - Math.random() * 5;
+                        }
+                    }
+
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: Merge Storm (rapid sprite creation/destruction)
+        // ============================================================
+        async function testMergeStorm() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            let fruits = [];
+            const vw = 600, vh = 750;
+            const scale = Math.min(app.screen.width / vw, app.screen.height / vh);
+            const textures = FRUIT_COLORS.map(c => createFruitTexture(15, c));
+            let mergeCount = 0;
+
+            // Start with 30 fruits
+            for (let i = 0; i < 30; i++) {
+                const tex = textures[Math.floor(Math.random() * textures.length)];
+                const sprite = new PIXI.Sprite(tex);
+                sprite.anchor.set(0.5);
+                sprite.x = 50 + Math.random() * (vw - 100);
+                sprite.y = 50 + Math.random() * (vh - 100);
+                sprite.scale.set(scale);
+                sprite.userData = { id: i, vx: (Math.random() - 0.5) * 2, vy: 0, radius: 15 };
+                fruits.push(sprite);
+                app.stage.addChild(sprite);
+            }
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+
+                    // Simulate gravity
+                    for (const f of fruits) {
+                        f.userData.vy += 0.5;
+                        f.y += f.userData.vy;
+                        f.x += f.userData.vx;
+                        if (f.y > vh - 20) { f.y = vh - 20; f.userData.vy *= -0.3; }
+                        if (f.x < 15) { f.x = 15; f.userData.vx *= -0.5; }
+                        if (f.x > vw - 15) { f.x = vw - 15; f.userData.vx *= -0.5; }
+                    }
+
+                    // Simulate merges: every ~500ms, remove 2 fruits and add 1
+                    if (elapsed > 1000 && Math.random() < 0.02 && fruits.length > 4) {
+                        const i1 = Math.floor(Math.random() * fruits.length);
+                        const i2 = (i1 + 1 + Math.floor(Math.random() * (fruits.length - 1))) % fruits.length;
+                        const f1 = fruits[i1], f2 = fruits[i2];
+                        const mx = (f1.x + f2.x) / 2, my = (f1.y + f2.y) / 2;
+
+                        f1.destroy();
+                        f2.destroy();
+                        fruits.splice(Math.max(i1, i2), 1);
+                        fruits.splice(Math.min(i1, i2), 1);
+
+                        const newTex = textures[Math.min(textures.length - 1, Math.floor(Math.random() * textures.length))];
+                        const sprite = new PIXI.Sprite(newTex);
+                        sprite.anchor.set(0.5);
+                        sprite.x = mx;
+                        sprite.y = my;
+                        sprite.scale.set(scale * 1.1);
+                        sprite.userData = { id: mergeCount++, vx: (Math.random() - 0.5) * 4, vy: -3, radius: 16 };
+                        fruits.push(sprite);
+                        app.stage.addChild(sprite);
+                    }
+
+                    document.getElementById('fruitCount').textContent = fruits.length;
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: Physics Load (O(n²) collision-like workload)
+        // ============================================================
+        async function testPhysicsLoad() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            const fruits = [];
+            const vw = 600, vh = 750;
+            const scale = Math.min(app.screen.width / vw, app.screen.height / vh);
+
+            // 80 fruits with collision detection (simplified O(n²))
+            for (let i = 0; i < 80; i++) {
+                const tier = Math.floor(Math.random() * FRUIT_COLORS.length);
+                const radius = 10 + tier * 4;
+                const tex = createFruitTexture(radius, FRUIT_COLORS[tier]);
+                const sprite = new PIXI.Sprite(tex);
+                sprite.anchor.set(0.5);
+                sprite.x = 50 + Math.random() * (vw - 100);
+                sprite.y = 50 + Math.random() * (vh - 100);
+                sprite.scale.set(scale);
+                sprite.userData = { vx: (Math.random() - 0.5) * 3, vy: 0, radius, mass: 1 + tier * 0.5 };
+                fruits.push(sprite);
+                app.stage.addChild(sprite);
+            }
+
+            document.getElementById('fruitCount').textContent = fruits.length;
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+
+                    // Gravity
+                    for (const f of fruits) {
+                        f.userData.vy += 0.8;
+                        f.y += f.userData.vy;
+                        f.x += f.userData.vx;
+                        f.userData.vx *= 0.99;
+                        f.userData.vy *= 0.99;
+
+                        if (f.y + f.userData.radius > vh - 15) {
+                            f.y = vh - 15 - f.userData.radius;
+                            f.userData.vy *= -0.4;
+                            f.userData.vx *= 0.85;
+                        }
+                        if (f.x - f.userData.radius < 0) { f.x = f.userData.radius; f.userData.vx *= -0.5; }
+                        if (f.x + f.userData.radius > vw) { f.x = vw - f.userData.radius; f.userData.vx *= -0.5; }
+                    }
+
+                    // Simplified collision (O(n²) like the real physics engine)
+                    for (let i = 0; i < fruits.length; i++) {
+                        for (let j = i + 1; j < fruits.length; j++) {
+                            const a = fruits[i], b = fruits[j];
+                            const dx = a.x - b.x, dy = a.y - b.y;
+                            const distSq = dx * dx + dy * dy;
+                            const radSum = a.userData.radius + b.userData.radius;
+                            if (distSq < radSum * radSum && distSq > 0) {
+                                const dist = Math.sqrt(distSq);
+                                const nx = dx / dist, ny = dy / dist;
+                                const overlap = radSum - dist;
+                                a.x += nx * overlap * 0.5;
+                                a.y += ny * overlap * 0.5;
+                                b.x -= nx * overlap * 0.5;
+                                b.y -= ny * overlap * 0.5;
+                            }
+                        }
+                    }
+
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: Render Load (Graphics clearing/redrawing every frame)
+        // ============================================================
+        async function testRenderLoad() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            // Render system simulation: clear and redraw Graphics every frame
+            const groundG = new PIXI.Graphics();
+            const wallG = new PIXI.Graphics();
+            const effectG = new PIXI.Graphics();
+            const dangerG = new PIXI.Graphics();
+            app.stage.addChild(groundG, wallG, effectG, dangerG);
+
+            const vw = 600, vh = 750;
+            const scale = Math.min(app.screen.width / vw, app.screen.height / vh);
+            let time = 0;
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+                    time += 0.016;
+
+                    // Simulate GroundRenderer: clear + redraw wave
+                    groundG.clear();
+                    const points = [];
+                    for (let x = 0; x <= vw; x += 5) {
+                        const wave = Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
+                        points.push(x, vh - 15 + wave);
+                    }
+                    points.push(vw, vh + 100);
+                    points.push(0, vh + 100);
+                    groundG.poly(points);
+                    groundG.fill({ color: 0x76C043 });
+
+                    // Simulate WallRenderer: clear + redraw bezier walls
+                    wallG.clear();
+                    for (let side = 0; side < 2; side++) {
+                        const offsetX = side === 0 ? 0 : vw - 70;
+                        wallG.beginPath();
+                        wallG.moveTo(offsetX + 10, 35);
+                        wallG.lineTo(offsetX + 10, vh - 45);
+                        wallG.quadraticCurveTo(offsetX + 10, vh - 35, offsetX + 20, vh - 35);
+                        wallG.lineTo(offsetX + 60, vh - 35);
+                        wallG.quadraticCurveTo(offsetX + 70, vh - 35, offsetX + 70, vh - 45);
+                        wallG.lineTo(offsetX + 70, 35);
+                        wallG.closePath();
+                        wallG.fill({ color: 0x4CAF50 });
+                    }
+
+                    // Simulate EffectRenderer: clear + redraw particles
+                    effectG.clear();
+                    for (let i = 0; i < 30; i++) {
+                        const px = Math.random() * vw;
+                        const py = Math.random() * vh;
+                        const size = 2 + Math.random() * 4;
+                        effectG.circle(px, py, size);
+                        effectG.fill({ color: FRUIT_COLORS[i % FRUIT_COLORS.length], alpha: 0.6 });
+                    }
+
+                    // Simulate DangerLine
+                    dangerG.clear();
+                    dangerG.moveTo(0, vh * 0.13);
+                    dangerG.lineTo(vw, vh * 0.13);
+                    dangerG.stroke({ width: 4, color: 0xFF4444, alpha: 0.5 + Math.sin(time * 3) * 0.3 });
+
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: CSS Overlay (simulate DOM overhead)
+        // ============================================================
+        async function testCSSOverlay() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            // Create CSS overlay elements that mimic the real game
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; inset: 0; pointer-events: none; z-index: 900;
+            `;
+
+            // Simulated background blobs with blur
+            const blobContainer = document.createElement('div');
+            blobContainer.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
+            for (let i = 0; i < 3; i++) {
+                const blob = document.createElement('div');
+                blob.style.cssText = `
+                    position: absolute;
+                    width: ${200 + i * 50}px; height: ${200 + i * 50}px;
+                    border-radius: 50%;
+                    opacity: 0.25;
+                    filter: blur(60px);
+                    animation: blobFloat${i} ${8 + i * 2}s ease-in-out infinite;
+                    background: ${['#c084fc', '#fde047', '#f9a8d4'][i]};
+                `;
+                blob.style.top = `${20 + i * 10}%`;
+                blob.style.left = `${20 + i * 15}%`;
+                blobContainer.appendChild(blob);
+            }
+
+            // Frosted glass
+            const glass = document.createElement('div');
+            glass.style.cssText = 'position:absolute;inset:0;background:rgba(255,255,255,0.3);backdrop-filter:blur(12px);';
+            blobContainer.appendChild(glass);
+
+            // HUD elements
+            const hud = document.createElement('div');
+            hud.style.cssText = 'position:absolute;top:20px;left:20px;right:20px;display:flex;justify-content:space-between;';
+            const scoreEl = document.createElement('div');
+            scoreEl.style.cssText = 'color:#1a1a1a;font-size:28px;font-weight:bold;font-family:sans-serif;';
+            scoreEl.textContent = '0';
+            hud.appendChild(scoreEl);
+            blobContainer.appendChild(hud);
+
+            // Point popups that appear periodically
+            const popupContainer = document.createElement('div');
+            popupContainer.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
+            blobContainer.appendChild(popupContainer);
+
+            overlay.appendChild(blobContainer);
+            document.body.appendChild(overlay);
+
+            // Simulate score updates and popups
+            let score = 0;
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+
+                    // Update score periodically (like React would)
+                    if (Math.floor(elapsed / 500) % 2 === 0) {
+                        score += Math.floor(Math.random() * 100);
+                        scoreEl.textContent = score.toLocaleString();
+                    }
+
+                    // Create popup periodically
+                    if (Math.random() < 0.03) {
+                        const popup = document.createElement('div');
+                        const x = 100 + Math.random() * 400;
+                        const y = 200 + Math.random() * 300;
+                        const pts = Math.floor(Math.random() * 500 + 50);
+                        popup.style.cssText = `
+                            position: absolute; left: ${x}px; top: ${y}px;
+                            color: #FFD700; font-size: 24px; font-weight: 900;
+                            font-family: sans-serif; pointer-events: none;
+                            animation: popupFade 0.8s ease-out forwards;
+                            text-shadow: 0 0 10px rgba(255,215,0,0.5);
+                        `;
+                        popup.textContent = `+${pts}`;
+                        popupContainer.appendChild(popup);
+                        setTimeout(() => popup.remove(), 800);
+                    }
+
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        overlay.remove();
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // TEST: Full Game Simulation
+        // ============================================================
+        async function testFullGameSim() {
+            app.stage.removeChildren();
+            const bg = new PIXI.Graphics();
+            bg.rect(0, 0, app.screen.width, app.screen.height);
+            bg.fill({ color: 0x1a1a2e });
+            app.stage.addChild(bg);
+
+            const vw = 600, vh = 750;
+            const scale = Math.min(app.screen.width / vw, app.screen.height / vh);
+            const textures = FRUIT_COLORS.map(c => createFruitTexture(15, c));
+
+            // Game state
+            const fruits = [];
+            let currentFruit = null;
+            let spawnTimer = 0;
+            let effectParticles = [];
+            let score = 0;
+
+            // Spawn current fruit
+            function spawnFruit() {
+                const tier = Math.floor(Math.random() * 5);
+                const radius = 10 + tier * 4;
+                const tex = textures[tier];
+                const sprite = new PIXI.Sprite(tex);
+                sprite.anchor.set(0.5);
+                sprite.x = vw / 2;
+                sprite.y = vh * 0.06;
+                sprite.scale.set(scale);
+                sprite.userData = {
+                    id: fruits.length, tier, radius,
+                    vx: 0, vy: 0, isStatic: true,
+                    cooldownTimer: 0
+                };
+                currentFruit = sprite;
+                app.stage.addChild(sprite);
+            }
+            spawnFruit();
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (t) => {
+                    const elapsed = performance.now() - startTime;
+                    frameCount++;
+                    sampleFPS();
+                    const dt = 1 / 60;
+
+                    // Spawn logic
+                    spawnTimer += dt;
+                    if (spawnTimer > 0.6 && !currentFruit) {
+                        spawnFruit();
+                        spawnTimer = 0;
+                    }
+
+                    // Drop current fruit
+                    if (currentFruit && currentFruit.userData.isStatic && elapsed > 2000 && Math.random() < 0.05) {
+                        currentFruit.userData.isStatic = false;
+                        currentFruit.userData.vx = (Math.random() - 0.5) * 2;
+                        currentFruit.userData.vy = 2;
+                        fruits.push(currentFruit);
+                        currentFruit = null;
+                    }
+
+                    // Physics substeps (3 like real game)
+                    for (let s = 0; s < 3; s++) {
+                        for (const f of fruits) {
+                            if (f.userData.isStatic) continue;
+                            f.userData.vy += 0.8;
+                            f.x += f.userData.vx;
+                            f.y += f.userData.vy;
+                            f.userData.vx *= 0.98;
+                            f.userData.vy *= 0.98;
+
+                            // Floor
+                            if (f.y + f.userData.radius > vh - 15) {
+                                f.y = vh - 15 - f.userData.radius;
+                                f.userData.vy *= -0.4;
+                                f.userData.vx *= 0.85;
+                            }
+                            // Walls
+                            if (f.x - f.userData.radius < 0) { f.x = f.userData.radius; f.userData.vx *= -0.5; }
+                            if (f.x + f.userData.radius > vw) { f.x = vw - f.userData.radius; f.userData.vx *= -0.5; }
+                        }
+
+                        // Collision
+                        for (let i = 0; i < fruits.length; i++) {
+                            for (let j = i + 1; j < fruits.length; j++) {
+                                const a = fruits[i], b = fruits[j];
+                                const dx = a.x - b.x, dy = a.y - b.y;
+                                const distSq = dx * dx + dy * dy;
+                                const radSum = a.userData.radius + b.userData.radius;
+                                if (distSq < radSum * radSum && distSq > 0) {
+                                    const dist = Math.sqrt(distSq);
+                                    const nx = dx / dist, ny = dy / dist;
+                                    const overlap = radSum - dist;
+                                    a.x += nx * overlap * 0.5;
+                                    a.y += ny * overlap * 0.5;
+                                    b.x -= nx * overlap * 0.5;
+                                    b.y -= ny * overlap * 0.5;
+                                }
+                            }
+                        }
+                    }
+
+                    // Effect particles (spawn from random fruits)
+                    if (Math.random() < 0.1) {
+                        const g = new PIXI.Graphics();
+                        const px = Math.random() * vw;
+                        const py = Math.random() * vh;
+                        g.circle(px, py, 2 + Math.random() * 3);
+                        g.fill({ color: FRUIT_COLORS[Math.floor(Math.random() * FRUIT_COLORS.length)], alpha: 0.7 });
+                        g.userData = { vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 4, life: 1.0 };
+                        effectParticles.push(g);
+                        app.stage.addChild(g);
+                    }
+
+                    // Update effect particles
+                    for (let i = effectParticles.length - 1; i >= 0; i--) {
+                        const p = effectParticles[i];
+                        p.x += p.userData.vx;
+                        p.y += p.userData.vy;
+                        p.userData.vy += 0.1;
+                        p.userData.life -= 0.02;
+                        p.alpha = Math.max(0, p.userData.life);
+                        if (p.userData.life <= 0) {
+                            p.destroy();
+                            effectParticles.splice(i, 1);
+                        }
+                    }
+
+                    // Update HUD
+                    document.getElementById('fruitCount').textContent = fruits.length;
+                    document.getElementById('particleCount').textContent = effectParticles.length;
+                    updateHUD();
+                    document.getElementById('testStatus').textContent = `${(elapsed/1000).toFixed(1)}s / ${(TEST_DURATION/1000).toFixed(0)}s`;
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve(collectResults());
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // ============================================================
+        // RESULTS COLLECTION
+        // ============================================================
+        function collectResults() {
+            const avg = fpsSamples.length > 0 ? fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length : 0;
+            const sorted = [...fpsSamples].sort((a, b) => a - b);
+            const min = sorted[0] || 0;
+            const p99Idx = Math.max(0, Math.floor(sorted.length * 0.01));
+            const p99 = sorted[p99Idx] || 0;
+            const maxFt = maxFrameTime;
+            const avgFt = 1000 / avg;
+
+            return {
+                name: currentTestName,
+                avgFps: avg,
+                minFps: min,
+                p99Fps: p99,
+                avgFrameTime: avgFt,
+                maxFrameTime: maxFt,
+                passed: avg >= 58 && min >= 55 && p99 >= 56,
+                warning: avg >= 55 && (min < 55 || p99 < 56),
+            };
+        }
+
+        // ============================================================
+        // TEST RUNNER
+        // ============================================================
+        const testMap = {
+            baseline: testBaseline,
+            fruits: testFruitStress,
+            particles: testParticleStress,
+            merges: testMergeStorm,
+            physics: testPhysicsLoad,
+            render: testRenderLoad,
+            css: testCSSOverlay,
+            fullgame: testFullGameSim,
+        };
+
+        const testDescriptions = {
+            baseline: 'Empty Pixi scene — measures baseline overhead',
+            fruits: '50 bouncing fruit sprites with simple physics',
+            particles: '200 effect particles with lifetime management',
+            merges: 'Rapid sprite creation/destruction simulating merges',
+            physics: '80 fruits with O(n²) collision detection',
+            render: 'Graphics clear+redraw every frame (ground, walls, effects, danger)',
+            css: 'CSS backdrop-blur + DOM overlays competing with Pixi',
+            fullgame: 'Full game simulation: spawn, physics, effects, collisions',
+        };
+
+        async function runTest(name) {
+            if (running) return;
+            running = true;
+            stopRequested = false;
+
+            currentTestName = name;
+            document.getElementById('testName').textContent = name.charAt(0).toUpperCase() + name.slice(1);
+            document.getElementById('testStatus').textContent = 'Running...';
+
+            // Reset FPS tracking
+            frameCount = 0;
+            lastFpsTime = performance.now();
+            currentFps = 60;
+            fpsSamples = [];
+            maxFrameTime = 0;
+            minFps = Infinity;
+
+            const testFn = testMap[name];
+            if (!testFn) return;
+
+            console.log(`🔬 Running test: ${name}`);
+            const result = await testFn();
+
+            // Add to results table
+            const row = document.createElement('tr');
+            const statusClass = result.passed ? 'pass' : result.warning ? 'warn' : 'fail';
+            const statusText = result.passed ? '✅ PASS' : result.warning ? '⚠️ WARN' : '❌ FAIL';
+            row.innerHTML = `
+                <td><strong>${result.name}</strong><br><span style="color:#666;font-size:9px">${testDescriptions[name] || ''}</span></td>
+                <td>${result.avgFps.toFixed(1)}</td>
+                <td>${result.minFps.toFixed(1)}</td>
+                <td>${result.p99Fps.toFixed(1)}</td>
+                <td>${result.avgFrameTime.toFixed(1)}</td>
+                <td>${result.maxFrameTime.toFixed(1)}</td>
+                <td class="${statusClass}">${statusText}</td>
+            `;
+            document.getElementById('resultsBody').appendChild(row);
+
+            testResults.push(result);
+            running = false;
+
+            console.log(`✅ Test complete: ${result.name} — Avg: ${result.avgFps.toFixed(1)} FPS, Min: ${result.minFps.toFixed(1)} FPS`);
+            updateSummary();
+        }
+
+        async function runAllTests() {
+            if (running) return;
+
+            document.getElementById('resultsBody').innerHTML = '';
+            testResults = [];
+
+            for (const name of Object.keys(testMap)) {
+                if (stopRequested) break;
+                await runTest(name);
+                // Brief pause between tests
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            stopRequested = false;
+        }
+
+        function stopTest() {
+            stopRequested = true;
+            running = false;
+            document.getElementById('testStatus').textContent = 'Stopped';
+        }
+
+        function updateSummary() {
+            if (testResults.length === 0) return;
+
+            const passed = testResults.filter(r => r.passed).length;
+            const warned = testResults.filter(r => r.warning).length;
+            const failed = testResults.filter(r => !r.passed && !r.warning).length;
+            const worst = testResults.reduce((a, b) => a.avgFps < b.avgFps ? a : b);
+
+            document.getElementById('summary').innerHTML = `
+                <strong style="color:#fff">Summary:</strong> 
+                <span style="color:#4ade80">${passed} passed</span>, 
+                <span style="color:#fbbf24">${warned} warning</span>, 
+                <span style="color:#ef4444">${failed} failed</span><br>
+                Worst performer: <strong style="color:#ef4444">${worst.name}</strong> (${worst.avgFps.toFixed(1)} avg FPS)
+            `;
+        }
+
+        // Expose to global
+        window.runTest = runTest;
+        window.runAllTests = runAllTests;
+        window.stopTest = stopTest;
+
+        // Add CSS animation for popups
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes popupFade {
+                0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+                20% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+                40% { transform: translate(-50%, -50%) scale(1.0); opacity: 1; }
+                100% { transform: translate(-50%, -50%) scale(1.0) translateY(-60px); opacity: 0; }
+            }
+            @keyframes blobFloat0 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+            @keyframes blobFloat1 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+            @keyframes blobFloat2 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+        `;
+        document.head.appendChild(style);
+
+        init();
+    </script>
+</body>
+</html>

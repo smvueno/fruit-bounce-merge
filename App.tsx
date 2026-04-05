@@ -372,28 +372,30 @@ const App: React.FC = () => {
 
   // Conditional styles for the game container
   const containerClasses = gameState === GameState.START
-    ? "relative w-full h-full max-w-[500px] md:h-auto md:aspect-[9/16] flex flex-col overflow-visible" // Transparent on Start, visible overflow for floating elements if any
-    : "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] rounded-xl flex flex-col overflow-hidden"; // Card style on Game
+    ? "relative w-full h-full max-w-[500px] md:h-auto md:aspect-[9/16] flex flex-col overflow-visible" // Transparent on Start, visible overflow for floating elements
+    : gameState === GameState.PLAYING
+    ? "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] flex flex-col overflow-hidden" // Game — no rounded corners, no card styling
+    : "relative w-full h-full max-w-[500px] max-h-[100svh] md:max-h-[90svh] md:h-auto md:aspect-[9/16] rounded-xl flex flex-col overflow-hidden"; // Game Over — card style
 
   return (
     <div className="relative w-full h-[100svh] bg-orange-50 flex items-center justify-center overflow-hidden font-sans select-none px-3 md:px-0">
-      {/* Global Background Blobs & Glass Effect */}
-      {/* Optimization: Replaced blur-3xl+mix-blend-multiply (GPU-killer on iPhone) with
-          static gradients — visually near-identical, 0 GPU compositor cost */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Static gradient blobs — no filter blur, no mix-blend (saves ~5-8 FPS on mobile) */}
-        <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%]">
-          <div className="absolute top-[20%] left-[20%] w-64 h-64 md:w-96 md:h-96 bg-purple-300 rounded-full opacity-25 animate-float" style={{ animationDuration: '8s', filter: 'blur(60px)' }}></div>
-          <div className="absolute top-[30%] right-[20%] w-72 h-72 md:w-[30rem] md:h-[30rem] bg-yellow-200 rounded-full opacity-25 animate-float" style={{ animationDuration: '10s', animationDelay: '2s', filter: 'blur(60px)' }}></div>
-          <div className="absolute bottom-[20%] left-[30%] w-80 h-80 md:w-[32rem] md:h-[32rem] bg-pink-300 rounded-full opacity-25 animate-float" style={{ animationDuration: '12s', animationDelay: '4s', filter: 'blur(60px)' }}></div>
+      {/* Global Background Blobs & Glass Effect — ONLY on menus, NEVER during gameplay */}
+      {gameState !== GameState.PLAYING && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {/* Gradient blobs with blur — hidden during gameplay to save 5-8 FPS */}
+          <div className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%]">
+            <div className="absolute top-[20%] left-[20%] w-64 h-64 md:w-96 md:h-96 bg-purple-300 rounded-full opacity-25 animate-float" style={{ animationDuration: '8s', filter: 'blur(60px)' }}></div>
+            <div className="absolute top-[30%] right-[20%] w-72 h-72 md:w-[30rem] md:h-[30rem] bg-yellow-200 rounded-full opacity-25 animate-float" style={{ animationDuration: '10s', animationDelay: '2s', filter: 'blur(60px)' }}></div>
+            <div className="absolute bottom-[20%] left-[30%] w-80 h-80 md:w-[32rem] md:h-[32rem] bg-pink-300 rounded-full opacity-25 animate-float" style={{ animationDuration: '12s', animationDelay: '4s', filter: 'blur(60px)' }}></div>
+          </div>
+
+          {/* Frosted glass — hidden during gameplay */}
+          <div className="absolute inset-0 bg-white/30 backdrop-blur-md md:backdrop-blur-2xl"></div>
+
+          {/* Subtle Texture */}
+          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#000 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
         </div>
-
-        {/* Frosted glass — reduced from backdrop-blur-2xl to backdrop-blur-md on mobile */}
-        <div className="absolute inset-0 bg-white/30 backdrop-blur-md md:backdrop-blur-2xl"></div>
-
-        {/* Subtle Texture */}
-        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(#000 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
-      </div>
+      )}
 
       {/* Responsive Game Container */}
       <div className={containerClasses}>

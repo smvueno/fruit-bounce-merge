@@ -131,6 +131,11 @@ export class GameEngine {
     // Optimization: O(1) fruit lookups in updateGameLogic (replaces .find() per active effect per frame)
     private _fruitsById: Map<number, Particle> = new Map();
 
+    // Fixed-timestep accumulator for stable 60 FPS physics
+    private _accumulator = 0;
+    private readonly _fixedDt = 1 / 60; // 60 Hz fixed timestep
+    private readonly _fixedDtMs = 1000 / 60;
+
     private spawnTimeout: any = null;
     private wasPausedBySystem: boolean = false;
     private visibilityHandler: () => void;
@@ -300,7 +305,7 @@ export class GameEngine {
                 resolution: dpr,
                 autoDensity: true,
                 preference: 'webgl',
-                resizeTo: this.canvasElement
+                resizeTo: this.canvasElement,
             });
 
             this.app.renderer.on('resize', () => this.handleResize());
@@ -343,7 +348,16 @@ export class GameEngine {
 
         // Start Game
         this.spawnNextFruit();
-        this.app.ticker.maxFPS = 60; // Lock to 60 FPS for consistent physics speed
+
+        // CRITICAL: Use manual fixed-timestep frame pacing instead of ticker.maxFPS.
+        // Pixi.js ticker.maxFPS is known to be unreliable (GitHub issue #11411).
+        // On 120Hz ProMotion displays, maxFPS=60 causes stutter because the ticker
+        // still fires at 120Hz and skips frames inconsistently.
+        // Solution: Let the ticker run at display refresh rate, but only run game
+        // logic at a fixed 60Hz interval. This gives butter-smooth rendering with
+        // deterministic physics.
+        this.app.ticker.maxFPS = 0; // unlimited — we control timing ourselves
+        this.app.ticker.minFPS = 30; // clamp deltaTime to prevent spiral of death
         this.app.ticker.add(this.update.bind(this));
 
         // Input Handling
@@ -567,9 +581,11 @@ export class GameEngine {
         this.savedFruitTier = null;
         this.canSwap = true;
         this.onSaveUpdate(null);
+        this._accumulator = 0; // Reset fixed-timestep accumulator
 
         this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
+        this._accumulator = 0; // Reset fixed-timestep accumulator on game reset
 
         if (this.settings.musicEnabled || this.settings.sfxEnabled) {
             this.audio.resume();
@@ -632,8 +648,25 @@ export class GameEngine {
 
     update(ticker: PIXI.Ticker) {
         if (this.paused) return;
-        const dt = 1 / 60;
-        const dtMs = dt * 1000;
+
+        // Fixed-timestep accumulator: accumulate real elapsed time, then drain
+        // in fixed 1/60s steps. This decouples physics from display refresh rate.
+        // On 120Hz displays the ticker fires twice as often but we still only
+        // run one physics step per 16.67ms of accumulated time.
+        const elapsedMs = ticker.deltaMS;
+        this._accumulator += elapsedMs;
+
+        // Safety cap: prevent spiral of death if tab was backgrounded
+        if (this._accumulator > 250) this._accumulator = 250;
+
+        // Drain accumulator in fixed steps
+        while (this._accumulator >= this._fixedDtMs) {
+            this._accumulator -= this._fixedDtMs;
+            this._runFixedStep();
+        }
+
+        // Render every frame (interpolation could be added later if needed)
+        this._renderFrame();
 
         // --- Performance Tracking ---
         const _perfNow = performance.now();
@@ -661,12 +694,19 @@ export class GameEngine {
             }
         }
         this._perfLastTime = _perfNow;
+    }
+
+    /** Run one fixed 1/60s timestep of game logic + physics */
+    private _runFixedStep() {
+        const dt = this._fixedDt;
+        const dtMs = this._fixedDtMs;
+
         this.perfStats.fruitCount = this.fruits.length;
         this.perfStats.particleCount = this.effectSystem.visualParticles.length;
         this.perfStats.audioQueueLength = this.audio.soundQueue.length;
         this.perfStats.substeps = SUBSTEPS;
 
-        // Optimization: Build O(1) fruit lookup Map once per frame
+        // Optimization: Build O(1) fruit lookup Map once per step
         this._fruitsById.clear();
         for (const p of this.fruits) this._fruitsById.set(p.id, p);
 
@@ -674,9 +714,7 @@ export class GameEngine {
         this.updateGameLogic(dtMs);
 
         // 2. Update Physics
-        // Optimization: Reuse object to reduce GC
         this._physicsContext.fruits = this.fruits;
-        // fruitMap is already linked by reference to this._fruitsById
         this._physicsContext.activeTomatoes = this.activeTomatoes;
         this._physicsContext.activeBombs = this.activeBombs;
         this._physicsContext.celebrationEffect = this.celebrationEffect;
@@ -690,10 +728,8 @@ export class GameEngine {
         this.physicsSystem.update(dt, this._physicsContext, this._physicsCallbacks);
 
         // 3. Update Effects
-        // Optimization: Reuse persistent context object — avoids GC allocation every frame
         const isFever = this.scoreController.isFever();
         this._effectContext.fruits = this.fruits;
-        // fruitMap is already linked
         this._effectContext.activeTomatoes = this.activeTomatoes;
         this._effectContext.currentFruit = this.currentFruit;
         this._effectContext.feverActive = isFever;
@@ -706,8 +742,13 @@ export class GameEngine {
 
         // Flush batched score/UI updates (single React render per frame)
         this.scoreController.flushUpdates();
+    }
 
-        // 5. Render
+    /** Render the current frame (called every display refresh, not just fixed steps) */
+    private _renderFrame() {
+        const isFever = this.scoreController.isFever();
+
+        // 5. Render danger line
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
 
         // Update clouds (screen-space animation)
@@ -727,7 +768,7 @@ export class GameEngine {
 
         // Render juice overlay
         if (this.juiceRenderer) {
-            this.juiceRenderer.render(dt);
+            this.juiceRenderer.render(this._fixedDt);
         }
     }
 

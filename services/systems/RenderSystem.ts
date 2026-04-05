@@ -188,7 +188,8 @@ export class RenderSystem {
         let rhythmicScaleX = 1;
         let rhythmicScaleY = 1;
         if (ctx.feverActive) {
-            const time = Date.now();
+            // Use performance.now() instead of Date.now() — higher resolution, monotonic
+            const time = performance.now();
             const pulse = Math.sin((time / 250) * Math.PI) * 0.05;
             rhythmicScaleX = 1 + pulse;
             rhythmicScaleY = 1 - pulse;
