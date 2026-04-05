@@ -426,7 +426,8 @@ export class GameEngine {
             this.groundRenderer.draw(
                 this._screenWidth, this._screenHeight,
                 this._gameAreaWidth, this._gameAreaHeight,
-                this._containerTop, this._containerLeft
+                this._containerTop, this._containerLeft,
+                this.scaleFactor
             );
         }
         if (this.wallRenderer) {
@@ -439,7 +440,7 @@ export class GameEngine {
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
         this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
-        this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft);
+        this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, this.scaleFactor);
         this.wallRenderer?.draw(actualW, actualH, this._containerTop, this._containerLeft, actualH);
 
         return true;
@@ -483,7 +484,7 @@ export class GameEngine {
 
         // Update screen-space renderers (ground, walls, clouds)
         if (this.groundRenderer) {
-            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft);
+            this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, this.scaleFactor);
         }
         if (this.wallRenderer) {
             this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, actualH);
@@ -517,7 +518,7 @@ export class GameEngine {
 
         // Update screen-space renderers
         if (this.groundRenderer) {
-            this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, height, top, left);
+            this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, height, top, left, this.scaleFactor);
         }
         if (this.wallRenderer) {
             this.wallRenderer.draw(width, height, top, left, this._screenHeight);

@@ -2,8 +2,8 @@ import * as PIXI from 'pixi.js';
 
 /**
  * Renders the wavy ground floor in Pixi screen-space.
- * Replaces GroundCanvas.tsx — draws in screen coordinates on the Pixi stage.
- * Extends beyond game area to cover screen edges, matching original behavior.
+ * Aligned to the physics floor: y = V_HEIGHT - 15 = 735 in virtual coords.
+ * Uses the Pixi container's position (not DOM) for accurate alignment.
  */
 export class GroundRenderer {
     private fillGraphics: PIXI.Graphics;
@@ -22,20 +22,26 @@ export class GroundRenderer {
 
     /**
      * Draw the ground floor in screen coordinates.
+     * @param viewWidth Viewport width in CSS pixels
+     * @param viewHeight Viewport height in CSS pixels
+     * @param gameAreaWidth Game area width in CSS pixels
+     * @param gameAreaHeight Game area height in CSS pixels
+     * @param containerTop Pixi container Y position on screen (CSS pixels) — NOT DOM position
+     * @param containerLeft Pixi container X position on screen (CSS pixels) — NOT DOM position
+     * @param scaleFactor Scale factor between virtual and screen coords
      */
-    draw(viewWidth: number, viewHeight: number, gameAreaWidth: number, gameAreaHeight: number, containerTop: number, containerLeft: number): void {
+    draw(viewWidth: number, viewHeight: number, gameAreaWidth: number, gameAreaHeight: number, containerTop: number, containerLeft: number, scaleFactor: number): void {
         this.fillGraphics.clear();
         this.strokeGraphics.clear();
 
-        const V_WIDTH = 600;
-        const scaleFactor = gameAreaWidth / V_WIDTH;
+        const V_HEIGHT = 750;
 
-        // Game floor position in viewport coordinates
-        const virtualFloorOffset = 15;
-        const gameFloorOffset = virtualFloorOffset * scaleFactor;
-        const gameFloorY = containerTop + gameAreaHeight - gameFloorOffset;
+        // Physics floor is at V_HEIGHT - 15 = 735 in virtual coords
+        // Convert to screen Y using the Pixi container's position
+        const virtualFloorY = V_HEIGHT - 15;
+        const gameFloorY = containerTop + (virtualFloorY * scaleFactor);
 
-        // Helper to get wave Y at screen X
+        // Helper to get wave Y at screen X (relative to game area)
         const getWaveY = (screenX: number): number => {
             const visualRelX = screenX - containerLeft;
             const virtualX = visualRelX / scaleFactor;
@@ -58,12 +64,18 @@ export class GroundRenderer {
         this.fillGraphics.poly(fillPoints);
         this.fillGraphics.fill({ color: 0x76C043 });
 
-        // Draw stroke (just the top wave line, no fill)
+        // Draw stroke as open line (top edge only, no bottom line)
+        // Use moveTo/lineTo instead of poly() to avoid auto-closing
         const strokePoints: number[] = [];
         for (let x = 0; x <= viewWidth; x += step) {
             strokePoints.push(x, getWaveY(x));
         }
-        this.strokeGraphics.poly(strokePoints);
+        if (strokePoints.length >= 4) {
+            this.strokeGraphics.moveTo(strokePoints[0], strokePoints[1]);
+            for (let i = 2; i < strokePoints.length; i += 2) {
+                this.strokeGraphics.lineTo(strokePoints[i], strokePoints[i + 1]);
+            }
+        }
         this.strokeGraphics.stroke({ width: 4, color: 0x2E5A1C });
 
         // Decorative circles
