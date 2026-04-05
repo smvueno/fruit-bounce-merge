@@ -702,6 +702,9 @@ export class GameEngine {
         // 4. Audio
         this.audio.update();
 
+        // Flush batched score/UI updates (single React render per frame)
+        this.scoreController.flushUpdates();
+
         // 5. Render
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
 

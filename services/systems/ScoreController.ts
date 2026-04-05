@@ -51,6 +51,19 @@ export class ScoreController {
   public onStreakEnd: (suckedPoints: number, totalScore: number) => void = () => { };
   public onChainReset: () => void = () => { }; // Visual reset of chain counter
 
+  // --- Performance: Batched UI updates to prevent React thrashing ---
+  // Instead of firing callbacks on every merge (which triggers React re-renders),
+  // we accumulate pending updates and flush them once per animation frame.
+  private _pendingScoreUpdate = false;
+  private _pendingPopupUpdate = false;
+  private _pendingJuiceUpdate = false;
+  private _lastScoreTotal = 0;
+  private _lastScoreAdded = 0;
+  private _lastPopupStreak = 0;
+  private _lastPopupMult = 0;
+  private _lastPopupFever = false;
+  private _lastJuiceCurrent = 0;
+
   constructor() {
     this.state = this.getInitialState();
   }
@@ -62,7 +75,7 @@ export class ScoreController {
       chainMultiplier: 1,
       feverMeter: 0,
       feverActive: false,
-      feverMultiplier: 1, // Starts at 1x (normal), increments to 2x, 3x...
+      feverMultiplier: 1,
       feverTimeRemaining: 0,
       feverRoundCount: 0,
       frozenChainMultiplier: null,
@@ -78,12 +91,32 @@ export class ScoreController {
    */
   public reset() {
     this.state = this.getInitialState();
+    this._pendingScoreUpdate = false;
+    this._pendingPopupUpdate = false;
+    this._pendingJuiceUpdate = false;
 
     // Trigger initial UI updates
     this.onScoreChange(0, 0);
     this.onJuiceUpdate(0, JUICE_MAX);
-    // Don't show popup on reset (it should be hidden until chain starts)
-    // this.onPopupUpdate(0, 1, false);
+  }
+
+  /**
+   * Flush all pending UI updates. Call this once per game frame.
+   * This batches multiple merge callbacks into a single React update.
+   */
+  public flushUpdates() {
+    if (this._pendingScoreUpdate) {
+      this._pendingScoreUpdate = false;
+      this.onScoreChange(this._lastScoreTotal, this._lastScoreAdded);
+    }
+    if (this._pendingPopupUpdate) {
+      this._pendingPopupUpdate = false;
+      this.onPopupUpdate(this._lastPopupStreak, this._lastPopupMult, this._lastPopupFever);
+    }
+    if (this._pendingJuiceUpdate) {
+      this._pendingJuiceUpdate = false;
+      this.onJuiceUpdate(this._lastJuiceCurrent, JUICE_MAX);
+    }
   }
 
   /**
@@ -94,7 +127,14 @@ export class ScoreController {
     if (this.state.feverActive) {
       this.state.feverTimeRemaining -= dtMs;
 
-      this.onFeverTick(Math.max(0, this.state.feverTimeRemaining), FEVER_DURATION_MS);
+      // Throttle fever tick to ~10 Hz (every 100ms) instead of every frame
+      // This reduces React updates during fever mode
+      if (!this._pendingFeverTick || this._lastFeverTickTime === 0 || (this._lastFeverTickTime - dtMs) <= 0) {
+        this._lastFeverTickTime = 100;
+        this.onFeverTick(Math.max(0, this.state.feverTimeRemaining), FEVER_DURATION_MS);
+      } else {
+        this._lastFeverTickTime -= dtMs;
+      }
 
       if (this.state.feverTimeRemaining <= 0) {
         this.handleFeverEnd();
@@ -102,20 +142,17 @@ export class ScoreController {
     }
   }
 
+  private _lastFeverTickTime = 0;
+  private _pendingFeverTick = false;
+
   // --- Handlers ---
 
   public handleMerge(payload: { tier: number, isWatermelon?: boolean }): number {
     const { tier } = payload;
 
     // 1. Logic: Increment Chain (if Normal Mode)
-    // In Fever Mode, chain is frozen, so we don't touch chainCount.
     if (!this.state.feverActive) {
       this.state.chainCount++;
-
-      // Chain 1 (First Merge) -> 1x
-      // Chain 2 (Second Merge) -> 2x
-      // Chain 3 -> 3x...
-      // Chain 10+ -> 10x
       if (this.state.chainCount <= 1) {
         this.state.chainMultiplier = 1;
       } else {
@@ -126,15 +163,13 @@ export class ScoreController {
     // 2. Calculation: Get Points
     const points = this.calculateMergePoints(tier);
 
-    // 3. Mutation: Update Scores
+    // 3. Mutation: Update Scores (batched)
     this.applyScore(points);
 
-    // 4. Side Effects: Update Fever Meter (Juice)
+    // 4. Side Effects: Update Fever Meter (Juice) (batched)
     if (!this.state.feverActive) {
-      // Add juice (e.g. 50 per merge)
-      // Old code: this.juice = Math.min(JUICE_MAX, this.juice + 50);
       this.state.feverMeter = Math.min(JUICE_MAX, this.state.feverMeter + 50);
-      this.onJuiceUpdate(this.state.feverMeter, JUICE_MAX);
+      this._queueJuiceUpdate(this.state.feverMeter);
 
       // Check for Fever Trigger
       if (this.state.feverMeter >= JUICE_MAX) {
@@ -142,29 +177,22 @@ export class ScoreController {
       }
     }
 
-    // 5. UI Updates
-    // Update the "Streak/Accumulator" popup
-    // Only show if multiplier > 1 or in Fever
+    // 5. UI Updates (batched popup)
     const activeMult = this.getActiveMultiplier();
-
     if (this.state.feverActive || this.state.chainCount >= 2) {
-      this.onPopupUpdate(this.state.sessionAccumulator, activeMult, this.state.feverActive);
+      this._queuePopupUpdate(this.state.sessionAccumulator, activeMult, this.state.feverActive);
     }
 
     return points;
   }
 
   public handleTurnEnd(payload: { didMerge: boolean }) {
-    // If we are in Fever, turns don't matter for chaining.
     if (this.state.feverActive) return;
 
-    // If no merge happened this turn, the chain breaks.
     if (!payload.didMerge) {
-      // Exception: If Fever is about to start (Meter Full), preserve chain for Fever.
       if (this.state.feverMeter >= JUICE_MAX) {
         return;
       }
-
       this.endNormalChain();
     }
   }
@@ -172,100 +200,65 @@ export class ScoreController {
   public handleFeverStart() {
     if (this.state.feverActive) return;
 
-    // 1. Snapshot Chain State
-    // "Fever uses frozen chain + fever bonus"
     this.state.frozenChainMultiplier = this.state.chainMultiplier;
-
-    // 2. Stash Normal Session Accumulator (Streak Score)
-    // So we can restore it later.
     this.state.stashedSessionAccumulator = this.state.sessionAccumulator;
-    this.state.sessionAccumulator = 0; // Reset for Fever Round
-
-    // 3. Increment Fever Round
+    this.state.sessionAccumulator = 0;
     this.state.feverRoundCount++;
-    // "Fever multiplier increments globally"
-    // "5x * 2x = 10x" implies the fever multiplier is the round count (or close to it).
-    // Let's assume it increments per round.
     this.state.feverMultiplier++;
-
-    // 4. Activate Fever
     this.state.feverActive = true;
     this.state.feverTimeRemaining = FEVER_DURATION_MS;
 
-    // 5. Notify UI
     const totalMult = this.getActiveMultiplier();
     this.onFeverStart(totalMult);
-    // Show Fever Popup (Starting at 0, with new Total Multiplier)
-    this.onPopupUpdate(0, totalMult, true);
+    this._queuePopupUpdate(0, totalMult, true);
   }
 
   public handleFeverEnd() {
     if (!this.state.feverActive) return;
 
-    // 1. Suck up Fever Points
     const pointsToSuck = this.state.sessionAccumulator;
-    this.onFeverEnd(pointsToSuck); // Legacy/Audio triggers
-    this.onStreakEnd(pointsToSuck, this.state.totalScore); // Visual suck up
+    this.onFeverEnd(pointsToSuck);
+    this.onStreakEnd(pointsToSuck, this.state.totalScore);
 
-    // 2. Reset Fever State
     this.state.feverActive = false;
-    this.state.feverMeter = 0; // Reset Juice
-    this.state.sessionAccumulator = 0; // Clear accumulator
+    this.state.feverMeter = 0;
+    this.state.sessionAccumulator = 0;
     this.state.feverTimeRemaining = 0;
 
-    // 3. Restore Normal Chain & Stashed Accumulator
     if (this.state.stashedSessionAccumulator !== null) {
       this.state.sessionAccumulator = this.state.stashedSessionAccumulator;
       this.state.stashedSessionAccumulator = null;
     }
 
-    // Update Juice UI
-    this.onJuiceUpdate(0, JUICE_MAX);
+    this._queueJuiceUpdate(0);
 
-    // 4. Update UI for return to normal
-    // "Restored upon exiting Fever to allow the player to continue their previous chain."
-    // We show the old multiplier and the old accumulator.
     const restoredMult = this.state.chainMultiplier;
-    this.onPopupUpdate(this.state.sessionAccumulator, restoredMult, false);
-
-    // Since we restored the session accumulator, we do NOT reset the chain.
-    // The player can continue from here.
+    this._queuePopupUpdate(this.state.sessionAccumulator, restoredMult, false);
   }
 
   public handleCelebration(payload: { points: number }) {
-    // Celebrations (Watermelon Crush) are direct point injections.
-    // "Points from Celebrations... always multiplied by the current active multiplier"
-
     const mult = this.getActiveMultiplier();
     const total = Math.floor(payload.points * mult);
 
     this.applyScore(total);
-
-    // Celebration effect typically has its own popup logic (Watermelon Crush).
-    // We treat it as adding to the current session accumulator.
-    this.onPopupUpdate(this.state.sessionAccumulator, mult, this.state.feverActive);
+    this._queuePopupUpdate(this.state.sessionAccumulator, mult, this.state.feverActive);
   }
 
   private endNormalChain() {
     if (this.state.sessionAccumulator > 0) {
-      // Suck up the accumulated streak points
       this.onStreakEnd(this.state.sessionAccumulator, this.state.totalScore);
     }
 
-    // Reset Chain State
     this.state.chainCount = 0;
     this.state.chainMultiplier = 1;
     this.state.sessionAccumulator = 0;
 
     this.onChainReset();
-    // Don't show popup on chain reset (hide it)
-    // this.onPopupUpdate(0, 1, false);
   }
 
   // --- Pure Calculations ---
 
   private calculateMergePoints(tier: number): number {
-    // Base Points * 2^tier * ActiveMultiplier
     const base = SCORE_BASE_MERGE * Math.pow(2, tier);
     const mult = this.getActiveMultiplier();
     return Math.floor(base * mult);
@@ -273,20 +266,41 @@ export class ScoreController {
 
   public getActiveMultiplier(): number {
     if (this.state.feverActive) {
-      // Logic: Frozen Chain * Fever Round Multiplier
-      // Example: 5x (Chain) * 2x (Fever) = 10x
       const frozen = this.state.frozenChainMultiplier || 1;
       return frozen * this.state.feverMultiplier;
     }
     return this.state.chainMultiplier;
   }
 
-  // --- Core Mutation ---
+  // --- Core Mutation (Batched) ---
 
   private applyScore(amount: number) {
     this.state.totalScore += amount;
     this.state.sessionAccumulator += amount;
-    this.onScoreChange(this.state.totalScore, amount);
+    // Queue instead of immediate callback
+    this._queueScoreUpdate(this.state.totalScore, amount);
+  }
+
+  // --- Batched UI Update Queues ---
+  // These accumulate updates and only fire the latest value when flushUpdates() is called.
+  // This prevents React from re-rendering multiple times per frame during merge chains.
+
+  private _queueScoreUpdate(total: number, added: number) {
+    this._lastScoreTotal = total;
+    this._lastScoreAdded = added;
+    this._pendingScoreUpdate = true;
+  }
+
+  private _queuePopupUpdate(streak: number, mult: number, fever: boolean) {
+    this._lastPopupStreak = streak;
+    this._lastPopupMult = mult;
+    this._lastPopupFever = fever;
+    this._pendingPopupUpdate = true;
+  }
+
+  private _queueJuiceUpdate(current: number) {
+    this._lastJuiceCurrent = current;
+    this._pendingJuiceUpdate = true;
   }
 
   // --- Getters for UI/Debug ---
