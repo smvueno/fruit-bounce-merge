@@ -276,19 +276,15 @@ export class GameEngine {
         this.app = new PIXI.Application();
 
         try {
-            // Optimization: Cap pixel ratio at 2 on mobile (iPhone 15 Pro = 3× = 3× GPU work)
-            // Capping at 2 cuts GPU pixel fill by ~55% with near-invisible quality difference
             const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-            const cappedDpr = isMobile
-                ? Math.min(window.devicePixelRatio || 1, 2)
-                : (window.devicePixelRatio || 1);
+            const cappedDpr = Math.min(window.devicePixelRatio || 1, 2);
 
             await this.app.init({
                 canvas: this.canvasElement,
                 backgroundAlpha: 0,
                 width: this.canvasElement.clientWidth,
                 height: this.canvasElement.clientHeight,
-                antialias: !isMobile, // Disable antialias on mobile — saves GPU passes
+                antialias: true, // Enable antialias on all devices for sharp edges
                 resolution: cappedDpr,
                 autoDensity: true,
                 preference: 'webgl',
