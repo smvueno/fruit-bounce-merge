@@ -53,11 +53,12 @@ export class RenderSystem {
         const gl = this.app.renderer.gl || (this.app.renderer.context && this.app.renderer.context.gl);
         if (gl && gl.isContextLost && gl.isContextLost()) return { normal: normalMap, blink: blinkMap };
 
-        const res = this.app.renderer.resolution || 2;
+        // Generate textures at 4x resolution for crisp rendering even when scaled
+        const TEX_SCALE = 4;
 
         for (const def of Object.values(FRUIT_DEFS)) {
             try {
-                const size = (def.radius * 2) + 20;
+                const size = Math.ceil((def.radius * 2 + 20) * TEX_SCALE);
 
                 // Normal: body + face with open eyes
                 const normC = new PIXI.Container();
@@ -65,7 +66,7 @@ export class RenderSystem {
                 const normFace = this.createFace(def.tier, def.radius);
                 normC.addChild(normFace);
                 normC.position.set(size / 2, size / 2);
-                const normTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: res });
+                const normTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: 1, antialias: true });
                 this.app.renderer.render({ container: normC, target: normTex });
                 normalMap.set(def.tier, normTex);
                 normC.destroy({ children: true });
@@ -76,7 +77,7 @@ export class RenderSystem {
                 const blinkFace = this.createFace(def.tier, def.radius, true);
                 blinkC.addChild(blinkFace);
                 blinkC.position.set(size / 2, size / 2);
-                const blinkTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: res });
+                const blinkTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: 1, antialias: true });
                 this.app.renderer.render({ container: blinkC, target: blinkTex });
                 blinkMap.set(def.tier, blinkTex);
                 blinkC.destroy({ children: true });
