@@ -12,9 +12,9 @@ export class WallRenderer {
     constructor(parent: PIXI.Container) {
         this.leftWall = new PIXI.Graphics();
         this.rightWall = new PIXI.Graphics();
-        // Walls sit above ground but below fruits
-        this.leftWall.zIndex = -50;
-        this.rightWall.zIndex = -50;
+        // Walls sit ABOVE fruits
+        this.leftWall.zIndex = 50;
+        this.rightWall.zIndex = 50;
         parent.addChild(this.leftWall);
         parent.addChild(this.rightWall);
     }
@@ -22,8 +22,9 @@ export class WallRenderer {
     /**
      * Draw both grass walls in virtual coordinates.
      * Walls overlap the game area by ~5px for a seamless framing effect.
+     * Walls extend to the bottom of the viewport on any screen size.
      */
-    draw(viewWidth: number, scaleFactor: number, _containerLeft: number): void {
+    draw(viewWidth: number, viewHeight: number, scaleFactor: number, _containerLeft: number): void {
         this.leftWall.clear();
         this.rightWall.clear();
 
@@ -31,23 +32,22 @@ export class WallRenderer {
         const V_HEIGHT = 750;
         const overlap = 5; // px overlap into game area
 
+        // Wall height extends to bottom of viewport (in virtual coords)
+        const wallHeight = Math.max(V_HEIGHT, viewHeight / scaleFactor);
+
         // Left wall: inner edge (local x=70) positioned at x=overlap
         this.leftWall.x = overlap - 70;
         this.leftWall.y = 35;
-        this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
+        this.drawWallShape(this.leftWall, wallHeight - 35, 'left');
 
-        // Right wall: inner edge (local x=10 after mirror) positioned at x=V_WIDTH - overlap
-        this.rightWall.x = (V_WIDTH - overlap) - 10;
+        // Right wall: mirrored, inner edge at V_WIDTH with grass cap overlap
+        this.rightWall.x = V_WIDTH + 70;
         this.rightWall.y = 35;
-        this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
+        this.rightWall.scale.x = -1;
+        this.drawWallShape(this.rightWall, wallHeight - 35, 'right');
     }
 
-    private drawWallShape(g: PIXI.Graphics, height: number, side: 'left' | 'right'): void {
-        // Mirror for right wall so flat side faces game area
-        if (side === 'right') {
-            g.pivot.set(40, 0);
-            g.scale.set(-1, 1);
-        }
+    private drawWallShape(g: PIXI.Graphics, height: number, _side: 'left' | 'right'): void {
 
         // 1. Main Wall Body — with quadratic curves for rounded bottom corners
         g.beginPath();

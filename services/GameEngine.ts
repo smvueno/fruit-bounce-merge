@@ -436,13 +436,13 @@ export class GameEngine {
             this.groundRenderer.draw(this._screenWidth, this._screenHeight, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(this._screenWidth, this.scaleFactor, this._containerLeft);
+            this.wallRenderer.draw(this._screenWidth, this._screenHeight, this.scaleFactor, this._containerLeft);
         }
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
         this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
         this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
-        this.wallRenderer?.draw(actualW, this.scaleFactor, this._containerLeft);
+        this.wallRenderer?.draw(actualW, actualH, this.scaleFactor, this._containerLeft);
 
         return true;
     }
@@ -488,7 +488,7 @@ export class GameEngine {
             this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(this._gameAreaWidth, this.scaleFactor, this._containerLeft);
+            this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, this.scaleFactor, this._containerLeft);
         }
     }
 
@@ -522,7 +522,7 @@ export class GameEngine {
             this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, this.scaleFactor, left);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(width, this.scaleFactor, left);
+            this.wallRenderer.draw(width, height, this.scaleFactor, left);
         }
     }
 
