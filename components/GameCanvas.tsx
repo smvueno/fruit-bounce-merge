@@ -3,20 +3,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
-import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../constants';
+import { DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
 // Components
 import { GameBackground } from './GameBackground';
-import { JuiceOverlay } from './JuiceOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
 import { GameOverlays } from './GameOverlays';
 import { PauseMenu } from './PauseMenu';
-import { GroundCanvas } from './GroundCanvas';
-import { WallCanvas } from './WallCanvas';
-import { EffectCanvas } from './EffectCanvas';
 import { PointTicker } from './PointTicker';
 import { TextPopup } from './TextPopup';
 import { ScoreFlyEffect } from './ScoreFlyEffect';
@@ -50,6 +46,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [isPaused, setIsPaused] = useState(false);
     const [debugMode, setDebugMode] = useState(false);
     const [pauseTapCount, setPauseTapCount] = useState(0);
+
     const [showCelebration, setShowCelebration] = useState(false);
     const [currentFeverMult, setCurrentFeverMult] = useState(1);
 
@@ -75,8 +72,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     const [popupColor, setPopupColor] = useState<string>('#fbbf24'); // Default Yellow
 
     // Visual State
-    const [bgPatternIndex, setBgPatternIndex] = useState(0);
-    const [bgColor, setBgColor] = useState(FRUIT_DEFS[FruitTier.CHERRY].color);
 
     // Game Area Position for Ground Canvas
     const [gameAreaDimensions, setGameAreaDimensions] = useState({
@@ -119,15 +114,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         }
     };
 
-    // --- Background Cycle Effect ---
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setBgPatternIndex(prev => (prev + 1) % 4);
-        }, 25000);
-        return () => clearInterval(interval);
-    }, []);
-
-    // --- Track Game Area Position for Ground Canvas ---
+    // --- Track Game Area Position ---
     useEffect(() => {
         const updateGameAreaPosition = () => {
             if (gameAreaRef.current) {
@@ -138,6 +125,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     top: rect.top,
                     left: rect.left
                 });
+                // Update engine with actual DOM game area bounds
+                engineRef.current?.updateGameAreaRect(rect.left, rect.top, rect.width, rect.height);
             }
         };
 
@@ -154,71 +143,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         const engine = new GameEngine(canvasRef.current, settings, {
             // Score Updates
             onScore: (amt: number, total: number) => {
-                // We intentionally ignore 'total' here to keep the HUD detached
-                // The HUD only updates via Suck Up (onStreakEnd)
-                // However, if total is 0 (reset), we should sync.
                 if (total === 0) {
                     setCurrentStateScore(0);
                     setScore(0);
                 }
             },
-
-            // Core Game Events
             onGameOver: (stats: GameStats) => {
-                // Force sync HUD to Real Score on Game Over to ensure no points are lost
                 setCurrentStateScore(stats.score);
                 setScore(stats.score);
                 onGameOver(stats);
             },
-
-            // Combo & Fever
             onCombo: (c: number) => setCombo(c),
-            onFeverStart: (mult: number) => {
-                setFever(true);
-                setCurrentFeverMult(mult);
-            },
-            onFeverEnd: (finalScore?: number) => {
-                setFever(false);
-                // Legacy support cleanup
-                // We don't use this for score sync anymore (GameEngine calls onStreakEnd)
-                // But we keep it to ensure fever state is cleared in UI
-            },
-
-            // New Score System Events
-            onPopupStash: () => {
-                setPopupData(null); // Hide popup temporarily
-            },
-            onPopupRestore: (data: PopupData) => {
-                setPopupData(data); // Restore popup
-            },
-            // Updated signature to accept totalRealScore
-            onStreakEnd: (amount: number, totalRealScore: number) => {
-                triggerSuckUp(amount, totalRealScore);
-            },
-
-            // Visuals
+            onFeverStart: (mult: number) => { setFever(true); setCurrentFeverMult(mult); },
+            onFeverEnd: () => setFever(false),
+            onPopupStash: () => setPopupData(null),
+            onPopupRestore: (data: PopupData) => setPopupData(data),
+            onStreakEnd: (amount: number, totalRealScore: number) => triggerSuckUp(amount, totalRealScore),
             onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
             onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
             onNextFruit: (t: FruitTier) => setNextFruit(t),
-            onMaxFruit: (t: FruitTier) => {
-                if (FRUIT_DEFS[t]) setBgColor(FRUIT_DEFS[t].patternColor);
-                setMaxTier(prev => Math.max(prev, t));
-            },
+            onMaxFruit: (t: FruitTier) => setMaxTier(prev => Math.max(prev, t)),
             onTimeUpdate: (ms: number) => setPlayTime(ms),
             onSaveUpdate: (t: FruitTier | null) => setSavedFruit(t),
-            onCelebration: () => {
-                setShowCelebration(true);
-                setTimeout(() => setShowCelebration(false), 4000);
-            },
-            onPointEvent: (event: PointEvent) => {
-                setLatestPointEvent(event);
-            },
+            onCelebration: () => { setShowCelebration(true); setTimeout(() => setShowCelebration(false), 4000); },
+            onPointEvent: (event: PointEvent) => setLatestPointEvent(event),
             onPopupUpdate: (data: PopupData) => {
                 setPopupData(data);
-                lastPopupDataRef.current = data; // Cache context
-
-                // Update Color
-                let c = '#fbbf24'; // Default Yellow
+                lastPopupDataRef.current = data;
+                let c = '#fbbf24';
                 if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80';
                 else if (data.type === PopUpType.FRENZY) c = '#facc15';
                 else if (data.type === PopUpType.CHAIN) c = '#fb923c';
@@ -226,11 +178,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
             }
         });
 
-        engine.initialize().catch(e => console.error("Game init failed", e));
-        engineRef.current = engine;
+        engine.initialize().then(() => {
+            engineRef.current = engine;
+            if (typeof window !== 'undefined') { (window as any).__gameEngine = engine; }
+            requestAnimationFrame(() => {
+                if (gameAreaRef.current && engineRef.current) {
+                    const rect = gameAreaRef.current.getBoundingClientRect();
+                    engineRef.current.updateGameAreaRect(rect.left, rect.top, rect.width, rect.height);
+                    setGameAreaDimensions({ width: rect.width, height: rect.height, top: rect.top, left: rect.left });
+                }
+            });
+        }).catch(e => console.error("Game init failed", e));
+
         return () => {
             engine.cleanup();
             engineRef.current = null;
+            if (typeof window !== 'undefined') { delete (window as any).__gameEngine; }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -277,42 +240,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     return (
         <>
             {/* 1. Full Screen Background */}
-            <GameBackground
-                patternIndex={bgPatternIndex}
-                bgColor={bgColor}
-                fever={fever}
-            />
+            <GameBackground fever={fever} />
 
-            {/* 1.5. Ground Canvas - Extends to screen edges */}
-            {gameAreaDimensions.width > 0 && (
-                <GroundCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
-
-            {/* 1.6. Wall Canvas - Brick walls on sides */}
-            {gameAreaDimensions.width > 0 && (
-                <WallCanvas
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
-
-            {/* 1.7. Effect Canvas - Overlay on top of walls */}
-            {gameAreaDimensions.width > 0 && (
-                <EffectCanvas
-                    engine={engineRef.current}
-                    gameAreaWidth={gameAreaDimensions.width}
-                    gameAreaHeight={gameAreaDimensions.height}
-                    containerTop={gameAreaDimensions.top}
-                    containerLeft={gameAreaDimensions.left}
-                />
-            )}
+            {/* 1.5. Ground, Walls & Effects — now rendered by Pixi.js inside the game canvas */}
 
             {/* 1.8. Point Ticker - Overlay for score popups */}
             {gameAreaDimensions.width > 0 && (
@@ -358,11 +288,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                 </div>
             )}
 
+            {/* 1.2 Clouds Overlay — now rendered by Pixi.js inside the game canvas */}
+
             {/* 2. Main Layout Container */}
             <LayoutContainer>
 
-                {/* TOP UI (HUD) - Flexible spacer with 20px top padding as requested */}
-                <div className="flex-[1.5] flex flex-col justify-start relative z-30 min-h-[100px] pt-[20px] pb-1">
+                {/* TOP UI (HUD) */}
+                <div className="shrink-0 flex flex-col justify-start relative z-30" style={{ paddingLeft: '8%', paddingRight: '8%', paddingTop: '6%' }}>
                     <GameHUD
                         score={currentStateScore}
                         playTime={playTime}
@@ -373,48 +305,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     />
                 </div>
 
-                {/* 3. Game Area (4:5 Aspect Ratio) - The Anchor */}
-                <div ref={gameAreaRef} className="w-full aspect-[4/5] relative shrink-1 z-10">
+                {/* 3. Game Area - fills remaining space, Pixi handles 4:5 scaling internally */}
+                <div ref={gameAreaRef} className="flex-1 relative z-10 min-h-0 overflow-hidden">
                     <GameArea canvasRef={canvasRef}>
-                        {/* Overlays moved to root level for correct z-index stacking */}
-                        {/* New Danger Overlay sits INSIDE the game area scaling context */}
                         <DangerOverlay dangerTime={limitTime} />
                     </GameArea>
                 </div>
 
-                {/* BOTTOM UI - Fixed height spacer. */}
-                <div className="h-[75px] shrink-0 flex flex-col justify-end items-center z-40 w-full pb-[20px]">
-                    <button
-                        onClick={handlePauseToggle}
-                        className="w-12 h-12 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-                        aria-label="Pause Game"
-                    >
-                        <Pause size={24} fill="currentColor" />
-                    </button>
+                {/* BOTTOM UI */}
+                <div className="shrink-0 flex flex-col justify-end items-center z-40 w-full" style={{ paddingBottom: '6%' }}>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={handlePauseToggle}
+                            className="w-11 h-11 bg-[#558B2F] hover:bg-[#33691E] text-white border-4 border-[#2E5A1C] rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                            aria-label="Pause Game"
+                        >
+                            <Pause size={22} fill="currentColor" />
+                        </button>
+                    </div>
                 </div>
 
             </LayoutContainer>
 
-            {/* 1.15 Juice/Water Overlay - Moved OUT of GameArea to be betwen Background and Ground */}
-            {/* Placed here in DOM order: After Background, but z-index controlled to be < Ground (z-5) */}
-            {gameAreaDimensions.width > 0 && (
-                <div
-                    className="fixed overflow-hidden rounded-t-3xl pointer-events-none"
-                    style={{
-                        zIndex: 2, // Above Background (0), Below Ground (5)
-                        width: gameAreaDimensions.width,
-                        height: gameAreaDimensions.height,
-                        top: gameAreaDimensions.top,
-                        left: gameAreaDimensions.left
-                    }}
-                >
-                    <JuiceOverlay
-                        fever={fever}
-                        juice={juice}
-                        dangerYPercent={DANGER_Y_PERCENT}
-                    />
-                </div>
-            )}
+            {/* Juice/Water Overlay — now rendered by Pixi.js inside the game canvas */}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays

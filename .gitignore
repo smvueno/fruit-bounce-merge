@@ -117,4 +117,4 @@ web_modules/
 
 # Vite build output
 dist
-dist/
+dist/test-screenshots/

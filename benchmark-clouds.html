@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixi.js Cloud Rendering Benchmark</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #1a1a2e; color: #fff; font-family: monospace; overflow: hidden; }
+        canvas { display: block; }
+        #hud {
+            position: fixed; top: 10px; left: 10px; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px;
+            min-width: 320px; font-size: 13px; line-height: 1.6;
+        }
+        #hud h2 { margin-bottom: 8px; color: #4ade80; font-size: 14px; }
+        #hud .row { display: flex; justify-content: space-between; }
+        #hud .label { color: #94a3b8; }
+        #hud .value { color: #fbbf24; font-weight: bold; }
+        #hud .fps-good { color: #4ade80; }
+        #hud .fps-ok { color: #fbbf24; }
+        #hud .fps-bad { color: #ef4444; }
+        #controls {
+            position: fixed; bottom: 10px; left: 10px; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px;
+        }
+        #controls button {
+            background: #3b82f6; color: #fff; border: none; padding: 8px 16px;
+            margin: 4px; border-radius: 4px; cursor: pointer; font-family: monospace;
+        }
+        #controls button:hover { background: #2563eb; }
+        #controls button.active { background: #4ade80; color: #000; }
+        #results {
+            position: fixed; top: 10px; right: 10px; z-index: 100;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px;
+            max-height: 80vh; overflow-y: auto; font-size: 12px;
+            min-width: 400px;
+        }
+        #results h3 { color: #4ade80; margin-bottom: 8px; }
+        #results table { width: 100%; border-collapse: collapse; }
+        #results th, #results td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #333; }
+        #results th { color: #94a3b8; }
+        #results .pass { color: #4ade80; }
+        #results .fail { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <h2>🔬 Cloud Rendering Benchmark</h2>
+        <div class="row"><span class="label">Technique:</span><span class="value" id="technique">-</span></div>
+        <div class="row"><span class="label">Cloud Count:</span><span class="value" id="count">-</span></div>
+        <div class="row"><span class="label">FPS (current):</span><span class="value" id="fps">-</span></div>
+        <div class="row"><span class="label">FPS (avg):</span><span class="value" id="avgFps">-</span></div>
+        <div class="row"><span class="label">FPS (min):</span><span class="value" id="minFps">-</span></div>
+        <div class="row"><span class="label">Draw Calls:</span><span class="value" id="drawCalls">-</span></div>
+        <div class="row"><span class="label">Textures:</span><span class="value" id="textures">-</span></div>
+        <div class="row"><span class="label">Time:</span><span class="value" id="elapsed">-</span></div>
+    </div>
+
+    <div id="controls">
+        <button onclick="runAllTests()">▶ Run All Tests</button>
+        <button onclick="stopTest()">⏹ Stop</button>
+        <div style="margin-top: 8px; font-size: 11px; color: #94a3b8;">
+            Techniques: Graphics | Sprite | ParticleContainer | BatchedGraphics
+        </div>
+    </div>
+
+    <div id="results">
+        <h3>📊 Results</h3>
+        <table>
+            <thead><tr><th>Technique</th><th>Count</th><th>Avg FPS</th><th>Min FPS</th><th>Result</th></tr></thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+    </div>
+
+    <script type="module">
+        import * as PIXI from 'https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js';
+
+        // Config
+        const TEST_DURATION = 5000; // 5 seconds per test
+        const CLOUD_COUNTS = [10, 50, 100, 250, 500, 1000];
+        const TECHNIQUES = ['graphics', 'sprite', 'particleContainer', 'batchedGraphics'];
+
+        let app = null;
+        let running = false;
+        let stopRequested = false;
+        let testResults = [];
+
+        // FPS tracking
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+        let currentFps = 0;
+        let fpsSamples = [];
+        let minFps = Infinity;
+
+        async function init() {
+            app = new PIXI.Application();
+            await app.init({
+                width: window.innerWidth,
+                height: window.innerHeight,
+                backgroundColor: 0x1a1a2e,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true,
+                preference: 'webgl',
+            });
+            document.body.appendChild(app.canvas);
+
+            window.addEventListener('resize', () => {
+                app.renderer.resize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function updateHUD(technique, count, drawCalls, textures) {
+            document.getElementById('technique').textContent = technique;
+            document.getElementById('count').textContent = count;
+            document.getElementById('drawCalls').textContent = drawCalls;
+            document.getElementById('textures').textContent = textures;
+
+            const fpsEl = document.getElementById('fps');
+            fpsEl.textContent = currentFps.toFixed(1);
+            fpsEl.className = 'value ' + (currentFps >= 55 ? 'fps-good' : currentFps >= 30 ? 'fps-ok' : 'fps-bad');
+
+            const avg = fpsSamples.length > 0 ? fpsSamples.reduce((a,b) => a+b, 0) / fpsSamples.length : 0;
+            document.getElementById('avgFps').textContent = avg.toFixed(1);
+            document.getElementById('minFps').textContent = minFps === Infinity ? '-' : minFps.toFixed(1);
+        }
+
+        function getDrawCalls() {
+            // Pixi v8 doesn't expose draw calls directly, estimate from renderer stats
+            return app.renderer.renderPipes ? 'N/A (v8)' : 'N/A';
+        }
+
+        function getTextureCount() {
+            return app.renderer.texture ? app.renderer.texture.managedTextures.length : 0;
+        }
+
+        // FPS ticker
+        const fpsTicker = {
+            update: (delta) => {
+                frameCount++;
+                const now = performance.now();
+                if (now - lastFpsTime >= 250) {
+                    currentFps = (frameCount * 1000) / (now - lastFpsTime);
+                    frameCount = 0;
+                    lastFpsTime = now;
+                    fpsSamples.push(currentFps);
+                    if (currentFps < minFps) minFps = currentFps;
+                }
+            }
+        };
+
+        // Cloud shape as PIXI.Graphics
+        function createCloudGraphics(scale, alpha) {
+            const g = new PIXI.Graphics();
+            g.alpha = alpha;
+            g.scale.set(scale);
+            g.circle(0, -20, 20);
+            g.circle(30, -30, 28);
+            g.circle(60, -20, 20);
+            g.fill({ color: 0xFFFFFF });
+            return g;
+        }
+
+        // Pre-render cloud to texture
+        function createCloudTexture() {
+            const g = new PIXI.Graphics();
+            g.circle(0, -20, 20);
+            g.circle(30, -30, 28);
+            g.circle(60, -20, 20);
+            g.fill({ color: 0xFFFFFF });
+
+            const texture = app.renderer.generateTexture({
+                target: g,
+                resolution: 2,
+            });
+            g.destroy();
+            return texture;
+        }
+
+        // BACKGROUND: Morphing gradient
+        let bgGraphics = null;
+        function setupBackground() {
+            bgGraphics = new PIXI.Graphics();
+            bgGraphics.rect(0, 0, app.screen.width, app.screen.height);
+            bgGraphics.fill({ color: 0x1a1a2e });
+            app.stage.addChildAt(bgGraphics, 0);
+        }
+
+        function updateBackground(time) {
+            if (!bgGraphics) return;
+            const r = Math.floor(26 + Math.sin(time * 0.0005) * 10);
+            const g = Math.floor(26 + Math.sin(time * 0.0007 + 1) * 10);
+            const b = Math.floor(46 + Math.sin(time * 0.0003 + 2) * 15);
+            bgGraphics.fill({ color: (r << 16) | (g << 8) | b });
+        }
+
+        // TECHNIQUE 1: Individual Graphics objects
+        async function testGraphics(count) {
+            app.stage.removeChildren();
+            setupBackground();
+
+            const clouds = [];
+            const vw = app.screen.width;
+            for (let i = 0; i < count; i++) {
+                const scale = 0.3 + Math.random() * 1.2;
+                const alpha = 0.2 + Math.random() * 0.5;
+                const cloud = createCloudGraphics(scale, alpha);
+                cloud.x = Math.random() * vw;
+                cloud.y = Math.random() * 150;
+                cloud.userData = { speed: 0.5 + Math.random() * 2 };
+                clouds.push(cloud);
+                app.stage.addChild(cloud);
+            }
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (ticker) => {
+                    const elapsed = performance.now() - startTime;
+                    fpsTicker.update(ticker.deltaMS);
+                    updateBackground(elapsed);
+
+                    for (const cloud of clouds) {
+                        cloud.x += cloud.userData.speed;
+                        if (cloud.x > vw + 100) cloud.x = -100;
+                    }
+
+                    updateHUD('Graphics', count, getDrawCalls(), getTextureCount());
+                    document.getElementById('elapsed').textContent = (elapsed / 1000).toFixed(1) + 's';
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve({ avgFps: fpsSamples.reduce((a,b) => a+b, 0) / fpsSamples.length, minFps });
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // TECHNIQUE 2: Sprite objects
+        async function testSprite(count) {
+            app.stage.removeChildren();
+            setupBackground();
+
+            const cloudTexture = createCloudTexture();
+            const clouds = [];
+            const vw = app.screen.width;
+
+            for (let i = 0; i < count; i++) {
+                const sprite = new PIXI.Sprite(cloudTexture);
+                const scale = 0.3 + Math.random() * 1.2;
+                sprite.alpha = 0.2 + Math.random() * 0.5;
+                sprite.scale.set(scale);
+                sprite.x = Math.random() * vw;
+                sprite.y = Math.random() * 150;
+                sprite.userData = { speed: 0.5 + Math.random() * 2 };
+                clouds.push(sprite);
+                app.stage.addChild(sprite);
+            }
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (ticker) => {
+                    const elapsed = performance.now() - startTime;
+                    fpsTicker.update(ticker.deltaMS);
+                    updateBackground(elapsed);
+
+                    for (const cloud of clouds) {
+                        cloud.x += cloud.userData.speed;
+                        if (cloud.x > vw + 100) cloud.x = -100;
+                    }
+
+                    updateHUD('Sprite', count, getDrawCalls(), getTextureCount());
+                    document.getElementById('elapsed').textContent = (elapsed / 1000).toFixed(1) + 's';
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve({ avgFps: fpsSamples.reduce((a,b) => a+b, 0) / fpsSamples.length, minFps });
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // TECHNIQUE 3: ParticleContainer
+        async function testParticleContainer(count) {
+            app.stage.removeChildren();
+            setupBackground();
+
+            const cloudTexture = createCloudTexture();
+            const pc = new PIXI.ParticleContainer({
+                maxSize: count,
+                properties: { position: true, scale: true, alpha: true },
+            });
+            app.stage.addChild(pc);
+
+            const vw = app.screen.width;
+            const clouds = [];
+
+            for (let i = 0; i < count; i++) {
+                const sprite = new PIXI.Sprite(cloudTexture);
+                const scale = 0.3 + Math.random() * 1.2;
+                sprite.alpha = 0.2 + Math.random() * 0.5;
+                sprite.scale.set(scale);
+                sprite.x = Math.random() * vw;
+                sprite.y = Math.random() * 150;
+                sprite.userData = { speed: 0.5 + Math.random() * 2 };
+                clouds.push(sprite);
+                pc.addChild(sprite);
+            }
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (ticker) => {
+                    const elapsed = performance.now() - startTime;
+                    fpsTicker.update(ticker.deltaMS);
+                    updateBackground(elapsed);
+
+                    for (const cloud of clouds) {
+                        cloud.x += cloud.userData.speed;
+                        if (cloud.x > vw + 100) cloud.x = -100;
+                    }
+
+                    updateHUD('ParticleContainer', count, getDrawCalls(), getTextureCount());
+                    document.getElementById('elapsed').textContent = (elapsed / 1000).toFixed(1) + 's';
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve({ avgFps: fpsSamples.reduce((a,b) => a+b, 0) / fpsSamples.length, minFps });
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        // TECHNIQUE 4: Batched Graphics (single Graphics with multiple draw calls)
+        async function testBatchedGraphics(count) {
+            app.stage.removeChildren();
+            setupBackground();
+
+            const batchGraphics = new PIXI.Graphics();
+            app.stage.addChild(batchGraphics);
+
+            const clouds = [];
+            const vw = app.screen.width;
+
+            for (let i = 0; i < count; i++) {
+                clouds.push({
+                    x: Math.random() * vw,
+                    y: Math.random() * 150,
+                    scale: 0.3 + Math.random() * 1.2,
+                    alpha: 0.2 + Math.random() * 0.5,
+                    speed: 0.5 + Math.random() * 2,
+                });
+            }
+
+            const startTime = performance.now();
+            return new Promise(resolve => {
+                const ticker = (ticker) => {
+                    const elapsed = performance.now() - startTime;
+                    fpsTicker.update(ticker.deltaMS);
+                    updateBackground(elapsed);
+
+                    batchGraphics.clear();
+                    for (const cloud of clouds) {
+                        cloud.x += cloud.speed;
+                        if (cloud.x > vw + 100) cloud.x = -100;
+
+                        const s = cloud.scale;
+                        batchGraphics.alpha = cloud.alpha;
+                        batchGraphics.circle(cloud.x, cloud.y - 20 * s, 20 * s);
+                        batchGraphics.circle(cloud.x + 30 * s, cloud.y - 30 * s, 28 * s);
+                        batchGraphics.circle(cloud.x + 60 * s, cloud.y - 20 * s, 20 * s);
+                        batchGraphics.fill({ color: 0xFFFFFF, alpha: cloud.alpha });
+                    }
+
+                    updateHUD('BatchedGraphics', count, getDrawCalls(), getTextureCount());
+                    document.getElementById('elapsed').textContent = (elapsed / 1000).toFixed(1) + 's';
+
+                    if (elapsed >= TEST_DURATION || stopRequested) {
+                        app.ticker.remove(ticker);
+                        resolve({ avgFps: fpsSamples.reduce((a,b) => a+b, 0) / fpsSamples.length, minFps });
+                    }
+                };
+                app.ticker.add(ticker);
+            });
+        }
+
+        const techniqueMap = {
+            graphics: testGraphics,
+            sprite: testSprite,
+            particleContainer: testParticleContainer,
+            batchedGraphics: testBatchedGraphics,
+        };
+
+        async function runAllTests() {
+            if (running) return;
+            running = true;
+            stopRequested = false;
+
+            document.getElementById('resultsBody').innerHTML = '';
+            testResults = [];
+
+            for (const technique of TECHNIQUES) {
+                for (const count of CLOUD_COUNTS) {
+                    if (stopRequested) break;
+
+                    // Reset FPS tracking
+                    frameCount = 0;
+                    lastFpsTime = performance.now();
+                    currentFps = 0;
+                    fpsSamples = [];
+                    minFps = Infinity;
+
+                    const testFn = techniqueMap[technique];
+                    const result = await testFn(count);
+
+                    const passed = result.avgFps >= 55;
+                    testResults.push({ technique, count, avgFps: result.avgFps, minFps: result.minFps, passed });
+
+                    // Add to results table
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${technique}</td>
+                        <td>${count}</td>
+                        <td>${result.avgFps.toFixed(1)}</td>
+                        <td>${result.minFps === Infinity ? '-' : result.minFps.toFixed(1)}</td>
+                        <td class="${passed ? 'pass' : 'fail'}">${passed ? '✅ PASS' : '❌ FAIL'}</td>
+                    `;
+                    document.getElementById('resultsBody').appendChild(row);
+                }
+                if (stopRequested) break;
+            }
+
+            running = false;
+            stopRequested = false;
+
+            // Summary
+            const summary = document.createElement('tr');
+            summary.style.fontWeight = 'bold';
+            summary.innerHTML = `<td colspan="5">Best: ${testResults.sort((a,b) => b.avgFps - a.avgFps)[0]?.technique} @ ${testResults.sort((a,b) => b.avgFps - a.avgFps)[0]?.count} clouds (${testResults.sort((a,b) => b.avgFps - a.avgFps)[0]?.avgFps.toFixed(1)} fps avg)</td>`;
+            document.getElementById('resultsBody').appendChild(summary);
+        }
+
+        function stopTest() {
+            stopRequested = true;
+        }
+
+        window.runAllTests = runAllTests;
+        window.stopTest = stopTest;
+
+        init();
+    </script>
+</body>
+</html>

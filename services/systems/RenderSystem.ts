@@ -1,102 +1,122 @@
 import * as PIXI from 'pixi.js';
 import { FruitTier } from '../../types';
-import { Particle, EffectParticle } from '../../types/GameObjects';
+import { Particle } from '../../types/GameObjects';
 import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
+import { EffectRenderer } from '../renderers/EffectRenderer';
+import { EffectParticle } from '../../types/GameObjects';
 
 export interface RenderContext {
     fruits: Particle[];
     currentFruit: Particle | null;
     feverActive: boolean;
     scaleFactor: number;
+    effectParticles?: EffectParticle[];
 }
 
 export class RenderSystem {
     app: PIXI.Application | undefined;
     container: PIXI.Container | undefined;
-    fruitSprites: Map<number, PIXI.Container> = new Map();
-    textures: Map<FruitTier, PIXI.Texture> = new Map();
-    floorGraphics: PIXI.Graphics;
+    // Optimized: Direct Sprites, no Container wrappers, no Graphics faces
+    fruitSprites: Map<number, PIXI.Sprite> = new Map();
+    // Texture maps: normal and blink versions
+    normalTextures: Map<FruitTier, PIXI.Texture> = new Map();
+    blinkTextures: Map<FruitTier, PIXI.Texture> = new Map();
     dangerLine: PIXI.Graphics;
+    private _lastDangerActive: boolean | null = null;
+    private _lastFeverActive: boolean | null = null;
+
+    // Pixi renderers (replacing separate 2D canvases)
+    private effectRenderer: EffectRenderer | null = null;
 
     constructor() {
-        this.floorGraphics = new PIXI.Graphics();
         this.dangerLine = new PIXI.Graphics();
     }
 
     initialize(app: PIXI.Application, container: PIXI.Container) {
         this.app = app;
         this.container = container;
-
-        container.addChild(this.floorGraphics);
+        this.effectRenderer = new EffectRenderer(container);
         container.addChild(this.dangerLine);
-
         this.initTextures();
     }
 
-    generateAllTextures(): Map<FruitTier, PIXI.Texture> {
-        const map = new Map<FruitTier, PIXI.Texture>();
-        if (!this.app || !this.app.renderer) {
-            console.warn('[RenderSystem] app or renderer is missing!');
-            return map;
-        }
+    updateEnvironment(_sw: number, _sh: number, _vw: number, _vh: number, _sf: number): void {}
 
-        // Context Loss Check
-        // @ts-ignore - accessing internal gl context
+    // --- Texture Generation: Bake body + face into single texture per fruit ---
+
+    generateAllTextures(): { normal: Map<FruitTier, PIXI.Texture>; blink: Map<FruitTier, PIXI.Texture> } {
+        const normalMap = new Map<FruitTier, PIXI.Texture>();
+        const blinkMap = new Map<FruitTier, PIXI.Texture>();
+        if (!this.app || !this.app.renderer) return { normal: normalMap, blink: blinkMap };
+
+        // @ts-ignore
         const gl = this.app.renderer.gl || (this.app.renderer.context && this.app.renderer.context.gl);
-        if (gl && gl.isContextLost && gl.isContextLost()) {
-            console.warn('[RenderSystem] Cannot generate textures: WebGL Context is lost.');
-            return map;
-        }
+        if (gl && gl.isContextLost && gl.isContextLost()) return { normal: normalMap, blink: blinkMap };
 
-        // Renderer reset block removed (Unsafe/Dead Code)
-
-        Object.values(FRUIT_DEFS).forEach(def => {
+        // Generate textures using generateTexture() — same approach as clouds for crisp vector rendering
+        // generateTexture() auto-fits bounds, so the fruit is centered and rendered at 4x resolution
+        for (const def of Object.values(FRUIT_DEFS)) {
             try {
-                const container = new PIXI.Container();
-                def.renderPixiBody(container, def.radius);
-
-                const size = (def.radius * 2) + 20;
-                const texture = PIXI.RenderTexture.create({
-                    width: size,
-                    height: size,
-                    resolution: this.app!.renderer.resolution || 2
+                // Normal: body + face with open eyes
+                const normC = new PIXI.Container();
+                def.renderPixiBody(normC, def.radius);
+                const normFace = this.createFace(def.tier, def.radius);
+                normC.addChild(normFace);
+                const normTex = this.app.renderer.generateTexture({
+                    target: normC,
+                    resolution: 4,
+                    antialias: true,
                 });
+                normalMap.set(def.tier, normTex);
+                normC.destroy({ children: true });
 
-                container.position.set(size / 2, size / 2);
-                this.app!.renderer.render({ container, target: texture });
-
-                map.set(def.tier, texture);
-                container.destroy({ children: true });
+                // Blink: body + face with closed eyes
+                const blinkC = new PIXI.Container();
+                def.renderPixiBody(blinkC, def.radius);
+                const blinkFace = this.createFace(def.tier, def.radius, true);
+                blinkC.addChild(blinkFace);
+                const blinkTex = this.app.renderer.generateTexture({
+                    target: blinkC,
+                    resolution: 4,
+                    antialias: true,
+                });
+                blinkMap.set(def.tier, blinkTex);
+                blinkC.destroy({ children: true });
             } catch (e) {
                 console.error(`[RenderSystem] Failed to generate texture for tier ${def.tier}:`, e);
             }
-        });
-        return map;
+        }
+        return { normal: normalMap, blink: blinkMap };
     }
 
     initTextures() {
-        const newTextures = this.generateAllTextures();
-        newTextures.forEach((v, k) => this.textures.set(k, v));
+        const { normal, blink } = this.generateAllTextures();
+        normal.forEach((v, k) => this.normalTextures.set(k, v));
+        blink.forEach((v, k) => this.blinkTextures.set(k, v));
     }
 
-    createFace(tier: FruitTier, radius: number): PIXI.Container {
+    // --- Face creation for texture baking ---
+
+    createFace(tier: FruitTier, radius: number, blink = false): PIXI.Container {
         const def = FRUIT_DEFS[tier];
         if (def && def.renderPixiFace) {
-            return def.renderPixiFace(radius);
+            return def.renderPixiFace(radius, blink);
         }
         return new PIXI.Container();
     }
 
+    // --- Sprite management ---
+
     createSprite(p: Particle) {
-        if (!this.container || !this.textures.has(p.tier)) return;
-        const tex = this.textures.get(p.tier)!;
-        const sprite = new PIXI.Container();
-        const body = new PIXI.Sprite(tex);
-        body.anchor.set(0.5);
-        sprite.addChild(body);
-        const face = this.createFace(p.tier, p.radius);
-        face.label = "face";
-        sprite.addChild(face);
+        if (!this.container || !this.normalTextures.has(p.tier)) return;
+        const tex = this.normalTextures.get(p.tier)!;
+        const sprite = new PIXI.Sprite(tex);
+        sprite.anchor.set(0.5);
+        sprite.x = p.x;
+        sprite.y = p.y;
+        sprite.rotation = p.rotation;
+        sprite.alpha = p.alpha;
+        sprite.scale.set(p.scaleX, p.scaleY);
         this.fruitSprites.set(p.id, sprite);
         this.container.addChild(sprite);
     }
@@ -118,31 +138,28 @@ export class RenderSystem {
             }
         });
         this.fruitSprites.clear();
-        this.floorGraphics.clear(); // Will need redraw
+        this._lastDangerActive = null;
+        this._lastFeverActive = null;
+        this.dangerLine.clear();
     }
 
     refreshGraphics(): boolean {
         try {
             console.log('[RenderSystem] Refreshing graphics...');
-            const newTextures = this.generateAllTextures();
+            const { normal, blink } = this.generateAllTextures();
 
-            if (newTextures.size > 0) {
-                // 1. Destroy all current textures to free GPU memory
-                this.textures.forEach(tex => {
-                    if (tex.destroy) tex.destroy(true);
-                });
-                this.textures.clear();
-
-                // 2. Swap in new textures
-                newTextures.forEach((v, k) => this.textures.set(k, v));
-
-                // 3. Reset sprites (re-create them with new textures)
+            if (normal.size > 0) {
+                this.normalTextures.forEach(tex => { if (tex.destroy) tex.destroy(true); });
+                this.blinkTextures.forEach(tex => { if (tex.destroy) tex.destroy(true); });
+                this.normalTextures.clear();
+                this.blinkTextures.clear();
+                normal.forEach((v, k) => this.normalTextures.set(k, v));
+                blink.forEach((v, k) => this.blinkTextures.set(k, v));
                 this.reset();
-
-                console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.textures.size}`);
+                console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.normalTextures.size}`);
                 return true;
             } else {
-                console.error('[RenderSystem] Failed to regenerate textures. Keeping old textures.');
+                console.error('[RenderSystem] Failed to regenerate textures.');
                 return false;
             }
         } catch (e) {
@@ -153,43 +170,9 @@ export class RenderSystem {
 
     // --- Rendering Logic ---
 
-    getFloorY(x: number, height: number) {
-        const baseY = height - 60;
-        return baseY + Math.sin(x * 0.015) * 10 + Math.cos(x * 0.04) * 5;
-    }
-
-    drawFloor(width: number, height: number, scaleFactor: number, screenHeight: number, containerY: number, screenWidth: number) {
-        this.floorGraphics.clear();
-
-        const bottomY = ((screenHeight - containerY) / scaleFactor) + 200;
-
-        // Calculate extended width to cover full screen
-        const virtualScreenWidth = screenWidth / scaleFactor;
-        const gameCenter = width / 2;
-        const startX = gameCenter - (virtualScreenWidth / 2);
-        const endX = gameCenter + (virtualScreenWidth / 2);
-
-        const step = 5;
-        this.floorGraphics.moveTo(startX, bottomY);
-        this.floorGraphics.lineTo(startX, this.getFloorY(startX, height));
-        for (let x = startX; x <= endX; x += step) {
-            this.floorGraphics.lineTo(x, this.getFloorY(x, height));
-        }
-        this.floorGraphics.lineTo(endX, this.getFloorY(endX, height));
-        this.floorGraphics.lineTo(endX, bottomY);
-        this.floorGraphics.closePath();
-        this.floorGraphics.fill({ color: 0x76C043 });
-        this.floorGraphics.stroke({ width: 6, color: 0x2E5A1C, alignment: 0 });
-
-        // Decorations - keep relative to game area center
-        this.floorGraphics.circle(50, height, 15);
-        this.floorGraphics.circle(80, height + 20, 20);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-        this.floorGraphics.circle(width - 100, height, 25);
-        this.floorGraphics.fill({ color: 0x558B2F, alpha: 0.2 });
-    }
-
     drawDangerLine(width: number, height: number, active: boolean) {
+        if (this._lastDangerActive === active) return;
+        this._lastDangerActive = active;
         this.dangerLine.clear();
         const y = height * DANGER_Y_PERCENT;
         this.dangerLine.moveTo(0, y);
@@ -205,7 +188,8 @@ export class RenderSystem {
         let rhythmicScaleX = 1;
         let rhythmicScaleY = 1;
         if (ctx.feverActive) {
-            const time = Date.now();
+            // Use performance.now() instead of Date.now() — higher resolution, monotonic
+            const time = performance.now();
             const pulse = Math.sin((time / 250) * Math.PI) * 0.05;
             rhythmicScaleX = 1 + pulse;
             rhythmicScaleY = 1 - pulse;
@@ -218,6 +202,11 @@ export class RenderSystem {
                 sprite.x = ctx.currentFruit.x;
                 sprite.y = ctx.currentFruit.y;
                 sprite.rotation = ctx.currentFruit.rotation;
+                // Swap to blink texture if needed
+                const tex = ctx.currentFruit.isBlinking
+                    ? this.blinkTextures.get(ctx.currentFruit.tier)
+                    : this.normalTextures.get(ctx.currentFruit.tier);
+                if (tex && sprite.texture !== tex) sprite.texture = tex;
             }
         }
 
@@ -229,26 +218,19 @@ export class RenderSystem {
                 sprite.y = p.y;
                 sprite.rotation = p.rotation;
                 sprite.alpha = p.alpha;
-                sprite.scale.set(
-                    p.scaleX * rhythmicScaleX,
-                    p.scaleY * rhythmicScaleY
-                );
+                sprite.scale.set(p.scaleX * rhythmicScaleX, p.scaleY * rhythmicScaleY);
 
-                const face = sprite.getChildByLabel("face") as PIXI.Container;
-                if (face) {
-                    const eyes = face.getChildByLabel("eyes");
-                    if (eyes) {
-                        if (p.isBlinking) {
-                            eyes.scale.y = 0.1;
-                        } else {
-                            eyes.scale.y = 1;
-                        }
-                    }
-                    const lookX = Math.min(10, Math.max(-10, p.vx));
-                    const lookY = Math.min(10, Math.max(-10, p.vy));
-                    face.position.set(lookX * 0.5, lookY * 0.5);
-                }
+                // Swap texture for blinking (no per-frame face updates needed)
+                const targetTex = p.isBlinking
+                    ? this.blinkTextures.get(p.tier)
+                    : this.normalTextures.get(p.tier);
+                if (targetTex && sprite.texture !== targetTex) sprite.texture = targetTex;
             }
+        }
+
+        // Render effect particles
+        if (this.effectRenderer && ctx.effectParticles) {
+            this.effectRenderer.render(ctx.effectParticles);
         }
     }
 

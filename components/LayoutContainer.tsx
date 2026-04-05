@@ -1,17 +1,49 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect, useState, useCallback } from 'react';
 
-interface LayoutContainerProps {
-    children: ReactNode;
-}
+/**
+ * LayoutContainer constrains content to the game area width.
+ * On wide screens, the HUD and controls are centered and no wider than the game area.
+ * On narrow screens, everything fills the width.
+ * 
+ * The game area maintains 4:5 aspect ratio.
+ * LayoutContainer width = game area width (exactly).
+ * No padding here — padding is applied to HUD and controls individually.
+ */
+const HUD_HEIGHT = 80;
+const CONTROLS_HEIGHT = 60;
 
-export const LayoutContainer: React.FC<LayoutContainerProps> = ({ children }) => {
+export const LayoutContainer: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [containerWidth, setContainerWidth] = useState(0);
+
+    const updateSize = useCallback(() => {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const aspectRatio = 4 / 5;
+
+        // Available height for game area (subtract HUD and controls)
+        const availableHeight = vh - HUD_HEIGHT - CONTROLS_HEIGHT;
+        // Game area width based on 4:5 aspect ratio
+        const gameAreaWidth = availableHeight * aspectRatio;
+
+        // On narrow screens, fill the width
+        // On wide screens, constrain to game area width
+        const width = Math.min(vw, gameAreaWidth);
+
+        setContainerWidth(width);
+    }, []);
+
+    useEffect(() => {
+        updateSize();
+        window.addEventListener('resize', updateSize);
+        return () => window.removeEventListener('resize', updateSize);
+    }, [updateSize]);
+
     return (
-        <div className="w-full h-[100svh] flex justify-center overflow-hidden">
-            {/* 
-                Container roughly limits to mobile aspect ratio (~9:20) on desktop via max-w.
-                On mobile, it fills the width (because screen < max-w usually).
-            */}
-            <div className="relative w-full max-w-[50svh] h-full flex flex-col">
+        <div className="fixed inset-0 flex flex-col items-center justify-center">
+            <div
+                className="flex flex-col h-full"
+                style={{ width: containerWidth || '100%' }}
+            >
                 {children}
             </div>
         </div>
