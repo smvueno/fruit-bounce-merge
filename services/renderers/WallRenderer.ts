@@ -22,6 +22,7 @@ export class WallRenderer {
 
     /**
      * Draw both grass walls in virtual coordinates.
+     * Walls overlap the game area by ~5px for a seamless framing effect.
      * @param viewWidth Viewport width in CSS pixels (for extending beyond game area)
      * @param scaleFactor Scale factor between virtual and screen coords
      * @param containerLeft Pixi container X position on screen (CSS pixels)
@@ -33,39 +34,20 @@ export class WallRenderer {
         const V_WIDTH = 600;
         const V_HEIGHT = 750;
         const wallWidth = 80;
+        const overlap = 5; // px overlap into game area
 
         // How many virtual units the screen extends beyond the game area
         const screenVWidth = viewWidth / scaleFactor;
 
-        // Left wall: positioned so its right edge (x=wallWidth) touches game area left edge (x=0)
-        this.leftWall.x = -wallWidth;
-        this.leftWall.y = 35; // Start below the grass cap
+        // Left wall: right edge overlaps game area by 5px
+        this.leftWall.x = -wallWidth + overlap;
+        this.leftWall.y = 35;
         this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
 
-        // Right wall: positioned so its left edge touches game area right edge (x=V_WIDTH)
-        this.rightWall.x = V_WIDTH;
+        // Right wall: left edge overlaps game area by 5px
+        this.rightWall.x = V_WIDTH - overlap;
         this.rightWall.y = 35;
         this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
-
-        // Extra wall segments for extended screen areas
-        const leftExtra = containerLeft / scaleFactor;
-        const rightExtra = screenVWidth - (containerLeft / scaleFactor + V_WIDTH);
-
-        // If there's extra screen space on the left, add more wall segments
-        if (leftExtra > wallWidth) {
-            this.leftWall.x = -wallWidth * 2;
-            this.leftWall.y = 35;
-            // Redraw with double width
-            this.leftWall.clear();
-            this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
-        }
-
-        if (rightExtra > wallWidth) {
-            this.rightWall.clear();
-            this.rightWall.x = V_WIDTH;
-            this.rightWall.y = 35;
-            this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
-        }
     }
 
     private drawWallShape(g: PIXI.Graphics, height: number, _side: 'left' | 'right'): void {
