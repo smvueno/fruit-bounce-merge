@@ -17,6 +17,7 @@ import { JuiceRenderer } from './renderers/JuiceRenderer';
 import { GameVisibility } from './GameVisibility';
 import { GameResize } from './GameResize';
 import { GameInput } from './GameInput';
+import { GameInit } from './GameInit';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -38,7 +39,7 @@ export class GameEngine {
     cloudRenderer: CloudRenderer | null = null;
     wallRenderer: WallRenderer | null = null;
     groundRenderer: GroundRenderer | null = null;
-    private juiceRenderer: JuiceRenderer | null = null;
+    juiceRenderer: JuiceRenderer | null = null;
     _screenWidth = 0;
     _screenHeight = 0;
     _containerTop = 0;
@@ -138,6 +139,7 @@ export class GameEngine {
     private gameVisibility: GameVisibility | null = null;
     private gameResize: GameResize | null = null;
     private gameInput: GameInput | null = null;
+    private gameInit: GameInit | null = null;
     private visibilityHandler: (() => void) | null = null;
     private contextRestoredHandler: (() => void) | null = null;
 
@@ -265,6 +267,7 @@ export class GameEngine {
         this.gameVisibility = new GameVisibility(this);
         this.gameResize = new GameResize(this);
         this.gameInput = new GameInput(this);
+        this.gameInit = new GameInit(this);
     }
 
     setPaused(paused: boolean) {
@@ -283,89 +286,7 @@ export class GameEngine {
     }
 
     async initialize() {
-        if (this.destroyed) return;
-        this.initializing = true;
-        this.app = new PIXI.Application();
-
-        try {
-            // Use full device pixel ratio (no cap) for maximum sharpness on mobile
-            const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-            const dpr = window.devicePixelRatio || 1;
-
-            await this.app.init({
-                canvas: this.canvasElement,
-                backgroundAlpha: 0,
-                width: this.canvasElement.clientWidth,
-                height: this.canvasElement.clientHeight,
-                antialias: true,
-                resolution: dpr,
-                autoDensity: true,
-                preference: 'webgl',
-                resizeTo: this.canvasElement,
-            });
-
-            this.app.renderer.on('resize', () => this.handleResize());
-
-        } catch (e) {
-            console.error(`[GameEngine] PIXI Init Error:`, e);
-            this.initializing = false;
-            return;
-        }
-
-        this.initializing = false;
-        if (this.destroyed) {
-            if (this.app) this.app.destroy({ removeView: false });
-            return;
-        }
-        if (!this.app.renderer) return;
-
-        // Initial Resize
-        this.handleResize();
-
-        this.app.stage.addChild(this.container);
-
-        // Initialize Render System
-        this.renderSystem.initialize(this.app, this.container);
-
-        // Initialize Ground Renderer (inside the game container — virtual coords)
-        this.groundRenderer = new GroundRenderer(this.container);
-
-        // Initialize Juice Renderer (inside the game container — virtual coords)
-        this.juiceRenderer = new JuiceRenderer(this.container);
-
-        // Initialize Cloud Renderer (screen-space, on the stage)
-        this.cloudRenderer = new CloudRenderer(this.app.stage, this.app.renderer);
-
-        // Initialize Wall Renderer (inside the game container — virtual coords)
-        this.wallRenderer = new WallRenderer(this.container);
-
-        // Re-run resize to update screen-space renderers now that they exist
-        this.handleResize();
-
-        // Start Game
-        this.spawnNextFruit();
-
-        // CRITICAL: Use manual fixed-timestep frame pacing instead of ticker.maxFPS.
-        // Pixi.js ticker.maxFPS is known to be unreliable (GitHub issue #11411).
-        // On 120Hz ProMotion displays, maxFPS=60 causes stutter because the ticker
-        // still fires at 120Hz and skips frames inconsistently.
-        // Solution: Let the ticker run at display refresh rate, but only run game
-        // logic at a fixed 60Hz interval. This gives butter-smooth rendering with
-        // deterministic physics.
-        this.app.ticker.maxFPS = 0; // unlimited — we control timing ourselves
-        this.app.ticker.minFPS = 30; // clamp deltaTime to prevent spiral of death
-        this.app.ticker.add(this.update.bind(this));
-
-        // Input Handling
-        this.app.stage.eventMode = 'static';
-        if (this.app.screen) this.app.stage.hitArea = this.app.screen;
-
-        this.gameInput!.registerListeners(this.app.stage);
-
-        // Handle Visibility Changes (Context Loss Prevention)
-        const handlers = this.gameVisibility!.registerListeners(this.canvasElement);
-        this.visibilityHandler = handlers.visibilityHandler;
-        this.contextRestoredHandler = handlers.contextRestoredHandler;
+        this.gameInit?.initialize();
     }
     handleResize() {
         this.gameResize?.handleResize();
