@@ -17,7 +17,6 @@ import { JuiceRenderer } from './renderers/JuiceRenderer';
 import { GameVisibility } from './GameVisibility';
 import { GameResize } from './GameResize';
 import { GameInput } from './GameInput';
-import { GameInit } from './GameInit';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -136,10 +135,9 @@ export class GameEngine {
     private _fruitsById: Map<number, Particle> = new Map();
 
     spawnTimeout: any = null;
-    private gameVisibility: GameVisibility | null = null;
-    private gameResize: GameResize | null = null;
-    private gameInput: GameInput | null = null;
-    private gameInit: GameInit | null = null;
+    gameVisibility: GameVisibility | null = null;
+    gameResize: GameResize | null = null;
+    gameInput: GameInput | null = null;
     private visibilityHandler: (() => void) | null = null;
     private contextRestoredHandler: (() => void) | null = null;
 
@@ -267,7 +265,6 @@ export class GameEngine {
         this.gameVisibility = new GameVisibility(this);
         this.gameResize = new GameResize(this);
         this.gameInput = new GameInput(this);
-        this.gameInit = new GameInit(this);
     }
 
     setPaused(paused: boolean) {
@@ -286,7 +283,80 @@ export class GameEngine {
     }
 
     async initialize() {
-        await this.gameInit?.initialize();
+        if (this.destroyed) return;
+        this.initializing = true;
+        this.app = new PIXI.Application();
+
+        try {
+            const dpr = window.devicePixelRatio || 1;
+
+            await this.app.init({
+                canvas: this.canvasElement,
+                backgroundAlpha: 0,
+                width: this.canvasElement.clientWidth,
+                height: this.canvasElement.clientHeight,
+                antialias: true,
+                resolution: dpr,
+                autoDensity: true,
+                preference: 'webgl',
+                resizeTo: this.canvasElement,
+            });
+
+            this.app.renderer.on('resize', () => this.handleResize());
+
+        } catch (e) {
+            console.error(`[GameEngine] PIXI Init Error:`, e);
+            this.initializing = false;
+            return;
+        }
+
+        this.initializing = false;
+        if (this.destroyed) {
+            if (this.app) this.app.destroy({ removeView: false });
+            return;
+        }
+        if (!this.app.renderer) return;
+
+        // Initial Resize
+        this.handleResize();
+
+        this.app.stage.addChild(this.container);
+
+        // Initialize Render System
+        this.renderSystem.initialize(this.app, this.container);
+
+        // Initialize Ground Renderer (inside the game container — virtual coords)
+        this.groundRenderer = new GroundRenderer(this.container);
+
+        // Initialize Juice Renderer (inside the game container — virtual coords)
+        this.juiceRenderer = new JuiceRenderer(this.container);
+
+        // Initialize Cloud Renderer (screen-space, on the stage)
+        this.cloudRenderer = new CloudRenderer(this.app.stage, this.app.renderer);
+
+        // Initialize Wall Renderer (inside the game container — virtual coords)
+        this.wallRenderer = new WallRenderer(this.container);
+
+        // Re-run resize to update screen-space renderers now that they exist
+        this.handleResize();
+
+        // Start Game
+        this.spawnNextFruit();
+
+        // Ticker configuration
+        this.app.ticker.maxFPS = 0;
+        this.app.ticker.minFPS = 30;
+        this.app.ticker.add(this.update.bind(this));
+
+        // Input Handling
+        this.app.stage.eventMode = 'static';
+        if (this.app.screen) this.app.stage.hitArea = this.app.screen;
+        this.gameInput!.registerListeners(this.app.stage);
+
+        // Handle Visibility Changes (Context Loss Prevention)
+        const handlers = this.gameVisibility!.registerListeners(this.canvasElement);
+        this.visibilityHandler = handlers.visibilityHandler;
+        this.contextRestoredHandler = handlers.contextRestoredHandler;
     }
     handleResize() {
         this.gameResize?.handleResize();
