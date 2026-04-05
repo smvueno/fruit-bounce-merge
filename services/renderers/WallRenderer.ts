@@ -29,7 +29,7 @@ export class WallRenderer {
 
         const V_WIDTH = 600;
         const V_HEIGHT = 750;
-        const overlap = 5; // px overlap into game area
+        const overlap = 10; // px overlap into game area
 
         // Left wall: inner edge (local x=70) positioned at x=overlap (5px inside game area)
         this.leftWall.x = overlap - 70;

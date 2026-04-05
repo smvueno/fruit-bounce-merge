@@ -99,17 +99,17 @@ Stage (screen space, 100vw × 100vh)
 ## 4. Wall Positioning — Absolute Rules
 
 ### 4.1 Placement
-- **Both walls**: Inner edge overlaps game area by **5px**
+- **Both walls**: Inner edge overlaps game area by **10px**
 - Walls use **bezier curves** (`quadraticCurveTo`, `bezierCurveTo`) for smooth organic shapes
 - Wall width: **80px** (fixed)
 - Walls positioned **above fruits** (zIndex 50)
 
 ### 4.2 Coordinate Calculation (virtual coords)
 ```
-leftWall.x = overlap - 70          // = -65 (5px overlap)
-rightWall.x = V_WIDTH - overlap + 70  // = 665, with scale.x = -1
+leftWall.x = overlap - 70          // = -60 (10px overlap)
+rightWall.x = V_WIDTH - overlap + 70  // = 660, with scale.x = -1
 ```
-Both walls must overlap the game area by exactly the same amount (5px).
+Both walls must overlap the game area by exactly the same amount (10px).
 
 ### 4.3 Wall Height
 - Fixed to game area height (V_HEIGHT = 750)
@@ -405,6 +405,7 @@ Before committing, verify manually:
 - After mirroring: `rightWall.x = V_WIDTH - overlap + 70` (not `V_WIDTH + 70`).
 - The `+70` accounts for the wall's inner edge being at local x=70.
 - **Always verify both walls have the same overlap** — it's easy to get one side wrong.
+- Current overlap: **10px** on both sides.
 
 ### 21.3 Ground Extension
 - Ground must extend to the **bottom of the viewport** on any screen size.
