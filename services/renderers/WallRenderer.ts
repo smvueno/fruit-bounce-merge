@@ -31,10 +31,11 @@ export class WallRenderer {
         const V_HEIGHT = 750;
         const overlap = 10; // px overlap into game area
 
-        // Left wall: inner edge (local x=70) positioned at x=overlap (5px inside game area)
+        // Left wall: inner edge (local x=70) positioned at x=overlap (10px inside game area)
+        // Wall extends from top (y=35) down to meet the ground wave (y=715 + wave trough ~730)
         this.leftWall.x = overlap - 70;
         this.leftWall.y = 35;
-        this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
+        this.drawWallShape(this.leftWall, V_HEIGHT - 15, 'left');
 
         // Right wall: mirrored (scale.x = -1), inner edge at V_WIDTH - overlap
         // After mirror, local x=70 maps to container.x + (-70)
@@ -42,7 +43,7 @@ export class WallRenderer {
         this.rightWall.x = V_WIDTH - overlap + 70;
         this.rightWall.y = 35;
         this.rightWall.scale.x = -1;
-        this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
+        this.drawWallShape(this.rightWall, V_HEIGHT - 15, 'right');
     }
 
     private drawWallShape(g: PIXI.Graphics, height: number, _side: 'left' | 'right'): void {

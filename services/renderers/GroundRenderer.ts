@@ -30,8 +30,8 @@ export class GroundRenderer {
         const V_WIDTH = 600;
         const V_HEIGHT = 750;
 
-        // Physics floor is at V_HEIGHT - 15 = 735 in virtual coords
-        const virtualFloorY = V_HEIGHT - 15;
+        // Physics floor is at V_HEIGHT - 35 = 715 in virtual coords (matches FLOOR_OFFSET)
+        const virtualFloorY = V_HEIGHT - 35;
 
         // How many virtual units the screen extends beyond the game area
         const screenVWidth = viewWidth / scaleFactor;
