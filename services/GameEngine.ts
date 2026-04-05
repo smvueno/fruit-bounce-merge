@@ -14,6 +14,7 @@ import { CloudRenderer } from './renderers/CloudRenderer';
 import { WallRenderer } from './renderers/WallRenderer';
 import { GroundRenderer } from './renderers/GroundRenderer';
 import { JuiceRenderer } from './renderers/JuiceRenderer';
+import { GameVisibility } from './GameVisibility';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -32,15 +33,15 @@ export class GameEngine {
     effectSystem: EffectSystem;
     renderSystem: RenderSystem;
     scoreController: ScoreController;
-    private cloudRenderer: CloudRenderer | null = null;
-    private wallRenderer: WallRenderer | null = null;
-    private groundRenderer: GroundRenderer | null = null;
+    cloudRenderer: CloudRenderer | null = null;
+    wallRenderer: WallRenderer | null = null;
+    groundRenderer: GroundRenderer | null = null;
     private juiceRenderer: JuiceRenderer | null = null;
-    private _screenWidth = 0;
-    private _screenHeight = 0;
+    _screenWidth = 0;
+    _screenHeight = 0;
     private _containerTop = 0;
-    private _containerLeft = 0;
-    private _gameAreaWidth = 0;
+    _containerLeft = 0;
+    _gameAreaWidth = 0;
     private _gameAreaHeight = 0;
 
     // Game State
@@ -132,9 +133,9 @@ export class GameEngine {
     private _fruitsById: Map<number, Particle> = new Map();
 
     private spawnTimeout: any = null;
-    private wasPausedBySystem: boolean = false;
-    private visibilityHandler: () => void;
-    private contextRestoredHandler: () => void;
+    private gameVisibility: GameVisibility | null = null;
+    private visibilityHandler: (() => void) | null = null;
+    private contextRestoredHandler: (() => void) | null = null;
 
     constructor(
         canvas: HTMLCanvasElement,
@@ -144,12 +145,6 @@ export class GameEngine {
         this.canvasElement = canvas;
         this.settings = settings;
         Object.assign(this, callbacks);
-
-        this.contextRestoredHandler = () => {
-            console.log('[GameEngine] WebGL Context Restored event detected.');
-            // Small delay to allow PixiJS to re-initialize its internal state
-            setTimeout(() => this.attemptRestoration(0), 100);
-        };
 
         // Core PIXI Containers
         this.container = new PIXI.Container();
@@ -263,7 +258,7 @@ export class GameEngine {
             height: this.height
         };
 
-        this.visibilityHandler = this.handleVisibilityChange.bind(this);
+        this.gameVisibility = new GameVisibility(this);
     }
 
     setPaused(paused: boolean) {
@@ -365,97 +360,10 @@ export class GameEngine {
         this.app.stage.on('pointerupoutside', this.onPointerUp.bind(this));
 
         // Handle Visibility Changes (Context Loss Prevention)
-        document.addEventListener('visibilitychange', this.visibilityHandler);
-        this.canvasElement.addEventListener('webglcontextrestored', this.contextRestoredHandler);
+        const handlers = this.gameVisibility!.registerListeners(this.canvasElement);
+        this.visibilityHandler = handlers.visibilityHandler;
+        this.contextRestoredHandler = handlers.contextRestoredHandler;
     }
-
-    handleVisibilityChange() {
-        if (document.hidden) {
-            console.log('[GameEngine] App backgrounded - pausing');
-            if (!this.paused) {
-                this.setPaused(true);
-                this.wasPausedBySystem = true;
-            } else {
-                this.wasPausedBySystem = false;
-            }
-            if (this.app) {
-                this.app.ticker.stop();
-            }
-        } else {
-            console.log('[GameEngine] App foregrounded - restoring');
-            this.attemptRestoration(0);
-        }
-    }
-
-    attemptRestoration(attempt: number) {
-        if (attempt > 4) {
-            console.error('[GameEngine] Failed to restore graphics after multiple attempts.');
-            // Resume anyway to allow logic to run
-            this.resumeAfterRestore();
-            return;
-        }
-
-        // Exponential backoff: 200, 400, 800, 1600...
-        const delay = 200 * Math.pow(2, attempt);
-        console.log(`[GameEngine] Restoration attempt ${attempt + 1} scheduled in ${delay}ms`);
-
-        setTimeout(() => {
-            const success = this.restoreGraphics();
-            if (success) {
-                console.log('[GameEngine] Restoration successful.');
-                this.resumeAfterRestore();
-            } else {
-                console.warn(`[GameEngine] Restoration attempt ${attempt + 1} failed (Context lost or error). Retrying...`);
-                this.attemptRestoration(attempt + 1);
-            }
-        }, delay);
-    }
-
-    resumeAfterRestore() {
-        if (this.wasPausedBySystem) {
-            this.setPaused(false);
-            this.wasPausedBySystem = false;
-        }
-        if (this.app) {
-            this.app.ticker.start();
-        }
-    }
-
-    restoreGraphics(): boolean {
-        if (!this.app || !this.app.renderer) return false;
-
-        console.log('[GameEngine] Restoring graphics context...');
-        const success = this.renderSystem.refreshGraphics();
-        if (!success) return false;
-
-        // Restore current fruit sprite
-        if (this.currentFruit) {
-            this.renderSystem.createSprite(this.currentFruit);
-        }
-
-        // Restore all active fruits
-        for (const p of this.fruits) {
-            this.renderSystem.createSprite(p);
-        }
-
-        // Redraw static elements
-        this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
-        // Redraw environment (ground + walls)
-        if (this.groundRenderer) {
-            this.groundRenderer.draw(this._screenWidth, this._screenHeight, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
-        }
-        if (this.wallRenderer) {
-            this.wallRenderer.draw(this._screenWidth, this._screenHeight, this.scaleFactor, this._containerLeft);
-        }
-        const actualW = this.app.screen.width;
-        const actualH = this.app.screen.height;
-        this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
-        this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
-        this.wallRenderer?.draw(actualW, actualH, this.scaleFactor, this._containerLeft);
-
-        return true;
-    }
-
     handleResize() {
         if (!this.app || !this.app.screen) return;
 
@@ -1339,8 +1247,9 @@ export class GameEngine {
 
     cleanup() {
         this.destroyed = true;
-        document.removeEventListener('visibilitychange', this.visibilityHandler);
-        this.canvasElement.removeEventListener('webglcontextrestored', this.contextRestoredHandler);
+        if (this.gameVisibility && this.visibilityHandler && this.contextRestoredHandler) {
+            this.gameVisibility.unregisterListeners(this.canvasElement, this.visibilityHandler, this.contextRestoredHandler);
+        }
         this.audio.stop();
         if (!this.initializing && this.app) {
             try {
