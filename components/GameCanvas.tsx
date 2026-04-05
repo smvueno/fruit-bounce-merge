@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { GameSettings, GameStats, FruitTier, LeaderboardEntry, PopupData, PointEvent, PopUpType } from '../types';
 import { GameEngine } from '../services/GameEngine';
-import { NewGameEngine } from '../services/new/NewGameEngine';
 import { DANGER_Y_PERCENT } from '../constants';
 import { DebugMenu } from './DebugMenu';
 
@@ -33,7 +32,7 @@ interface GameCanvasProps {
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettings, leaderboard, onGameOver, setScore, onSync, onPauseChange }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const engineRef = useRef<NewGameEngine | null>(null);
+    const engineRef = useRef<GameEngine | null>(null);
     const gameAreaRef = useRef<HTMLDivElement>(null);
 
     // Game State
@@ -142,63 +141,52 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
     useEffect(() => {
         if (!canvasRef.current) return;
 
-        const engine = new NewGameEngine(canvasRef.current, settings);
-
-        // Wire callbacks
-        engine.onScore = (amt: number, total: number) => {
-            if (total === 0) {
-                setCurrentStateScore(0);
-                setScore(0);
+        const engine = new GameEngine(canvasRef.current, settings, {
+            // Score Updates
+            onScore: (amt: number, total: number) => {
+                if (total === 0) {
+                    setCurrentStateScore(0);
+                    setScore(0);
+                }
+            },
+            onGameOver: (stats: GameStats) => {
+                setCurrentStateScore(stats.score);
+                setScore(stats.score);
+                onGameOver(stats);
+            },
+            onCombo: (c: number) => setCombo(c),
+            onFeverStart: (mult: number) => { setFever(true); setCurrentFeverMult(mult); },
+            onFeverEnd: () => setFever(false),
+            onPopupStash: () => setPopupData(null),
+            onPopupRestore: (data: PopupData) => setPopupData(data),
+            onStreakEnd: (amount: number, totalRealScore: number) => triggerSuckUp(amount, totalRealScore),
+            onDanger: (active: boolean, ms: number) => setLimitTime(active ? ms : 0),
+            onJuiceUpdate: (j: number, max: number) => setJuice((j / max) * 100),
+            onNextFruit: (t: FruitTier) => setNextFruit(t),
+            onMaxFruit: (t: FruitTier) => setMaxTier(prev => Math.max(prev, t)),
+            onTimeUpdate: (ms: number) => setPlayTime(ms),
+            onSaveUpdate: (t: FruitTier | null) => setSavedFruit(t),
+            onCelebration: () => { setShowCelebration(true); setTimeout(() => setShowCelebration(false), 4000); },
+            onPointEvent: (event: PointEvent) => setLatestPointEvent(event),
+            onPopupUpdate: (data: PopupData) => {
+                setPopupData(data);
+                lastPopupDataRef.current = data;
+                let c = '#fbbf24';
+                if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80';
+                else if (data.type === PopUpType.FRENZY) c = '#facc15';
+                else if (data.type === PopUpType.CHAIN) c = '#fb923c';
+                setPopupColor(c);
             }
-        };
-        engine.onGameOver = (stats: GameStats) => {
-            setCurrentStateScore(stats.score);
-            setScore(stats.score);
-            onGameOver(stats);
-        };
-        engine.onCombo = (c: number) => setCombo(c);
-        engine.onFeverStart = (mult: number) => {
-            setFever(true);
-            setCurrentFeverMult(mult);
-        };
-        engine.onFeverEnd = () => setFever(false);
-        engine.onDanger = (active: boolean, ms: number) => setLimitTime(active ? ms : 0);
-        engine.onJuiceUpdate = (j: number, max: number) => setJuice((j / max) * 100);
-        engine.onNextFruit = (t: FruitTier) => setNextFruit(t);
-        engine.onMaxFruit = (t: FruitTier) => setMaxTier(prev => Math.max(prev, t));
-        engine.onTimeUpdate = (ms: number) => setPlayTime(ms);
-        engine.onCelebration = () => {
-            setShowCelebration(true);
-            setTimeout(() => setShowCelebration(false), 4000);
-        };
-        engine.onPointEvent = (event: PointEvent) => setLatestPointEvent(event);
-        engine.onPopupUpdate = (data: PopupData) => {
-            setPopupData(data);
-            lastPopupDataRef.current = data;
-            let c = '#fbbf24';
-            if (data.type === PopUpType.WATERMELON_CRUSH) c = '#4ade80';
-            else if (data.type === PopUpType.FRENZY) c = '#facc15';
-            else if (data.type === PopUpType.CHAIN) c = '#fb923c';
-            setPopupColor(c);
-        };
+        });
 
         engine.initialize().then(() => {
             engineRef.current = engine;
-
-            if (typeof window !== 'undefined') {
-                (window as any).__gameEngine = engine;
-            }
-
+            if (typeof window !== 'undefined') { (window as any).__gameEngine = engine; }
             requestAnimationFrame(() => {
                 if (gameAreaRef.current && engineRef.current) {
                     const rect = gameAreaRef.current.getBoundingClientRect();
                     engineRef.current.updateGameAreaRect(rect.left, rect.top, rect.width, rect.height);
-                    setGameAreaDimensions({
-                        width: rect.width,
-                        height: rect.height,
-                        top: rect.top,
-                        left: rect.left
-                    });
+                    setGameAreaDimensions({ width: rect.width, height: rect.height, top: rect.top, left: rect.left });
                 }
             });
         }).catch(e => console.error("Game init failed", e));
@@ -206,9 +194,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
         return () => {
             engine.cleanup();
             engineRef.current = null;
-            if (typeof window !== 'undefined') {
-                delete (window as any).__gameEngine;
-            }
+            if (typeof window !== 'undefined') { delete (window as any).__gameEngine; }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
