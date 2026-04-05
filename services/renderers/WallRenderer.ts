@@ -1,49 +1,74 @@
 import * as PIXI from 'pixi.js';
 
 /**
- * Renders the grass walls in Pixi screen-space.
- * Replaces WallCanvas.tsx — draws left and right grass walls at screen coordinates.
- * Walls are positioned at the left and right edges of the game area, overlapping slightly.
+ * Renders the grass walls inside the game container (virtual coords).
+ * Walls are positioned at the left and right edges of the game area,
+ * extending from y=35 down to the bottom of the game area.
+ * This ensures walls stay perfectly aligned with the game area at any screen size.
  */
 export class WallRenderer {
-    private leftWall: PIXI.Container;
-    private rightWall: PIXI.Container;
+    private leftWall: PIXI.Graphics;
+    private rightWall: PIXI.Graphics;
 
-    constructor(stage: PIXI.Container) {
-        this.leftWall = new PIXI.Container();
-        this.rightWall = new PIXI.Container();
-        this.leftWall.zIndex = 5;
-        this.rightWall.zIndex = 5;
-        stage.addChild(this.leftWall);
-        stage.addChild(this.rightWall);
+    constructor(parent: PIXI.Container) {
+        this.leftWall = new PIXI.Graphics();
+        this.rightWall = new PIXI.Graphics();
+        // Walls sit above ground but below fruits
+        this.leftWall.zIndex = -50;
+        this.rightWall.zIndex = -50;
+        parent.addChild(this.leftWall);
+        parent.addChild(this.rightWall);
     }
 
     /**
-     * Draw both grass walls in screen coordinates.
-     * Walls are positioned exactly at the left and right edges of the game area.
+     * Draw both grass walls in virtual coordinates.
+     * @param viewWidth Viewport width in CSS pixels (for extending beyond game area)
+     * @param scaleFactor Scale factor between virtual and screen coords
+     * @param containerLeft Pixi container X position on screen (CSS pixels)
      */
-    draw(gameAreaWidth: number, gameAreaHeight: number, containerTop: number, containerLeft: number, screenHeight: number): void {
-        this.leftWall.removeChildren();
-        this.rightWall.removeChildren();
+    draw(viewWidth: number, scaleFactor: number, containerLeft: number): void {
+        this.leftWall.clear();
+        this.rightWall.clear();
 
+        const V_WIDTH = 600;
+        const V_HEIGHT = 750;
         const wallWidth = 80;
-        const topMargin = 60;
-        const wallHeight = screenHeight - topMargin;
 
-        // Left wall: positioned so its right edge touches the game area left edge
-        this.leftWall.x = containerLeft - wallWidth;
-        this.leftWall.y = topMargin;
-        this.leftWall.addChild(this.drawWallShape(wallHeight, 'left'));
+        // How many virtual units the screen extends beyond the game area
+        const screenVWidth = viewWidth / scaleFactor;
 
-        // Right wall: positioned so its left edge touches the game area right edge
-        this.rightWall.x = containerLeft + gameAreaWidth;
-        this.rightWall.y = topMargin;
-        this.rightWall.addChild(this.drawWallShape(wallHeight, 'right'));
+        // Left wall: positioned so its right edge (x=wallWidth) touches game area left edge (x=0)
+        this.leftWall.x = -wallWidth;
+        this.leftWall.y = 35; // Start below the grass cap
+        this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
+
+        // Right wall: positioned so its left edge touches game area right edge (x=V_WIDTH)
+        this.rightWall.x = V_WIDTH;
+        this.rightWall.y = 35;
+        this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
+
+        // Extra wall segments for extended screen areas
+        const leftExtra = containerLeft / scaleFactor;
+        const rightExtra = screenVWidth - (containerLeft / scaleFactor + V_WIDTH);
+
+        // If there's extra screen space on the left, add more wall segments
+        if (leftExtra > wallWidth) {
+            this.leftWall.x = -wallWidth * 2;
+            this.leftWall.y = 35;
+            // Redraw with double width
+            this.leftWall.clear();
+            this.drawWallShape(this.leftWall, V_HEIGHT - 35, 'left');
+        }
+
+        if (rightExtra > wallWidth) {
+            this.rightWall.clear();
+            this.rightWall.x = V_WIDTH;
+            this.rightWall.y = 35;
+            this.drawWallShape(this.rightWall, V_HEIGHT - 35, 'right');
+        }
     }
 
-    private drawWallShape(height: number, side: 'left' | 'right'): PIXI.Graphics {
-        const g = new PIXI.Graphics();
-
+    private drawWallShape(g: PIXI.Graphics, height: number, _side: 'left' | 'right'): void {
         // Main Wall Body
         g.poly([10, 35, 10, height - 10, 10, height, 60, height, 70, height - 10, 70, 35]);
         g.fill({ color: 0x4CAF50 });
@@ -70,13 +95,5 @@ export class WallRenderer {
                 g.stroke();
             }
         });
-
-        // Mirror right wall so flat side faces game area
-        if (side === 'right') {
-            g.pivot.set(40, 0);
-            g.scale.set(-1, 1);
-        }
-
-        return g;
     }
 }

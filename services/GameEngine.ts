@@ -324,8 +324,8 @@ export class GameEngine {
         // Initialize Cloud Renderer (screen-space, on the stage)
         this.cloudRenderer = new CloudRenderer(this.app.stage, this.app.renderer);
 
-        // Initialize Wall Renderer (screen-space, on the stage)
-        this.wallRenderer = new WallRenderer(this.app.stage);
+        // Initialize Wall Renderer (inside the game container — virtual coords)
+        this.wallRenderer = new WallRenderer(this.container);
 
         // Re-run resize to update screen-space renderers now that they exist
         this.handleResize();
@@ -425,17 +425,13 @@ export class GameEngine {
             this.groundRenderer.draw(this._screenWidth, this._screenHeight, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(
-                this._screenWidth, this._screenHeight,
-                this._containerTop, this._containerLeft,
-                this._screenHeight
-            );
+            this.wallRenderer.draw(this._screenWidth, this.scaleFactor, this._containerLeft);
         }
         const actualW = this.app.screen.width;
         const actualH = this.app.screen.height;
         this.renderSystem.updateEnvironment(actualW, actualH, V_WIDTH, V_HEIGHT, this.scaleFactor);
         this.groundRenderer?.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
-        this.wallRenderer?.draw(actualW, actualH, this._containerTop, this._containerLeft, actualH);
+        this.wallRenderer?.draw(actualW, this.scaleFactor, this._containerLeft);
 
         return true;
     }
@@ -481,7 +477,7 @@ export class GameEngine {
             this.groundRenderer.draw(actualW, actualH, this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(this._gameAreaWidth, this._gameAreaHeight, this._containerTop, this._containerLeft, actualH);
+            this.wallRenderer.draw(this._gameAreaWidth, this.scaleFactor, this._containerLeft);
         }
     }
 
@@ -515,7 +511,7 @@ export class GameEngine {
             this.groundRenderer.draw(this._screenWidth, this._screenHeight, width, this.scaleFactor, left);
         }
         if (this.wallRenderer) {
-            this.wallRenderer.draw(width, height, top, left, this._screenHeight);
+            this.wallRenderer.draw(width, this.scaleFactor, left);
         }
     }
 
