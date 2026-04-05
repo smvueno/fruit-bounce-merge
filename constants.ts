@@ -11,7 +11,7 @@ const PHYSICS_FRICTION = 0.98; // Air resistance
 export const GAME_CONFIG = {
   gravity: PHYSICS_GRAVITY,
   friction: PHYSICS_FRICTION,
-  spawnDelay: 600,
+  spawnDelay: 333, // ~3 fruits/sec max for fast players
 };
 
 // Physics Engine Constants
