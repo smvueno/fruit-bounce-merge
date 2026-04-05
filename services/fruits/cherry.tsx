@@ -28,13 +28,22 @@ export const CHERRY: FruitDef = {
         g.fill({ color: 0xFFFFFF, alpha: 0.3 });
         c.addChild(g);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        PixiDrawEye(eyes, -xEye, yEye, rEye, 'dot');
-        PixiDrawEye(eyes, xEye, yEye, rEye, 'dot');
+        if (blink) {
+            eyes.moveTo(-xEye - rEye, yEye);
+            eyes.lineTo(-xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - rEye, yEye);
+            eyes.lineTo(xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            PixiDrawEye(eyes, -xEye, yEye, rEye, 'dot');
+            PixiDrawEye(eyes, xEye, yEye, rEye, 'dot');
+        }
         mouth.arc(0, yEye + rEye, rEye, 0.2, Math.PI - 0.2);
         mouth.stroke({ width: 2, color: 0x221111, cap: 'round' });
         container.addChild(eyes, mouth);

@@ -37,13 +37,22 @@ export const APPLE: FruitDef = {
         c.addChild(g);
         c.addChild(deco);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        PixiDrawEye(eyes, -xEye, yEye, rEye, 'happy');
-        PixiDrawEye(eyes, xEye, yEye, rEye, 'happy');
+        if (blink) {
+            eyes.moveTo(-xEye - rEye, yEye);
+            eyes.lineTo(-xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - rEye, yEye);
+            eyes.lineTo(xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            PixiDrawEye(eyes, -xEye, yEye, rEye, 'happy');
+            PixiDrawEye(eyes, xEye, yEye, rEye, 'happy');
+        }
         mouth.arc(0, yEye + rEye * 1.5, rEye * 0.8, 0.2, Math.PI - 0.2);
         mouth.stroke({ width: 3, color: 0x221111, cap: 'round' });
         container.addChild(eyes, mouth);

@@ -52,7 +52,7 @@ export const BOMB: FruitDef = {
         c.addChild(fuse);
         c.addChild(spark);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const g = new PIXI.Graphics();
         // Angry Brows
@@ -65,10 +65,19 @@ export const BOMB: FruitDef = {
         g.stroke({ width: 4, color: 0xFF4444, cap: 'round' });
 
         // Glowing Red Eyes
-        g.circle(-r * 0.3, r * 0.1, r * 0.1);
-        g.fill({ color: 0xFF4444 });
-        g.circle(r * 0.3, r * 0.1, r * 0.1);
-        g.fill({ color: 0xFF4444 });
+        if (blink) {
+            g.moveTo(-r * 0.3 - r * 0.1, r * 0.1);
+            g.lineTo(-r * 0.3 + r * 0.1, r * 0.1);
+            g.stroke({ width: r * 0.06, color: 0xFF4444, cap: 'round' });
+            g.moveTo(r * 0.3 - r * 0.1, r * 0.1);
+            g.lineTo(r * 0.3 + r * 0.1, r * 0.1);
+            g.stroke({ width: r * 0.06, color: 0xFF4444, cap: 'round' });
+        } else {
+            g.circle(-r * 0.3, r * 0.1, r * 0.1);
+            g.fill({ color: 0xFF4444 });
+            g.circle(r * 0.3, r * 0.1, r * 0.1);
+            g.fill({ color: 0xFF4444 });
+        }
 
         container.addChild(g);
         return container;

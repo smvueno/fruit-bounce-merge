@@ -2,8 +2,6 @@ import * as PIXI from 'pixi.js';
 import { FruitTier } from '../../types';
 import { Particle } from '../../types/GameObjects';
 import { FRUIT_DEFS, DANGER_Y_PERCENT } from '../../constants';
-import { GroundRenderer } from '../renderers/GroundRenderer';
-import { WallRenderer } from '../renderers/WallRenderer';
 import { EffectRenderer } from '../renderers/EffectRenderer';
 import { EffectParticle } from '../../types/GameObjects';
 
@@ -18,11 +16,14 @@ export interface RenderContext {
 export class RenderSystem {
     app: PIXI.Application | undefined;
     container: PIXI.Container | undefined;
-    fruitSprites: Map<number, PIXI.Container> = new Map();
-    faceRefs: Map<number, { face: PIXI.Container; eyes: PIXI.Container | null }> = new Map();
-    textures: Map<FruitTier, PIXI.Texture> = new Map();
+    // Optimized: Direct Sprites, no Container wrappers, no Graphics faces
+    fruitSprites: Map<number, PIXI.Sprite> = new Map();
+    // Texture maps: normal and blink versions
+    normalTextures: Map<FruitTier, PIXI.Texture> = new Map();
+    blinkTextures: Map<FruitTier, PIXI.Texture> = new Map();
     dangerLine: PIXI.Graphics;
     private _lastDangerActive: boolean | null = null;
+    private _lastFeverActive: boolean | null = null;
 
     // Pixi renderers (replacing separate 2D canvases)
     private effectRenderer: EffectRenderer | null = null;
@@ -34,92 +35,88 @@ export class RenderSystem {
     initialize(app: PIXI.Application, container: PIXI.Container) {
         this.app = app;
         this.container = container;
-
-        // Initialize new Pixi-based renderers
         this.effectRenderer = new EffectRenderer(container);
-
         container.addChild(this.dangerLine);
-
         this.initTextures();
     }
 
-    /**
-     * Called when screen dimensions change (from GameEngine.handleResize).
-     * This method is now a no-op since ground/wall renderers are managed by GameEngine.
-     * Kept for backward compatibility.
-     */
-    updateEnvironment(_screenWidth: number, _screenHeight: number, _vWidth: number, _vHeight: number, _scaleFactor: number): void {
-        // Ground and wall rendering is now handled directly by GameEngine
-    }
+    updateEnvironment(_sw: number, _sh: number, _vw: number, _vh: number, _sf: number): void {}
 
-    generateAllTextures(): Map<FruitTier, PIXI.Texture> {
-        const map = new Map<FruitTier, PIXI.Texture>();
-        if (!this.app || !this.app.renderer) {
-            console.warn('[RenderSystem] app or renderer is missing!');
-            return map;
-        }
+    // --- Texture Generation: Bake body + face into single texture per fruit ---
 
-        // Context Loss Check
-        // @ts-ignore - accessing internal gl context
+    generateAllTextures(): { normal: Map<FruitTier, PIXI.Texture>; blink: Map<FruitTier, PIXI.Texture> } {
+        const normalMap = new Map<FruitTier, PIXI.Texture>();
+        const blinkMap = new Map<FruitTier, PIXI.Texture>();
+        if (!this.app || !this.app.renderer) return { normal: normalMap, blink: blinkMap };
+
+        // @ts-ignore
         const gl = this.app.renderer.gl || (this.app.renderer.context && this.app.renderer.context.gl);
-        if (gl && gl.isContextLost && gl.isContextLost()) {
-            console.warn('[RenderSystem] Cannot generate textures: WebGL Context is lost.');
-            return map;
-        }
+        if (gl && gl.isContextLost && gl.isContextLost()) return { normal: normalMap, blink: blinkMap };
 
-        Object.values(FRUIT_DEFS).forEach(def => {
+        const res = this.app.renderer.resolution || 2;
+
+        for (const def of Object.values(FRUIT_DEFS)) {
             try {
-                const container = new PIXI.Container();
-                def.renderPixiBody(container, def.radius);
-
                 const size = (def.radius * 2) + 20;
-                const texture = PIXI.RenderTexture.create({
-                    width: size,
-                    height: size,
-                    resolution: this.app!.renderer.resolution || 2
-                });
 
-                container.position.set(size / 2, size / 2);
-                this.app!.renderer.render({ container, target: texture });
+                // Normal: body + face with open eyes
+                const normC = new PIXI.Container();
+                def.renderPixiBody(normC, def.radius);
+                const normFace = this.createFace(def.tier, def.radius);
+                normC.addChild(normFace);
+                normC.position.set(size / 2, size / 2);
+                const normTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: res });
+                this.app.renderer.render({ container: normC, target: normTex });
+                normalMap.set(def.tier, normTex);
+                normC.destroy({ children: true });
 
-                map.set(def.tier, texture);
-                container.destroy({ children: true });
+                // Blink: body + face with closed eyes
+                const blinkC = new PIXI.Container();
+                def.renderPixiBody(blinkC, def.radius);
+                const blinkFace = this.createFace(def.tier, def.radius, true);
+                blinkC.addChild(blinkFace);
+                blinkC.position.set(size / 2, size / 2);
+                const blinkTex = PIXI.RenderTexture.create({ width: size, height: size, resolution: res });
+                this.app.renderer.render({ container: blinkC, target: blinkTex });
+                blinkMap.set(def.tier, blinkTex);
+                blinkC.destroy({ children: true });
             } catch (e) {
                 console.error(`[RenderSystem] Failed to generate texture for tier ${def.tier}:`, e);
             }
-        });
-        return map;
+        }
+        return { normal: normalMap, blink: blinkMap };
     }
 
     initTextures() {
-        const newTextures = this.generateAllTextures();
-        newTextures.forEach((v, k) => this.textures.set(k, v));
+        const { normal, blink } = this.generateAllTextures();
+        normal.forEach((v, k) => this.normalTextures.set(k, v));
+        blink.forEach((v, k) => this.blinkTextures.set(k, v));
     }
 
-    createFace(tier: FruitTier, radius: number): PIXI.Container {
+    // --- Face creation for texture baking ---
+
+    createFace(tier: FruitTier, radius: number, blink = false): PIXI.Container {
         const def = FRUIT_DEFS[tier];
         if (def && def.renderPixiFace) {
-            return def.renderPixiFace(radius);
+            return def.renderPixiFace(radius, blink);
         }
         return new PIXI.Container();
     }
 
+    // --- Sprite management ---
+
     createSprite(p: Particle) {
-        if (!this.container || !this.textures.has(p.tier)) return;
-        const tex = this.textures.get(p.tier)!;
-        const sprite = new PIXI.Container();
-        const body = new PIXI.Sprite(tex);
-        body.anchor.set(0.5);
-        sprite.addChild(body);
-        const face = this.createFace(p.tier, p.radius);
-        face.label = "face";
-        sprite.addChild(face);
+        if (!this.container || !this.normalTextures.has(p.tier)) return;
+        const tex = this.normalTextures.get(p.tier)!;
+        const sprite = new PIXI.Sprite(tex);
+        sprite.anchor.set(0.5);
+        sprite.x = p.x;
+        sprite.y = p.y;
+        sprite.rotation = p.rotation;
+        sprite.alpha = p.alpha;
+        sprite.scale.set(p.scaleX, p.scaleY);
         this.fruitSprites.set(p.id, sprite);
         this.container.addChild(sprite);
-
-        // Cache face+eyes refs
-        const eyes = face.getChildByLabel ? (face.getChildByLabel("eyes") as PIXI.Container) : null;
-        this.faceRefs.set(p.id, { face, eyes });
     }
 
     removeSprite(p: Particle) {
@@ -128,7 +125,6 @@ export class RenderSystem {
             if (sprite.parent) sprite.parent.removeChild(sprite);
             sprite.destroy();
             this.fruitSprites.delete(p.id);
-            this.faceRefs.delete(p.id);
         }
     }
 
@@ -140,32 +136,28 @@ export class RenderSystem {
             }
         });
         this.fruitSprites.clear();
-        this.faceRefs.clear();
         this._lastDangerActive = null;
+        this._lastFeverActive = null;
         this.dangerLine.clear();
     }
 
     refreshGraphics(): boolean {
         try {
             console.log('[RenderSystem] Refreshing graphics...');
-            const newTextures = this.generateAllTextures();
+            const { normal, blink } = this.generateAllTextures();
 
-            if (newTextures.size > 0) {
-                this.textures.forEach(tex => {
-                    if (tex.destroy) tex.destroy(true);
-                });
-                this.textures.clear();
-
-                newTextures.forEach((v, k) => this.textures.set(k, v));
-
+            if (normal.size > 0) {
+                this.normalTextures.forEach(tex => { if (tex.destroy) tex.destroy(true); });
+                this.blinkTextures.forEach(tex => { if (tex.destroy) tex.destroy(true); });
+                this.normalTextures.clear();
+                this.blinkTextures.clear();
+                normal.forEach((v, k) => this.normalTextures.set(k, v));
+                blink.forEach((v, k) => this.blinkTextures.set(k, v));
                 this.reset();
-
-                // Redraw environment (ground/walls handled by GameEngine)
-
-                console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.textures.size}`);
+                console.log(`[RenderSystem] Graphics refreshed. Textures count: ${this.normalTextures.size}`);
                 return true;
             } else {
-                console.error('[RenderSystem] Failed to regenerate textures. Keeping old textures.');
+                console.error('[RenderSystem] Failed to regenerate textures.');
                 return false;
             }
         } catch (e) {
@@ -177,10 +169,8 @@ export class RenderSystem {
     // --- Rendering Logic ---
 
     drawDangerLine(width: number, height: number, active: boolean) {
-        // Optimization: Skip redraw if state hasn't changed
         if (this._lastDangerActive === active) return;
         this._lastDangerActive = active;
-
         this.dangerLine.clear();
         const y = height * DANGER_Y_PERCENT;
         this.dangerLine.moveTo(0, y);
@@ -209,6 +199,11 @@ export class RenderSystem {
                 sprite.x = ctx.currentFruit.x;
                 sprite.y = ctx.currentFruit.y;
                 sprite.rotation = ctx.currentFruit.rotation;
+                // Swap to blink texture if needed
+                const tex = ctx.currentFruit.isBlinking
+                    ? this.blinkTextures.get(ctx.currentFruit.tier)
+                    : this.normalTextures.get(ctx.currentFruit.tier);
+                if (tex && sprite.texture !== tex) sprite.texture = tex;
             }
         }
 
@@ -220,28 +215,17 @@ export class RenderSystem {
                 sprite.y = p.y;
                 sprite.rotation = p.rotation;
                 sprite.alpha = p.alpha;
-                sprite.scale.set(
-                    p.scaleX * rhythmicScaleX,
-                    p.scaleY * rhythmicScaleY
-                );
+                sprite.scale.set(p.scaleX * rhythmicScaleX, p.scaleY * rhythmicScaleY);
 
-                // Use cached face/eyes refs
-                const refs = this.faceRefs.get(p.id);
-                if (refs) {
-                    const { face, eyes } = refs;
-                    if (eyes) {
-                        eyes.scale.y = p.isBlinking ? 0.1 : 1;
-                    }
-                    const lookX = Math.min(10, Math.max(-10, p.vx));
-                    const lookY = Math.min(10, Math.max(-10, p.vy));
-                    face.position.set(lookX * 0.5, lookY * 0.5);
-                    // Counter-rotate face to keep it upright
-                    face.rotation = -p.rotation;
-                }
+                // Swap texture for blinking (no per-frame face updates needed)
+                const targetTex = p.isBlinking
+                    ? this.blinkTextures.get(p.tier)
+                    : this.normalTextures.get(p.tier);
+                if (targetTex && sprite.texture !== targetTex) sprite.texture = targetTex;
             }
         }
 
-        // Render effect particles (merge bursts, stars, suck particles, bomb ghosts)
+        // Render effect particles
         if (this.effectRenderer && ctx.effectParticles) {
             this.effectRenderer.render(ctx.effectParticles);
         }

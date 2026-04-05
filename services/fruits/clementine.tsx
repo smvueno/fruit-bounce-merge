@@ -28,13 +28,22 @@ export const CLEMENTINE: FruitDef = {
         g.fill({ color: 0xFFFFFF, alpha: 0.1 });
         c.addChild(g);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        PixiDrawEye(eyes, -xEye, yEye, rEye, 'wink');
-        PixiDrawEye(eyes, xEye, yEye, rEye, 'dot');
+        if (blink) {
+            eyes.moveTo(-xEye - rEye, yEye);
+            eyes.lineTo(-xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - rEye, yEye);
+            eyes.lineTo(xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            PixiDrawEye(eyes, -xEye, yEye, rEye, 'wink');
+            PixiDrawEye(eyes, xEye, yEye, rEye, 'dot');
+        }
         mouth.arc(0, yEye + rEye * 1.5, rEye, 0, Math.PI);
         mouth.fill({ color: 0x221111 });
         container.addChild(eyes, mouth);

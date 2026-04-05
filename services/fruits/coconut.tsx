@@ -27,13 +27,22 @@ export const COCONUT: FruitDef = {
         g.stroke({ width: 4, color: "#4E342E", alignment: 1 });
         c.addChild(g);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        PixiDrawEye(eyes, -xEye, yEye, rEye, 'wink');
-        PixiDrawEye(eyes, xEye, yEye, rEye, 'wink');
+        if (blink) {
+            eyes.moveTo(-xEye - rEye, yEye);
+            eyes.lineTo(-xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - rEye, yEye);
+            eyes.lineTo(xEye + rEye, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            PixiDrawEye(eyes, -xEye, yEye, rEye, 'wink');
+            PixiDrawEye(eyes, xEye, yEye, rEye, 'wink');
+        }
         mouth.circle(0, yEye + rEye * 2.5, rEye * 0.5);
         mouth.stroke({ width: 2, color: 0x221111 });
         container.addChild(eyes, mouth);

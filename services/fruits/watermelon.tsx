@@ -29,13 +29,23 @@ export const WATERMELON: FruitDef = {
         g.stroke({ width: 6, color: "#1B5E20" });
         c.addChild(g);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        PixiDrawEye(eyes, -xEye, yEye, rEye * 1.8, 'star');
-        PixiDrawEye(eyes, xEye, yEye, rEye * 1.8, 'star');
+        const eR = rEye * 1.8;
+        if (blink) {
+            eyes.moveTo(-xEye - eR, yEye);
+            eyes.lineTo(-xEye + eR, yEye);
+            eyes.stroke({ width: eR * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - eR, yEye);
+            eyes.lineTo(xEye + eR, yEye);
+            eyes.stroke({ width: eR * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            PixiDrawEye(eyes, -xEye, yEye, eR, 'star');
+            PixiDrawEye(eyes, xEye, yEye, eR, 'star');
+        }
         mouth.moveTo(-rEye * 1.5, yEye + rEye * 2);
         mouth.quadraticCurveTo(0, yEye + rEye * 5, rEye * 1.5, yEye + rEye * 2);
         mouth.lineTo(-rEye * 1.5, yEye + rEye * 2);

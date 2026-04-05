@@ -36,13 +36,23 @@ export const STRAWBERRY: FruitDef = {
         }
         c.addChild(g);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        PixiDrawEye(eyes, -xEye, yEye, rEye * 1.2, 'happy');
-        PixiDrawEye(eyes, xEye, yEye, rEye * 1.2, 'happy');
+        const eR = rEye * 1.2;
+        if (blink) {
+            eyes.moveTo(-xEye - eR, yEye);
+            eyes.lineTo(-xEye + eR, yEye);
+            eyes.stroke({ width: eR * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - eR, yEye);
+            eyes.lineTo(xEye + eR, yEye);
+            eyes.stroke({ width: eR * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            PixiDrawEye(eyes, -xEye, yEye, eR, 'happy');
+            PixiDrawEye(eyes, xEye, yEye, eR, 'happy');
+        }
         mouth.moveTo(-rEye, yEye + rEye * 2);
         mouth.quadraticCurveTo(0, yEye + rEye * 3, rEye, yEye + rEye * 2);
         mouth.stroke({ width: 2, color: 0x221111, cap: 'round' });

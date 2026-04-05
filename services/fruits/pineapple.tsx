@@ -41,16 +41,25 @@ export const PINEAPPLE: FruitDef = {
         c.addChild(g);
         c.addChild(deco);
     },
-    renderPixiFace: (r) => {
+    renderPixiFace: (r, blink?: boolean) => {
         const container = new PIXI.Container();
         const eyes = new PIXI.Graphics();
         const mouth = new PIXI.Graphics();
         const yEye = -r * 0.1, xEye = r * 0.35, rEye = Math.max(3, r * 0.18);
-        eyes.rect(-xEye - rEye * 1.5, yEye - rEye * 0.5, rEye * 3, rEye * 1.5);
-        eyes.rect(xEye - rEye * 1.5, yEye - rEye * 0.5, rEye * 3, rEye * 1.5);
-        eyes.moveTo(-xEye, yEye);
-        eyes.lineTo(xEye, yEye);
-        eyes.fill({ color: 0x111111 });
+        if (blink) {
+            eyes.moveTo(-xEye - rEye * 1.5, yEye);
+            eyes.lineTo(-xEye + rEye * 1.5, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+            eyes.moveTo(xEye - rEye * 1.5, yEye);
+            eyes.lineTo(xEye + rEye * 1.5, yEye);
+            eyes.stroke({ width: rEye * 0.6, color: 0x221111, cap: 'round' });
+        } else {
+            eyes.rect(-xEye - rEye * 1.5, yEye - rEye * 0.5, rEye * 3, rEye * 1.5);
+            eyes.rect(xEye - rEye * 1.5, yEye - rEye * 0.5, rEye * 3, rEye * 1.5);
+            eyes.moveTo(-xEye, yEye);
+            eyes.lineTo(xEye, yEye);
+            eyes.fill({ color: 0x111111 });
+        }
         mouth.arc(0, yEye + rEye * 2, rEye, 0.2, Math.PI - 0.2);
         mouth.stroke({ width: 3, color: 0x221111, cap: 'round' });
         container.addChild(eyes, mouth);

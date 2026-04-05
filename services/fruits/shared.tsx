@@ -29,7 +29,7 @@ export interface FruitDef {
     // Rendering Methods
     renderSvg: (size: number) => React.ReactNode;
     renderPixiBody: (container: PIXI.Container, radius: number) => void;
-    renderPixiFace: (radius: number) => PIXI.Container;
+    renderPixiFace: (radius: number, blink?: boolean) => PIXI.Container;
 }
 
 // --- SVG Helpers ---
