@@ -25,12 +25,16 @@ export class InputSystem {
     dragAnchorY: number = 0;
     pointerHistory: { x: number, y: number, time: number }[] = [];
 
+    // Vertical drag: initial touch Y becomes the "zero" point
+    initialTouchY: number = 0;
+
     // Helper: Reset state
     reset() {
         this.isAiming = false;
         this.pointerHistory = [];
         this.dragAnchorX = 0;
         this.dragAnchorY = 0;
+        this.initialTouchY = 0;
     }
 
     getVirtualPos(globalX: number, globalY: number, ctx: InputContext) {
@@ -48,6 +52,8 @@ export class InputSystem {
         const p = this.getVirtualPos(e.global.x, e.global.y, ctx);
         this.updateAim(p.x, p.y, ctx);
         this.pointerHistory = [];
+        // Record initial touch Y as the "zero" point for vertical drag
+        this.initialTouchY = e.global.y;
         return true; // Return true to indicate interaction started
     }
 
@@ -55,7 +61,8 @@ export class InputSystem {
         if (ctx.paused) return;
         if (!this.isAiming) return;
         const p = this.getVirtualPos(e.global.x, e.global.y, ctx);
-        this.updateAim(p.x, p.y, ctx);
+        // Pass the delta from initial touch Y for vertical movement
+        this.updateAim(p.x, p.y, ctx, e.global.y - this.initialTouchY);
         const now = performance.now();
         this.pointerHistory.push({ x: p.x, y: p.y, time: now });
         if (this.pointerHistory.length > 8) this.pointerHistory.shift();
@@ -90,12 +97,12 @@ export class InputSystem {
         return { vx, vy };
     }
 
-    updateAim(x: number, y: number, ctx: InputContext) {
+    updateAim(x: number, y: number, ctx: InputContext, verticalDelta: number = 0) {
         const r = ctx.currentFruit ? ctx.currentFruit.radius : 20;
+        // Horizontal: follow finger position directly
         this.aimX = Math.max(r, Math.min(ctx.width - r, x));
         this.dragAnchorX = this.aimX;
-        // Expanded vertical range: clamp finger Y to 10%-50% of height with 0.25 multiplier
-        // (was 20%-40% with 0.1 — felt too restrictive for dragging up/down)
-        this.dragAnchorY = (ctx.height * SPAWN_Y_PERCENT) + (Math.max(ctx.height * 0.1, Math.min(y, ctx.height * 0.5)) - ctx.height * 0.2) * 0.25;
+        // Vertical: use delta from initial touch point as offset from spawn Y
+        this.dragAnchorY = (ctx.height * SPAWN_Y_PERCENT) + verticalDelta * 0.5;
     }
 }
