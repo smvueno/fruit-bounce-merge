@@ -306,8 +306,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
                     />
                 </div>
 
-                {/* 3. Game Area - Fills remaining space between HUD and bottom controls */}
-                <div ref={gameAreaRef} className="flex-1 relative z-10 min-h-0">
+                {/* 3. Game Area - fills remaining space, Pixi handles 4:5 scaling internally */}
+                <div ref={gameAreaRef} className="flex-1 relative z-10 min-h-0 overflow-hidden">
                     <GameArea canvasRef={canvasRef}>
                         <DangerOverlay dangerTime={limitTime} />
                     </GameArea>
