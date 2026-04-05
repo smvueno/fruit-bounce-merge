@@ -13,6 +13,7 @@ import { ScoreController } from './systems/ScoreController';
 import { CloudRenderer } from './renderers/CloudRenderer';
 import { WallRenderer } from './renderers/WallRenderer';
 import { GroundRenderer } from './renderers/GroundRenderer';
+import { JuiceRenderer } from './renderers/JuiceRenderer';
 
 // --- Virtual Resolution ---
 // Aspect Ratio: 4:5
@@ -34,6 +35,7 @@ export class GameEngine {
     private cloudRenderer: CloudRenderer | null = null;
     private wallRenderer: WallRenderer | null = null;
     private groundRenderer: GroundRenderer | null = null;
+    private juiceRenderer: JuiceRenderer | null = null;
     private _screenWidth = 0;
     private _screenHeight = 0;
     private _containerTop = 0;
@@ -179,6 +181,9 @@ export class GameEngine {
 
         this.scoreController.onJuiceUpdate = (curr, max) => {
             this.onJuiceUpdate(curr, max);
+            if (this.juiceRenderer) {
+                this.juiceRenderer.update((curr / max) * 100, this.scoreController.isFever());
+            }
         };
 
         let lastFeverTime = 0;
@@ -188,6 +193,9 @@ export class GameEngine {
             this.stats.feverCount++;
             lastFeverTime = FEVER_DURATION_MS; // Reset tracker
             this.onFeverStart(mult);
+            if (this.juiceRenderer) {
+                this.juiceRenderer.update(this.scoreController.getFeverMeter() / JUICE_MAX * 100, true);
+            }
         };
 
         this.scoreController.onFeverTick = (remaining, total) => {
@@ -207,6 +215,9 @@ export class GameEngine {
             this.audio.playFrenzyEnd();
             lastFeverTime = 0;
             this.onFeverEnd(suckedPoints);
+            if (this.juiceRenderer) {
+                this.juiceRenderer.update(0, false);
+            }
         };
 
         this.scoreController.onStreakEnd = (suckedPoints, totalScore) => {
@@ -317,6 +328,9 @@ export class GameEngine {
 
         // Initialize Ground Renderer (inside the game container — virtual coords)
         this.groundRenderer = new GroundRenderer(this.container);
+
+        // Initialize Juice Renderer (inside the game container — virtual coords)
+        this.juiceRenderer = new JuiceRenderer(this.container);
 
         // Initialize Cloud Renderer (screen-space, on the stage)
         this.cloudRenderer = new CloudRenderer(this.app.stage, this.app.renderer);
@@ -710,6 +724,11 @@ export class GameEngine {
             effectParticles: this.effectSystem.visualParticles
         };
         this.renderSystem.renderSync(renderCtx);
+
+        // Render juice overlay
+        if (this.juiceRenderer) {
+            this.juiceRenderer.render(dt);
+        }
     }
 
     // --- Game Logic Methods ---

@@ -8,7 +8,6 @@ import { DebugMenu } from './DebugMenu';
 
 // Components
 import { GameBackground } from './GameBackground';
-import { JuiceOverlay } from './JuiceOverlay';
 import { LayoutContainer } from './LayoutContainer';
 import { GameArea } from './GameArea';
 import { GameHUD } from './GameHUD';
@@ -328,26 +327,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ settings, onUpdateSettin
 
             </LayoutContainer>
 
-            {/* 1.15 Juice/Water Overlay - Moved OUT of GameArea to be betwen Background and Ground */}
-            {/* Placed here in DOM order: After Background, but z-index controlled to be < Ground (z-5) */}
-            {gameAreaDimensions.width > 0 && (
-                <div
-                    className="fixed overflow-hidden rounded-t-3xl pointer-events-none"
-                    style={{
-                        zIndex: 2, // Above Background (0), Below Ground (5)
-                        width: gameAreaDimensions.width,
-                        height: gameAreaDimensions.height,
-                        top: gameAreaDimensions.top,
-                        left: gameAreaDimensions.left
-                    }}
-                >
-                    <JuiceOverlay
-                        fever={fever}
-                        juice={juice}
-                        dangerYPercent={DANGER_Y_PERCENT}
-                    />
-                </div>
-            )}
+            {/* Juice/Water Overlay — now rendered by Pixi.js inside the game canvas */}
 
             {/* 4. Global Overlays (Fixed z-50) */}
             <GameOverlays
