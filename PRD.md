@@ -58,7 +58,7 @@
 | Spawn line | **45** | `750 × 0.06` |
 | Danger line | **97.5** | `750 × 0.13` |
 | Floor base | **690** | `750 - 60` (with wave ±15) |
-| Physics floor | **735** | `750 - 15` |
+| Physics floor | **715** | `750 - 35` |
 
 ---
 
@@ -112,7 +112,7 @@ rightWall.x = V_WIDTH - overlap + 70  // = 660, with scale.x = -1
 Both walls must overlap the game area by exactly the same amount (10px).
 
 ### 4.3 Wall Height
-- Fixed to game area height (V_HEIGHT = 750)
+- Walls extend from top (y=35) down to **y=735** (`V_HEIGHT - 15`) to overlap the ground wave
 - Does NOT extend to viewport bottom — ground handles that
 
 ---
@@ -167,11 +167,17 @@ Both walls must overlap the game area by exactly the same amount (10px).
 
 ### 7.1 Design
 - Soft animated gradient filling entire viewport (`100vw × 100vh`)
-- **No pattern cycling**, no animated blobs
+- **No pattern cycling**, no animated blobs during gameplay
 - Clean, minimal, doesn't distract from gameplay
 - Fever mode: purple-tinted gradient
 
-### 7.2 Implementation
+### 7.2 Performance Rule
+- **Background blur + animated blobs are ONLY rendered on Start/Pause/Game Over screens**
+- During `GameState.PLAYING`, the background overlay div is completely removed from DOM
+- This eliminates GPU compositor competition with the Pixi.js WebGL canvas
+- Preserves stable 60 FPS on all devices
+
+### 7.3 Implementation
 - CSS gradient on a full-viewport div
 - `position: fixed`, `inset: 0`, `z-index: 0` (behind Pixi canvas)
 - Transition on fever state change: `2s ease`
@@ -256,7 +262,7 @@ V_WIDTH = 600
 V_HEIGHT = 750
 DANGER_Y_PERCENT = 0.13     // y = 97.5
 SPAWN_Y_PERCENT = 0.06      // y = 45
-FLOOR_OFFSET = 15
+FLOOR_OFFSET = 35
 DANGER_TIME_MS = 5000
 FEVER_DURATION_MS = 10000
 JUICE_MAX = 1500
@@ -283,7 +289,9 @@ preference: 'webgl',
 
 ### 13.2 Ticker
 - `maxFPS: 0` (uncapped — runs at display refresh rate)
-- Physics runs at fixed 60fps via substeps
+- `minFPS: 30` (prevents deltaTime spiral during slow frames)
+- Physics runs at variable delta-time matching display refresh rate (60Hz or 120Hz)
+- This ensures responsive input — fruit follows finger every frame
 
 ---
 
@@ -350,12 +358,13 @@ Before committing, verify manually:
 - [ ] Start screen renders correctly
 - [ ] Game starts and canvas appears
 - [ ] Fruits drop and physics work
-- [ ] Walls visible on both sides, overlapping game area by 5px each
+- [ ] Walls visible on both sides, overlapping game area by 10px each
 - [ ] Ground visible and spans full viewport width, extends to bottom
 - [ ] Clouds visible and animate above the game area
 - [ ] HUD displays correctly with consistent padding
 - [ ] Pause menu opens and closes
 - [ ] No visual clipping or misalignment at any screen size
+- [ ] FPS stays at 60 during gameplay (use debug menu)
 
 ---
 
@@ -441,3 +450,17 @@ Before committing, verify manually:
 - **Ground wave formula** — matches the original GroundCanvas exactly.
 - **Virtual resolution** (600×750) — all physics and positions depend on this.
 - **4:5 aspect ratio** — core to the game's visual identity.
+
+### 21.9 Input System — Drag Behavior
+- **Horizontal**: fruit X follows finger X position directly (clamped to game bounds)
+- **Vertical**: initial touch Y becomes the "zero" point; dragging up/down offsets the fruit from spawn height
+- Formula: `dragAnchorY = spawnY + (currentFingerY - initialTouchY) * 0.5`
+- The touch point itself does NOT pull the fruit vertically — only movement from that point matters
+- This gives precise control: 2:1 ratio means 100px finger drag = 50px fruit movement
+- `initialTouchY` is recorded on `pointerdown` and reset on `pointerup`
+
+### 21.10 Performance — CSS Blur During Gameplay
+- `backdrop-blur`, `filter: blur()`, and CSS `shadow` filters are GPU compositor operations
+- They run on a separate thread from WebGL and compete for GPU bandwidth
+- **Rule**: No CSS blur/shadow filters may be active during `GameState.PLAYING`
+- Menus (pause, game over, start) may use blur freely since gameplay is paused
