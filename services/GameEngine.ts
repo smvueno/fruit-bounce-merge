@@ -131,11 +131,6 @@ export class GameEngine {
     // Optimization: O(1) fruit lookups in updateGameLogic (replaces .find() per active effect per frame)
     private _fruitsById: Map<number, Particle> = new Map();
 
-    // Fixed-timestep accumulator for stable 60 FPS physics
-    private _accumulator = 0;
-    private readonly _fixedDt = 1 / 60; // 60 Hz fixed timestep
-    private readonly _fixedDtMs = 1000 / 60;
-
     private spawnTimeout: any = null;
     private wasPausedBySystem: boolean = false;
     private visibilityHandler: () => void;
@@ -581,11 +576,9 @@ export class GameEngine {
         this.savedFruitTier = null;
         this.canSwap = true;
         this.onSaveUpdate(null);
-        this._accumulator = 0; // Reset fixed-timestep accumulator
 
         this.nextFruitQueue = [this.pickRandomFruit(FruitTier.CHERRY)];
         this.spawnNextFruit();
-        this._accumulator = 0; // Reset fixed-timestep accumulator on game reset
 
         if (this.settings.musicEnabled || this.settings.sfxEnabled) {
             this.audio.resume();
@@ -649,77 +642,19 @@ export class GameEngine {
     update(ticker: PIXI.Ticker) {
         if (this.paused) return;
 
-        // Fixed-timestep accumulator for stable physics (dropped fruits)
-        // BUT: always update current fruit position every frame for responsive input
-        const elapsedMs = ticker.deltaMS;
-        this._accumulator += elapsedMs;
-
-        // Safety cap: prevent spiral of death if tab was backgrounded
-        if (this._accumulator > 250) this._accumulator = 250;
-
-        // Always update current fruit position every frame (responsive input)
-        this._updateCurrentFruit();
-
-        // Drain accumulator in fixed steps for physics (dropped fruits)
-        while (this._accumulator >= this._fixedDtMs) {
-            this._accumulator -= this._fixedDtMs;
-            this._runFixedStep();
-        }
-
-        // Render every frame
-        this._renderFrame();
-
-        // --- Performance Tracking ---
-        const _perfNow = performance.now();
-        if (this._perfLastTime > 0) {
-            const elapsed = _perfNow - this._perfLastTime;
-            this._perfFpsAccumulator += elapsed;
-            this._perfFrameCount++;
-            this._perfMemoryAccumulator += elapsed;
-
-            if (this._perfFpsAccumulator >= 500) {
-                this.perfStats.fps = Math.round((this._perfFrameCount * 1000) / this._perfFpsAccumulator);
-                this.perfStats.frameTimeMs = Math.round(this._perfFpsAccumulator / this._perfFrameCount * 10) / 10;
-                this._perfFpsAccumulator = 0;
-                this._perfFrameCount = 0;
-            }
-
-            // Sample memory every 2s — performance.memory only updates periodically anyway
-            if (this._perfMemoryAccumulator >= 2000) {
-                this._perfMemoryAccumulator = 0;
-                const mem = (performance as any).memory;
-                if (mem) {
-                    this.perfStats.heapUsedMB = Math.round(mem.usedJSHeapSize / 1048576 * 10) / 10;
-                    this.perfStats.heapTotalMB = Math.round(mem.totalJSHeapSize / 1048576 * 10) / 10;
-                }
-            }
-        }
-        this._perfLastTime = _perfNow;
-    }
-
-    /** Update current fruit position every frame for responsive input (not tied to physics tick) */
-    private _updateCurrentFruit() {
-        if (!this.inputSystem.isAiming || !this.currentFruit) return;
-
-        const r = this.currentFruit.radius;
-        const clampedX = Math.max(r, Math.min(this.width - r, this.inputSystem.aimX));
-        const clampedY = (this.height * 0.06) + (Math.min(this.inputSystem.dragAnchorY, this.height * 0.4) - this.height * 0.2) * 0.1;
-
-        this.currentFruit.x = clampedX;
-        this.currentFruit.y = clampedY;
-    }
-
-    /** Run one fixed 1/60s timestep of game logic + physics */
-    private _runFixedStep() {
-        const dt = this._fixedDt;
-        const dtMs = this._fixedDtMs;
+        // Use ticker's actual elapsed time — physics runs at display refresh rate
+        // (60Hz or 120Hz depending on device). This gives responsive input feel
+        // since the fruit follows the finger every frame.
+        // minFPS=30 prevents deltaTime spiral during slow frames.
+        const dt = ticker.deltaMS / 1000;
+        const dtMs = ticker.deltaMS;
 
         this.perfStats.fruitCount = this.fruits.length;
         this.perfStats.particleCount = this.effectSystem.visualParticles.length;
         this.perfStats.audioQueueLength = this.audio.soundQueue.length;
         this.perfStats.substeps = SUBSTEPS;
 
-        // Optimization: Build O(1) fruit lookup Map once per step
+        // Optimization: Build O(1) fruit lookup Map once per frame
         this._fruitsById.clear();
         for (const p of this.fruits) this._fruitsById.set(p.id, p);
 
@@ -755,13 +690,8 @@ export class GameEngine {
 
         // Flush batched score/UI updates (single React render per frame)
         this.scoreController.flushUpdates();
-    }
 
-    /** Render the current frame (called every display refresh, not just fixed steps) */
-    private _renderFrame() {
-        const isFever = this.scoreController.isFever();
-
-        // 5. Render danger line
+        // 5. Render
         this.renderSystem.drawDangerLine(this.width, this.height, this.isOverLimit);
 
         // Update clouds (screen-space animation)
@@ -781,8 +711,35 @@ export class GameEngine {
 
         // Render juice overlay
         if (this.juiceRenderer) {
-            this.juiceRenderer.render(this._fixedDt);
+            this.juiceRenderer.render(dt);
         }
+
+        // --- Performance Tracking ---
+        const _perfNow = performance.now();
+        if (this._perfLastTime > 0) {
+            const elapsed = _perfNow - this._perfLastTime;
+            this._perfFpsAccumulator += elapsed;
+            this._perfFrameCount++;
+            this._perfMemoryAccumulator += elapsed;
+
+            if (this._perfFpsAccumulator >= 500) {
+                this.perfStats.fps = Math.round((this._perfFrameCount * 1000) / this._perfFpsAccumulator);
+                this.perfStats.frameTimeMs = Math.round(this._perfFpsAccumulator / this._perfFrameCount * 10) / 10;
+                this._perfFpsAccumulator = 0;
+                this._perfFrameCount = 0;
+            }
+
+            // Sample memory every 2s — performance.memory only updates periodically anyway
+            if (this._perfMemoryAccumulator >= 2000) {
+                this._perfMemoryAccumulator = 0;
+                const mem = (performance as any).memory;
+                if (mem) {
+                    this.perfStats.heapUsedMB = Math.round(mem.usedJSHeapSize / 1048576 * 10) / 10;
+                    this.perfStats.heapTotalMB = Math.round(mem.totalJSHeapSize / 1048576 * 10) / 10;
+                }
+            }
+        }
+        this._perfLastTime = _perfNow;
     }
 
     // --- Game Logic Methods ---
