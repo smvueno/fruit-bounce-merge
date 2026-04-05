@@ -712,7 +712,7 @@ export class GameEngine {
 
         // Update clouds (screen-space animation)
         if (this.cloudRenderer && this.app) {
-            this.cloudRenderer.update(this._screenWidth, this._containerTop);
+            this.cloudRenderer.update(this._screenWidth, this._containerTop, this.scaleFactor);
         }
 
         // Sync Render State

@@ -118,10 +118,13 @@ export class CloudRenderer {
      * Update cloud positions and sky gradient.
      * @param screenWidth Screen width in CSS pixels
      * @param containerTop Container Y position on screen (CSS pixels)
+     * @param scaleFactor Scale factor (for extending gradient into game area)
      */
-    update(screenWidth: number, containerTop: number): void {
+    update(screenWidth: number, containerTop: number, scaleFactor: number = 1): void {
         // Update sky gradient using canvas for proper gradient blending
-        const gradientHeight = containerTop;
+        // Extend gradient slightly below the danger line (13% from top of game area)
+        const dangerLineOffset = 97.5 * scaleFactor; // V_HEIGHT * 0.13 * scaleFactor
+        const gradientHeight = containerTop + dangerLineOffset + 20; // extra 20px buffer
         if (gradientHeight > 0) {
             // Only recreate texture when size changes (avoid per-frame allocation)
             if (!this._skyTexture || this._lastSkyWidth !== screenWidth || this._lastSkyHeight !== gradientHeight) {
