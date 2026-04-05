@@ -122,18 +122,17 @@ export class CloudRenderer {
     update(screenWidth: number, containerTop: number): void {
         // Update sky gradient
         this.skyGradient.clear();
-        // Gradient from top to containerTop (game area top)
         const gradientHeight = containerTop;
         if (gradientHeight > 0) {
+            // Main gradient layer
             this.skyGradient.rect(0, 0, screenWidth, gradientHeight);
-            this.skyGradient.fill({
-                color: new PIXI.Color(0x60A5FA).setAlpha(0.15).toNumber(),
-            });
-            // Create a subtle gradient effect by layering
+            this.skyGradient.fill({ color: 0x3B82F6, alpha: 0.35 });
+            // Brighter top layer for gradient effect
             this.skyGradient.rect(0, 0, screenWidth, gradientHeight * 0.6);
-            this.skyGradient.fill({
-                color: new PIXI.Color(0x60A5FA).setAlpha(0.1).toNumber(),
-            });
+            this.skyGradient.fill({ color: 0x60A5FA, alpha: 0.25 });
+            // Lightest at very top
+            this.skyGradient.rect(0, 0, screenWidth, gradientHeight * 0.3);
+            this.skyGradient.fill({ color: 0x93C5FD, alpha: 0.15 });
         }
 
         const speedFactor = screenWidth / 1280;
