@@ -26,7 +26,47 @@ export class EffectSystem {
     // Optimization: Track suck particle count directly instead of .filter() every frame
     private _suckCount: number = 0;
 
+    // --- Object Pool: Reuse EffectParticle objects to avoid GC pressure ---
+    private _pool: EffectParticle[] = [];
+    private _poolSize: number;
+
+    constructor() {
+        // Pre-allocate pool based on platform
+        this._poolSize = _effectIsMobile ? 200 : 500;
+        for (let i = 0; i < this._poolSize; i++) {
+            this._pool.push(new EffectParticle(0, 0, 0xFFFFFF, 'circle'));
+        }
+    }
+
+    /** Get a particle from the pool, or create a new one if pool is exhausted. */
+    private _acquire(x: number, y: number, color: number, type: EffectParticle['type']): EffectParticle {
+        if (this._pool.length > 0) {
+            const p = this._pool.pop()!;
+            p.x = x;
+            p.y = y;
+            p.color = color;
+            p.type = type;
+            return p;
+        }
+        // Pool exhausted — create new (rare, only under extreme load)
+        return new EffectParticle(x, y, color, type);
+    }
+
+    /** Return a particle to the pool for reuse. */
+    private _release(p: EffectParticle) {
+        if (this._pool.length < this._poolSize) {
+            // Reset to defaults before returning to pool
+            p.vx = 0; p.vy = 0; p.life = 1; p.size = 1;
+            p.alpha = 1; p.rotation = 0; p.targetId = undefined;
+            this._pool.push(p);
+        }
+    }
+
     reset() {
+        // Return all particles to pool
+        for (const p of this.visualParticles) {
+            this._release(p);
+        }
         this.visualParticles = [];
         this._suckCount = 0;
     }
@@ -38,7 +78,7 @@ export class EffectSystem {
             const sx = x + Math.cos(angle) * r;
             const sy = y + Math.sin(angle) * r;
 
-            const part = new EffectParticle(sx, sy, 0xFF6347, 'circle');
+            const part = this._acquire(sx, sy, 0xFF6347, 'circle');
             // MUCH slower drift (buggy fast issue fix)
             part.vx = Math.cos(angle) * 0.1;
             part.vy = Math.sin(angle) * 0.1 - 0.1;
@@ -57,7 +97,7 @@ export class EffectSystem {
             const px = x + Math.cos(angle) * r;
             const py = y + Math.sin(angle) * r;
 
-            const part = new EffectParticle(px, py, 0xFF6347, 'circle');
+            const part = this._acquire(px, py, 0xFF6347, 'circle');
             // Inherit 20% of parent velocity for "follow along" + small random drift
             part.vx = (parentVx * 0.2) + (Math.random() - 0.5) * 0.5;
             part.vy = (parentVy * 0.2) + (Math.random() - 0.5) * 0.5;
@@ -71,7 +111,7 @@ export class EffectSystem {
     createMergeEffect(x: number, y: number, color: string | number) {
         // Optimization: Fewer particles on mobile (8 vs 15) — still satisfying but ~47% less GPU work
         for (let i = 0; i < MERGE_PARTICLE_COUNT; i++) {
-            const p = new EffectParticle(x, y, color, Math.random() > 0.5 ? 'circle' : 'star');
+            const p = this._acquire(x, y, typeof color === 'number' ? color : parseInt(color.replace('#', ''), 16), Math.random() > 0.5 ? 'circle' : 'star');
             const angle = Math.random() * Math.PI * 2;
             const force = Math.random() * 10 + 5;
             p.vx = Math.cos(angle) * force;
@@ -81,7 +121,7 @@ export class EffectSystem {
     }
 
     createGhostEffect(x: number, y: number, size: number) {
-        const ghost = new EffectParticle(x, y, 0x212121, 'bomb-ghost');
+        const ghost = this._acquire(x, y, 0x212121, 'bomb-ghost');
         ghost.size = size;
         ghost.life = 1.0;
         ghost.alpha = 0.8;
@@ -119,7 +159,7 @@ export class EffectSystem {
                         const px = centerX + Math.cos(angle) * spawnR;
                         const py = centerY + Math.sin(angle) * spawnR;
 
-                        const p = new EffectParticle(px, py, 0xFF4444, 'suck');
+                        const p = this._acquire(px, py, 0xFF4444, 'suck');
                         p.targetId = t.tomatoId;
                         p.life = 1.0;
                         p.size = 3 + Math.random() * 3;
@@ -145,7 +185,7 @@ export class EffectSystem {
                     const px = p.x + Math.cos(angle) * r;
                     const py = p.y + Math.sin(angle) * r;
                     const color = Math.random() > 0.5 ? 0xFFD700 : 0xFFA500;
-                    const part = new EffectParticle(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
+                    const part = this._acquire(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
                     part.vx = Math.cos(angle) * 0.2;
                     part.vy = Math.sin(angle) * 0.2 - 0.2;
                     part.life = 1.2;
@@ -177,7 +217,7 @@ export class EffectSystem {
                     const px = ctx.currentFruit.x + Math.cos(angle) * r;
                     const py = ctx.currentFruit.y + Math.sin(angle) * r;
                     const color = Math.random() > 0.5 ? 0xFFD700 : 0xFFA500;
-                    const part = new EffectParticle(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
+                    const part = this._acquire(px, py, color, Math.random() > 0.7 ? 'star' : 'circle');
                     part.vx = Math.cos(angle) * 0.2;
                     part.vy = Math.sin(angle) * 0.2 - 0.2;
                     part.life = 1.0; // shorter life for aimed fruit
@@ -193,7 +233,7 @@ export class EffectSystem {
             // Optimization: Halve spawn rate on mobile — fever sparkles are decorative
             const feverSpawnChance = _effectIsMobile ? 0.15 : 0.3;
             if (Math.random() < feverSpawnChance) {
-                const sparkle = new EffectParticle(Math.random() * ctx.width, ctx.height + 20, 0xFFD700, 'star');
+                const sparkle = this._acquire(Math.random() * ctx.width, ctx.height + 20, 0xFFD700, 'star');
                 sparkle.vy = -Math.random() * 2 - 3; // Slightly faster upward (-3 to -5)
                 sparkle.vx = (Math.random() - 0.5) * 1;
                 sparkle.life = 5.0; // Last long enough to go up the whole screen
@@ -293,7 +333,8 @@ export class EffectSystem {
                 if (i < last) {
                     this.visualParticles[i] = this.visualParticles[last];
                 }
-                this.visualParticles.pop();
+                const removed = this.visualParticles.pop();
+                if (removed) this._release(removed);
                 // Don't increment i — re-check the swapped element
             } else {
                 i++;
