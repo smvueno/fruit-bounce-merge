@@ -277,7 +277,7 @@ export class GameEngine {
 
         try {
             const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-            const cappedDpr = Math.min(window.devicePixelRatio || 1, 2);
+            const cappedDpr = Math.min(window.devicePixelRatio || 1, 3);
 
             await this.app.init({
                 canvas: this.canvasElement,
