@@ -95,6 +95,13 @@ export const DebugMenu: React.FC<DebugMenuProps> = ({ engine, onClose }) => {
                 <FruitSVG tier={FruitTier.TOMATO} size={40} />
             </button>
             <button
+                onClick={() => { if (engine) engine.forceCurrentFruit(FruitTier.WATERMELON); }}
+                className="w-14 h-14 bg-green-900/50 backdrop-blur-sm hover:bg-green-800/50 rounded-full flex items-center justify-center shadow-lg border-2 border-green-500 active:scale-95 transition-all"
+                title="Spawn Watermelon"
+            >
+                <FruitSVG tier={FruitTier.WATERMELON} size={40} />
+            </button>
+            <button
                 onClick={onClose}
                 className="w-14 h-14 bg-red-500/50 backdrop-blur-sm hover:bg-red-600/50 rounded-full flex items-center justify-center shadow-lg border-2 border-red-700 active:scale-95 transition-all"
                 title="Close Cheat Menu"
